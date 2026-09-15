@@ -2271,7 +2271,11 @@
             "successWithSkipped_few": "تم استيراد {{count}} أحداث، و{{skipped}} موجودة بالفعل.",
             "successWithSkipped_two": "تم استيراد حدثين، و{{skipped}} موجودة بالفعل.",
             "successWithSkipped_many": "تم استيراد {{count}} حدثًا، و{{skipped}} موجودة بالفعل.",
-            "allDuplicates": "لا توجد أحداث جديدة - كلها موجودة بالفعل."
+            "allDuplicates": "لا توجد أحداث جديدة - كلها موجودة بالفعل.",
+            "targetCalendarLabel": "التقويم الهدف",
+            "createNewCalendar": "إنشاء تقويم جديد",
+            "newCalendarNameLabel": "اسم التقويم الجديد",
+            "errorNoCalendarName": "أدخل اسمًا للتقويم الجديد."
         },
         "memberPhoneLabel": "رقم الهاتف (اختياري)",
         "memberEmailLabel": "البريد الإلكتروني (اختياري)",
