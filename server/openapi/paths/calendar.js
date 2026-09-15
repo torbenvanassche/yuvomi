@@ -79,6 +79,20 @@ export function calendarPaths() {
     '/api/v1/calendar/feed/regenerate': {
       post: op({ summary: 'Regenerate personal ICS export feed token', tag: 'Calendar', stateChanging: true }),
     },
+    '/api/v1/calendar/calendars': {
+      get: op({ summary: 'List local calendars', tag: 'Calendar' }),
+      post: op({ summary: 'Create local calendar', tag: 'Calendar', stateChanging: true, requestBody: jsonBody(null) }),
+    },
+    '/api/v1/calendar/calendars/{id}': {
+      put: op({ summary: 'Update local calendar', tag: 'Calendar', params: [idParam()], stateChanging: true, requestBody: jsonBody(null) }),
+      delete: op({ summary: 'Delete local calendar and reassign events to the default calendar', tag: 'Calendar', params: [idParam()], stateChanging: true }),
+    },
+    '/api/v1/calendar/calendars/{id}/feed/regenerate': {
+      post: op({ summary: 'Regenerate local-calendar ICS export token', tag: 'Calendar', params: [idParam()], stateChanging: true }),
+    },
+    '/api/v1/calendar/calendars/{id}/feed': {
+      delete: op({ summary: 'Disable local-calendar ICS export', tag: 'Calendar', params: [idParam()], stateChanging: true }),
+    },
     '/api/v1/calendar/sync-targets': {
       get: op({
         summary: 'List selectable sync targets for the event editor',

@@ -606,6 +606,7 @@ let state = {
   today:         '',
   cursor:        null,     // aktuell angezeigte Referenz-Datum (YYYY-MM-DD)
   events:        [],
+  localCalendars: [],
   tasks:         [],       // Aufgaben mit due_date für Kalender-Anzeige
   scheduleEntries: [],
   scheduleWarnings: [],
@@ -1458,6 +1459,16 @@ async function loadRange(from, to) {
   await wastePromise;
 }
 
+async function loadLocalCalendars() {
+  try {
+    const res = await api.get('/calendar/calendars');
+    state.localCalendars = Array.isArray(res.data) ? res.data : [];
+  } catch (err) {
+    console.warn('[Calendar] Local calendars fetch failed:', err);
+    state.localCalendars = [];
+  }
+}
+
 /**
  * Eine Aufgabe aus dem Kalender öffnen (#918).
  *
@@ -1621,9 +1632,10 @@ export async function render(container, { user }) {
   }
 
   const { from, to } = getRangeForView(state.view, state.cursor);
-  const [,, prefsRes, documentOptionsRes] = await Promise.all([
+  const [,,, prefsRes, documentOptionsRes] = await Promise.all([
     loadRange(from, to),
     loadUsers(),
+    loadLocalCalendars(),
     api.get('/preferences').catch(() => ({ data: {} })),
     api.get('/documents/meta/options').catch(() => ({ data: {} })),
   ]);
@@ -1736,6 +1748,11 @@ function renderToolbar() {
     </div>
     <div class="page-toolbar__actions">
       ${filterBtnHtml}
+      <button class="btn btn--icon cal-toolbar__calendars-btn" id="cal-calendars"
+              aria-label="${t('calendar.manageCalendars')}" title="${t('calendar.manageCalendars')}"
+              aria-haspopup="dialog">
+        <i data-lucide="calendar-days" aria-hidden="true"></i>
+      </button>
       <!-- KEIN aria-controls im geschlossenen Zustand: die Suchleiste entsteht
            erst beim Öffnen (openCalendarSearch), und ein Verweis auf eine ID, die
            es noch nicht gibt, kündigt einem Screenreader ein Ziel an, das nicht
@@ -1778,6 +1795,7 @@ function renderToolbar() {
   bar.querySelector('#cal-next').addEventListener('click', () => navigate(1));
   bar.querySelector('#cal-today').addEventListener('click', goToday);
   bar.querySelector('#cal-add').addEventListener('click', () => openEventModal({ mode: 'create', date: newEventDate() }));
+  bar.querySelector('#cal-calendars').addEventListener('click', openLocalCalendarsModal);
   bar.querySelector('#cal-search').addEventListener('click', openCalendarSearch);
   bar.querySelector('#cal-filters').addEventListener('click', openCalendarFilters);
 
@@ -2328,7 +2346,7 @@ function renderMonthDay(date, inMonth) {
     <div class="month-day__event"
          data-id="${ev.id}"
          style="${eventSurfaceStyle(ev)}"
-         title="${esc(ev.title)}${ev.cal_name ? ' · ' + esc(ev.cal_name) : ''}${chipAssigneeTitleSuffix(ev)}"
+         title="${esc(ev.title)}${(ev.cal_name || ev.local_calendar_name) ? ' · ' + esc(ev.cal_name || ev.local_calendar_name) : ''}${chipAssigneeTitleSuffix(ev)}"
     >${calendarRepeatIconHtml(ev)}<span>${esc(ev.title)}</span></div>
   `).join('');
 
@@ -2752,7 +2770,7 @@ function renderWeekView(container) {
             ${alldayEvs[i].map((ev) => `
               <div class="allday-event" data-id="${ev.id}"
                    style="${eventSurfaceStyle(ev)}"
-                   title="${esc(ev.title)}${ev.cal_name ? ' · ' + ev.cal_name : ''}${chipAssigneeTitleSuffix(ev)}">${eventIconHtml(ev.icon, 'event-icon event-icon--compact')}${calendarRepeatIconHtml(ev)}<span>${esc(ev.title)}</span>${chipAssigneeStack(ev, { size: 16, maxVisible: 3 })}</div>
+                   title="${esc(ev.title)}${(ev.cal_name || ev.local_calendar_name) ? ' · ' + esc(ev.cal_name || ev.local_calendar_name) : ''}${chipAssigneeTitleSuffix(ev)}">${eventIconHtml(ev.icon, 'event-icon event-icon--compact')}${calendarRepeatIconHtml(ev)}<span>${esc(ev.title)}</span>${chipAssigneeStack(ev, { size: 16, maxVisible: 3 })}</div>
             `).join('')}
             ${tasksOnDay(d).map(renderTaskChip).join('')}
           </div>
@@ -3050,7 +3068,7 @@ function renderDayView(container) {
           ${allday.map((ev) => `
             <div class="allday-event" data-id="${ev.id}"
                  style="${eventSurfaceStyle(ev)}"
-                 title="${esc(ev.title)}${ev.cal_name ? ' · ' + ev.cal_name : ''}${chipAssigneeTitleSuffix(ev)}">${eventIconHtml(ev.icon, 'event-icon event-icon--compact')}${calendarRepeatIconHtml(ev)}<span>${esc(ev.title)}</span>${chipAssigneeStack(ev, { size: 16, maxVisible: 3 })}</div>`).join('')}
+                 title="${esc(ev.title)}${(ev.cal_name || ev.local_calendar_name) ? ' · ' + esc(ev.cal_name || ev.local_calendar_name) : ''}${chipAssigneeTitleSuffix(ev)}">${eventIconHtml(ev.icon, 'event-icon event-icon--compact')}${calendarRepeatIconHtml(ev)}<span>${esc(ev.title)}</span>${chipAssigneeStack(ev, { size: 16, maxVisible: 3 })}</div>`).join('')}
           ${tasksOnDay(state.cursor).map(renderTaskChip).join('')}
         </div>
       </div>` : ''}
@@ -3392,6 +3410,143 @@ function buildLayerRowsHtml(layers) {
     })).join('');
     return typeRows ? `${rowHtml}<div class="cal-filters__nested">${typeRows}</div>` : rowHtml;
   }).join('');
+}
+
+function renderLocalCalendarsContent() {
+  const rows = state.localCalendars.map((calendar) => `
+    <div class="cal-calendar-row" data-calendar-id="${calendar.id}">
+      <span class="cal-calendar-row__swatch" style="background-color:${esc(calendar.color)}" aria-hidden="true"></span>
+      <input class="form-input cal-calendar-row__name" value="${esc(calendar.name)}" aria-label="${esc(t('calendar.localCalendarName'))}">
+      <input class="form-input cal-calendar-row__color" type="color" value="${esc(calendar.color)}" aria-label="${esc(t('calendar.localCalendarColor'))}">
+      <span class="cal-calendar-row__count">${t('calendar.localCalendarEventCount', { count: calendar.event_count ?? 0 })}</span>
+      <button type="button" class="btn btn--icon js-calendar-save" title="${esc(t('common.save'))}" aria-label="${esc(t('common.save'))}">
+        <i data-lucide="save" aria-hidden="true"></i>
+      </button>
+      ${calendar.feed_url ? `
+        <button type="button" class="btn btn--icon js-calendar-copy-feed" title="${esc(t('calendar.localCalendarCopyExport'))}" aria-label="${esc(t('calendar.localCalendarCopyExport'))}">
+          <i data-lucide="copy" aria-hidden="true"></i>
+        </button>
+        <button type="button" class="btn btn--icon js-calendar-disable-feed" title="${esc(t('calendar.localCalendarDisableExport'))}" aria-label="${esc(t('calendar.localCalendarDisableExport'))}">
+          <i data-lucide="link-2-off" aria-hidden="true"></i>
+        </button>
+      ` : `
+        <button type="button" class="btn btn--icon js-calendar-enable-feed" title="${esc(t('calendar.localCalendarEnableExport'))}" aria-label="${esc(t('calendar.localCalendarEnableExport'))}">
+          <i data-lucide="upload" aria-hidden="true"></i>
+        </button>
+      `}
+      ${calendar.is_default ? '' : `
+        <button type="button" class="btn btn--icon btn--danger-outline js-calendar-delete" title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">
+          <i data-lucide="trash-2" aria-hidden="true"></i>
+        </button>
+      `}
+    </div>
+  `).join('');
+
+  return `
+    <div class="cal-calendar-manager">
+      <form class="cal-calendar-create" id="local-calendar-create">
+        <input class="form-input" id="local-calendar-name" maxlength="80" placeholder="${esc(t('calendar.localCalendarName'))}" aria-label="${esc(t('calendar.localCalendarName'))}">
+        <input class="form-input" id="local-calendar-color" type="color" value="#007AFF" aria-label="${esc(t('calendar.localCalendarColor'))}">
+        <button class="btn btn--primary" type="submit">
+          <i data-lucide="plus" class="icon-md" aria-hidden="true"></i>${t('calendar.localCalendarCreate')}
+        </button>
+      </form>
+      <div class="cal-calendar-list">
+        ${rows || emptyStateHTML({
+          icon: 'calendar-days',
+          title: t('calendar.localCalendarEmpty'),
+          compact: true,
+        })}
+      </div>
+    </div>
+  `;
+}
+
+async function copyText(value, toastKey) {
+  await navigator.clipboard.writeText(value);
+  window.yuvomi?.showToast(t(toastKey), 'success');
+}
+
+async function refreshLocalCalendarsPanel(panel) {
+  await loadLocalCalendars();
+  const body = panel.querySelector('.modal-panel__body');
+  if (body) {
+    body.innerHTML = renderLocalCalendarsContent();
+    window.lucide?.createIcons({ el: body });
+  }
+  renderView();
+}
+
+async function openLocalCalendarsModal() {
+  await loadLocalCalendars();
+  openSharedModal({
+    title: t('calendar.manageCalendars'),
+    content: renderLocalCalendarsContent(),
+    size: 'md',
+    initialFocus: 'none',
+    dirtyGuard: false,
+  });
+  const panel = document.querySelector('#shared-modal-overlay .modal-panel');
+  if (!panel) return;
+  window.lucide?.createIcons({ el: panel });
+
+  panel.addEventListener('submit', async (e) => {
+    if (!e.target.closest('#local-calendar-create')) return;
+    e.preventDefault();
+    const name = panel.querySelector('#local-calendar-name')?.value.trim();
+    const color = panel.querySelector('#local-calendar-color')?.value || '#007AFF';
+    if (!name) return;
+    try {
+      await api.post('/calendar/calendars', { name, color });
+      window.yuvomi?.showToast(t('calendar.localCalendarCreated'), 'success');
+      await refreshLocalCalendarsPanel(panel);
+      refocusAfterRender();
+    } catch (err) {
+      window.yuvomi?.showToast(err.data?.error ?? t('calendar.saveError'), 'danger');
+    }
+  });
+
+  panel.addEventListener('click', async (e) => {
+    const row = e.target.closest('.cal-calendar-row');
+    if (!row) return;
+    const id = Number(row.dataset.calendarId);
+    const calendar = state.localCalendars.find((item) => Number(item.id) === id);
+    if (!calendar) return;
+    try {
+      if (e.target.closest('.js-calendar-save')) {
+        await api.put(`/calendar/calendars/${id}`, {
+          name: row.querySelector('.cal-calendar-row__name')?.value.trim(),
+          color: row.querySelector('.cal-calendar-row__color')?.value,
+        });
+        window.yuvomi?.showToast(t('calendar.localCalendarSaved'), 'success');
+        await refreshLocalCalendarsPanel(panel);
+        refocusAfterRender();
+      } else if (e.target.closest('.js-calendar-enable-feed')) {
+        await api.post(`/calendar/calendars/${id}/feed/regenerate`);
+        await refreshLocalCalendarsPanel(panel);
+        refocusAfterRender();
+      } else if (e.target.closest('.js-calendar-copy-feed')) {
+        if (calendar.feed_url) await copyText(calendar.feed_url, 'calendar.localCalendarExportCopied');
+      } else if (e.target.closest('.js-calendar-disable-feed')) {
+        await api.delete(`/calendar/calendars/${id}/feed`);
+        await refreshLocalCalendarsPanel(panel);
+        refocusAfterRender();
+      } else if (e.target.closest('.js-calendar-delete')) {
+        const ok = await confirmOverModal(t('calendar.localCalendarDeleteConfirm', { name: calendar.name }), {
+          detail: t('calendar.localCalendarDeleteDetail'),
+          confirmLabel: t('common.delete'),
+          danger: true,
+        });
+        if (!ok) return;
+        await api.delete(`/calendar/calendars/${id}`);
+        window.yuvomi?.showToast(t('calendar.localCalendarDeleted'), 'success');
+        await refreshLocalCalendarsPanel(panel);
+        refocusAfterRender();
+      }
+    } catch (err) {
+      window.yuvomi?.showToast(err.data?.error ?? t('calendar.saveError'), 'danger');
+    }
+  });
 }
 
 function openCalendarFilters() {
@@ -4039,7 +4194,7 @@ function renderAgendaEvent(ev, dayStr) {
         <div class="agenda-event__meta">
           <span class="calendar-meta-item calendar-meta-item--time">${calendarMetaIconHtml('clock')}<span>${esc(timeStr)}</span></span>
           ${ev.location ? `<span class="calendar-meta-item calendar-meta-item--place">${calendarMetaIconHtml('map-pin')}<span>${esc(fmtLocation(ev.location))}</span></span>` : ''}
-          ${ev.cal_name ? `<span class="calendar-meta-item calendar-meta-item--cal">${calendarMetaIconHtml('calendar-days')}<span>${esc(ev.cal_name)}</span></span>` : ''}
+          ${(ev.cal_name || ev.local_calendar_name) ? `<span class="calendar-meta-item calendar-meta-item--cal">${calendarMetaIconHtml('calendar-days')}<span>${esc(ev.cal_name || ev.local_calendar_name)}</span></span>` : ''}
           ${eventVisibilityMeta(ev.visibility)}
           ${assignedUsers.length ? `<span class="agenda-event__assigned">${renderAvatarStack(assignedUsers, { size: 20, maxVisible: 3 })}</span>` : ''}
         </div>
@@ -4053,7 +4208,7 @@ function agendaEventAriaLabel(ev, timeStr) {
     (ev.recurrence_rule || ev.is_recurring_instance) ? t('calendar.recurringEvent') : '',
     ev.title,
     timeStr,
-    ev.cal_name,
+    ev.cal_name || ev.local_calendar_name,
     chipAssigneeLabel(ev),
   ].filter(Boolean).join(', ');
 }
@@ -4107,11 +4262,12 @@ function attachmentNode(ev) {
  * umbrach. Hier ist er die einzige Stelle, an der der Kalendername ausdrücklich
  * steht. */
 function calendarChipNode(ev) {
-  if (!ev.cal_name) return null;
+  const name = ev.cal_name || ev.local_calendar_name;
+  if (!name) return null;
   const chip = document.createElement('span');
   chip.className = 'event-cal-label';
-  chip.style.setProperty('--cal-color', ev.cal_color || ev.color || resolveEventColor(ev));
-  chip.textContent = ev.cal_name;
+  chip.style.setProperty('--cal-color', ev.cal_color || ev.local_calendar_color || ev.color || resolveEventColor(ev));
+  chip.textContent = name;
   return chip;
 }
 
@@ -4691,6 +4847,28 @@ function applyDefaultSyncTarget(selectElement) {
   if (available) selectElement.value = target;
 }
 
+function defaultLocalCalendar() {
+  return state.localCalendars.find((calendar) => calendar.is_default)
+    ?? state.localCalendars[0]
+    ?? null;
+}
+
+function populateLocalCalendarSelect(selectElement, currentEvent = null) {
+  if (!selectElement) return;
+  const calendars = state.localCalendars.length
+    ? state.localCalendars
+    : [{ id: currentEvent?.local_calendar_id || 1, name: t('calendar.defaultLocalCalendar'), color: '#007AFF', is_default: true }];
+  const selectedId = currentEvent?.local_calendar_id ?? defaultLocalCalendar()?.id ?? calendars[0]?.id;
+  selectElement.replaceChildren();
+  for (const calendar of calendars) {
+    const option = document.createElement('option');
+    option.value = String(calendar.id);
+    option.textContent = calendar.name;
+    option.selected = Number(calendar.id) === Number(selectedId);
+    selectElement.appendChild(option);
+  }
+}
+
 // --------------------------------------------------------
 // Event-Modal (Erstellen / Bearbeiten)
 // --------------------------------------------------------
@@ -4918,6 +5096,9 @@ function wireEventForm(panel, { mode, event = null, reminder = null }) {
   // Erinnerungen: Toggle blendet die Zeilenliste ein/aus; „Hinzufügen" und
   // „Entfernen" verwalten mehrere Erinnerungen je Termin (#436).
   wireReminderRows(panel);
+
+  // Load unified sync targets (Google + CalDAV)
+  populateLocalCalendarSelect(panel.querySelector('#event-local-calendar'), event);
 
   // Load unified sync targets (Google + CalDAV)
   const syncTargetSelect = panel.querySelector('#event-sync-target');
@@ -5204,6 +5385,11 @@ function buildEventModalContent({ mode, event, date, reminder = null, time = nul
       </div>
     </div>
     <div class="form-group">
+      <label class="form-label" for="event-local-calendar">${t('calendar.localCalendarLabel')}</label>
+      <select class="form-input" id="event-local-calendar"></select>
+    </div>
+
+    <div class="form-group">
       <label class="toggle">
         <input type="checkbox" id="modal-allday" ${isEdit && event.all_day ? 'checked' : ''}>
         <span class="toggle__track"></span>
@@ -5473,6 +5659,7 @@ async function saveEvent(overlay, mode, event, existingReminder = null, attachme
       title, description, start_datetime, end_datetime,
       all_day: !!allday,
       location, color, icon, assigned_to,
+      local_calendar_id: Number(overlay.querySelector('#event-local-calendar')?.value) || undefined,
       visibility: overlay.querySelector('#modal-visibility')?.value || 'all',
       countdown: !!overlay.querySelector('#modal-countdown')?.checked,
       recurrence_rule: rrule.recurrence_rule,
