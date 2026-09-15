@@ -34,6 +34,7 @@ export const OVERRIDE_FIELDS = Object.freeze([
   'countdown',
   'attachment',
   'reminders',
+  'local_calendar_id',
 ]);
 
 const OVERRIDE_FIELD_SET = new Set(OVERRIDE_FIELDS);
@@ -619,7 +620,7 @@ export function isEligibleLocalSeries(database, row, actorId) {
 
 const SCALAR_OVERRIDE_FIELDS = Object.freeze([
   'title', 'description', 'start_datetime', 'end_datetime', 'all_day', 'location',
-  'color', 'icon', 'visibility', 'countdown',
+  'color', 'icon', 'visibility', 'countdown', 'local_calendar_id',
 ]);
 
 let fallbackTransactionId = 0;
@@ -672,6 +673,7 @@ function loadSeriesForMutation(database, seriesId, actorId, isAdmin, authorizeAc
 function normalizeScalar(field, value) {
   if (field === 'all_day' || field === 'countdown') return value ? 1 : 0;
   if (['description', 'end_datetime', 'location', 'color'].includes(field)) return value || null;
+  if (field === 'local_calendar_id') return value == null ? null : Number(value);
   return value;
 }
 
@@ -1191,7 +1193,7 @@ export function upsertOccurrenceOverride(database, {
             visibility = ?, countdown = ?, attachment_name = ?,
             attachment_mime = ?, attachment_size = ?, attachment_data = ?,
             attachment_document_id = ?, recurrence_parent_id = ?, recurrence_id = ?,
-            overridden_fields = ?
+            overridden_fields = ?, local_calendar_id = ?
         WHERE id = ?
       `).run(
         materialized.title,
@@ -1213,6 +1215,7 @@ export function upsertOccurrenceOverride(database, {
         master.id,
         recurrenceId,
         overriddenFields,
+        materialized.local_calendar_id ?? master.local_calendar_id ?? null,
         existing.id,
       );
       childId = existing.id;
@@ -1223,8 +1226,8 @@ export function upsertOccurrenceOverride(database, {
           color, icon, assigned_to, created_by, external_source, recurrence_rule,
           visibility, countdown, attachment_name, attachment_mime, attachment_size,
           attachment_data, attachment_document_id, recurrence_parent_id,
-          recurrence_id, overridden_fields
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          recurrence_id, overridden_fields, local_calendar_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         materialized.title,
         materialized.description ?? null,
@@ -1246,6 +1249,7 @@ export function upsertOccurrenceOverride(database, {
         master.id,
         recurrenceId,
         overriddenFields,
+        materialized.local_calendar_id ?? master.local_calendar_id ?? null,
       ).lastInsertRowid;
     }
 
@@ -1469,8 +1473,8 @@ function insertSeriesRow(database, source) {
       visibility, countdown, attachment_name, attachment_mime, attachment_size,
       attachment_data, attachment_document_id, tzid, target_google_calendar_id,
       target_caldav_account_id, target_caldav_calendar_url,
-      target_outlook_account_id, target_outlook_calendar_id
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      target_outlook_account_id, target_outlook_calendar_id, local_calendar_id
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'local', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     source.title,
     source.description ?? null,
@@ -1496,6 +1500,7 @@ function insertSeriesRow(database, source) {
     source.target_caldav_calendar_url ?? null,
     source.target_outlook_account_id ?? null,
     source.target_outlook_calendar_id ?? null,
+    source.local_calendar_id ?? null,
   ).lastInsertRowid);
 }
 
