@@ -1954,7 +1954,11 @@
             "success_one": "일정 {{count}}개를 가져왔습니다.",
             "successWithSkipped": "일정 {{count}}개를 가져왔고 {{skipped}}개는 이미 있습니다.",
             "successWithSkipped_one": "일정 {{count}}개를 가져왔고 {{skipped}}개는 이미 있습니다.",
-            "allDuplicates": "새 일정 없음 - 모두 이미 존재합니다."
+            "allDuplicates": "새 일정 없음 - 모두 이미 존재합니다.",
+            "targetCalendarLabel": "대상 캘린더",
+            "createNewCalendar": "새 캘린더 만들기",
+            "newCalendarNameLabel": "새 캘린더 이름",
+            "errorNoCalendarName": "새 캘린더 이름을 입력하세요."
         },
         "memberPhoneLabel": "전화번호 (선택 사항)",
         "memberEmailLabel": "이메일 (선택 사항)",

@@ -1916,7 +1916,11 @@
             "success_one": "{{count}} afspraak geïmporteerd.",
             "successWithSkipped": "{{count}} afspraken geïmporteerd, {{skipped}} bestonden al.",
             "successWithSkipped_one": "{{count}} afspraak geïmporteerd, {{skipped}} bestonden al.",
-            "allDuplicates": "Geen nieuwe afspraken - alle bestonden al."
+            "allDuplicates": "Geen nieuwe afspraken - alle bestonden al.",
+            "targetCalendarLabel": "Doelagenda",
+            "createNewCalendar": "Nieuwe agenda maken",
+            "newCalendarNameLabel": "Naam van nieuwe agenda",
+            "errorNoCalendarName": "Voer een naam in voor de nieuwe agenda."
         },
         "memberPhoneLabel": "Telefoonnummer (optioneel)",
         "memberEmailLabel": "E-mail (optioneel)",

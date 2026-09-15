@@ -1899,7 +1899,11 @@
             "success_one": "{{count}} 件の予定をインポートしました。",
             "successWithSkipped": "{{count}} 件をインポートしました（{{skipped}} 件は既存）。",
             "successWithSkipped_one": "{{count}} 件をインポートしました（{{skipped}} 件は既存）。",
-            "allDuplicates": "新しい予定はありません。すべて既に存在します。"
+            "allDuplicates": "新しい予定はありません。すべて既に存在します。",
+            "targetCalendarLabel": "取り込み先カレンダー",
+            "createNewCalendar": "新しいカレンダーを作成",
+            "newCalendarNameLabel": "新しいカレンダー名",
+            "errorNoCalendarName": "新しいカレンダーの名前を入力してください。"
         },
         "memberPhoneLabel": "電話番号（任意）",
         "memberEmailLabel": "メールアドレス（任意）",

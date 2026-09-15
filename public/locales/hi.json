@@ -1899,7 +1899,11 @@
             "success_one": "{{count}} ईवेंट आयात किया गया।",
             "successWithSkipped": "{{count}} ईवेंट आयात किए गए, {{skipped}} पहले से मौजूद थे।",
             "successWithSkipped_one": "{{count}} ईवेंट आयात किया गया, {{skipped}} पहले से मौजूद थे।",
-            "allDuplicates": "कोई नया ईवेंट नहीं - सभी पहले से मौजूद थे।"
+            "allDuplicates": "कोई नया ईवेंट नहीं - सभी पहले से मौजूद थे।",
+            "targetCalendarLabel": "लक्षित कैलेंडर",
+            "createNewCalendar": "नया कैलेंडर बनाएं",
+            "newCalendarNameLabel": "नए कैलेंडर का नाम",
+            "errorNoCalendarName": "नए कैलेंडर के लिए नाम दर्ज करें."
         },
         "memberPhoneLabel": "फ़ोन नंबर (वैकल्पिक)",
         "memberEmailLabel": "ईमेल (वैकल्पिक)",

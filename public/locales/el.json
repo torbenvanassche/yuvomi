@@ -1899,7 +1899,11 @@
             "success_one": "Εισήχθη {{count}} συμβάν.",
             "successWithSkipped": "Εισήχθησαν {{count}} συμβάντα, {{skipped}} υπήρχαν ήδη.",
             "successWithSkipped_one": "Εισήχθη {{count}} συμβάν, {{skipped}} υπήρχαν ήδη.",
-            "allDuplicates": "Κανένα νέο συμβάν - όλα υπήρχαν ήδη."
+            "allDuplicates": "Κανένα νέο συμβάν - όλα υπήρχαν ήδη.",
+            "targetCalendarLabel": "Ημερολόγιο προορισμού",
+            "createNewCalendar": "Δημιουργία νέου ημερολογίου",
+            "newCalendarNameLabel": "Όνομα νέου ημερολογίου",
+            "errorNoCalendarName": "Δώσε όνομα για το νέο ημερολόγιο."
         },
         "memberPhoneLabel": "Αριθμός τηλεφώνου (προαιρετικό)",
         "memberEmailLabel": "Email (προαιρετικό)",

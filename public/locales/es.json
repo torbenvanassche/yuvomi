@@ -1899,7 +1899,11 @@
             "success_one": "{{count}} evento importado.",
             "successWithSkipped": "{{count}} eventos importados, {{skipped}} ya existían.",
             "successWithSkipped_one": "{{count}} evento importado, {{skipped}} ya existían.",
-            "allDuplicates": "No hay eventos nuevos: todos ya existían."
+            "allDuplicates": "No hay eventos nuevos: todos ya existían.",
+            "targetCalendarLabel": "Calendario de destino",
+            "createNewCalendar": "Crear calendario nuevo",
+            "newCalendarNameLabel": "Nombre del calendario nuevo",
+            "errorNoCalendarName": "Introduce un nombre para el calendario nuevo."
         },
         "memberPhoneLabel": "Número de teléfono (opcional)",
         "memberEmailLabel": "Correo electrónico (opcional)",

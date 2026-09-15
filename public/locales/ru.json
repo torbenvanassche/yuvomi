@@ -1899,7 +1899,11 @@
             "success_one": "Импортировано {{count}} событие.",
             "successWithSkipped": "Импортировано {{count}}, {{skipped}} уже существовали.",
             "successWithSkipped_one": "Импортировано {{count}} событие, {{skipped}} уже существовали.",
-            "allDuplicates": "Нет новых событий - все уже существовали."
+            "allDuplicates": "Нет новых событий - все уже существовали.",
+            "targetCalendarLabel": "Целевой календарь",
+            "createNewCalendar": "Создать новый календарь",
+            "newCalendarNameLabel": "Название нового календаря",
+            "errorNoCalendarName": "Введите название нового календаря."
         },
         "memberPhoneLabel": "Номер телефона (необязательно)",
         "memberEmailLabel": "Электронная почта (необязательно)",

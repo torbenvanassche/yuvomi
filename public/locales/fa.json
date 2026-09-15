@@ -1954,7 +1954,11 @@
             "success_one": "{{count}} رویداد درون‌ریزی شد.",
             "successWithSkipped": "{{count}} رویداد درون‌ریزی شد، {{skipped}} از قبل وجود داشت.",
             "successWithSkipped_one": "{{count}} رویداد درون‌ریزی شد، {{skipped}} از قبل وجود داشت.",
-            "allDuplicates": "رویداد جدیدی نیست - همه از قبل وجود داشتند."
+            "allDuplicates": "رویداد جدیدی نیست - همه از قبل وجود داشتند.",
+            "targetCalendarLabel": "تقویم مقصد",
+            "createNewCalendar": "ایجاد تقویم جدید",
+            "newCalendarNameLabel": "نام تقویم جدید",
+            "errorNoCalendarName": "برای تقویم جدید یک نام وارد کنید."
         },
         "memberPhoneLabel": "شماره تلفن (اختیاری)",
         "memberEmailLabel": "ایمیل (اختیاری)",

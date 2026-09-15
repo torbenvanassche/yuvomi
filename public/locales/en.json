@@ -1939,7 +1939,11 @@
             "success_one": "{{count}} event imported.",
             "successWithSkipped": "{{count}} events imported, {{skipped}} already existed.",
             "successWithSkipped_one": "{{count}} event imported, {{skipped}} already existed.",
-            "allDuplicates": "No new events - all already existed."
+            "allDuplicates": "No new events - all already existed.",
+            "targetCalendarLabel": "Target calendar",
+            "createNewCalendar": "Create new calendar",
+            "newCalendarNameLabel": "New calendar name",
+            "errorNoCalendarName": "Enter a name for the new calendar."
         },
         "memberPhoneLabel": "Phone number (optional)",
         "memberEmailLabel": "Email (optional)",

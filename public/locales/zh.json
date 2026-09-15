@@ -1899,7 +1899,11 @@
             "success_one": "已导入 {{count}} 个活动。",
             "successWithSkipped": "已导入 {{count}} 个活动，{{skipped}} 个已存在。",
             "successWithSkipped_one": "已导入 {{count}} 个活动，{{skipped}} 个已存在。",
-            "allDuplicates": "没有新活动——全部已存在。"
+            "allDuplicates": "没有新活动——全部已存在。",
+            "targetCalendarLabel": "目标日历",
+            "createNewCalendar": "创建新日历",
+            "newCalendarNameLabel": "新日历名称",
+            "errorNoCalendarName": "请输入新日历的名称。"
         },
         "memberPhoneLabel": "电话号码（可选）",
         "memberEmailLabel": "电子邮件（可选）",

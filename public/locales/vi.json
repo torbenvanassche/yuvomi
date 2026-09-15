@@ -1916,7 +1916,11 @@
             "success_one": "Đã nhập {{count}} sự kiện.",
             "successWithSkipped": "Đã nhập {{count}} sự kiện, {{skipped}} đã tồn tại.",
             "successWithSkipped_one": "Đã nhập {{count}} sự kiện, {{skipped}} đã tồn tại.",
-            "allDuplicates": "Không có sự kiện mới - tất cả đã tồn tại."
+            "allDuplicates": "Không có sự kiện mới - tất cả đã tồn tại.",
+            "targetCalendarLabel": "Lịch đích",
+            "createNewCalendar": "Tạo lịch mới",
+            "newCalendarNameLabel": "Tên lịch mới",
+            "errorNoCalendarName": "Nhập tên cho lịch mới."
         },
         "memberPhoneLabel": "Số điện thoại (tùy chọn)",
         "memberEmailLabel": "Email (tùy chọn)",

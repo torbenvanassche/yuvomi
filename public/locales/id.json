@@ -1954,7 +1954,11 @@
             "success_one": "{{count}} acara diimpor.",
             "successWithSkipped": "{{count}} acara diimpor, {{skipped}} sudah ada.",
             "successWithSkipped_one": "{{count}} acara diimpor, {{skipped}} sudah ada.",
-            "allDuplicates": "Tidak ada acara baru - semua sudah ada."
+            "allDuplicates": "Tidak ada acara baru - semua sudah ada.",
+            "targetCalendarLabel": "Kalender tujuan",
+            "createNewCalendar": "Buat kalender baru",
+            "newCalendarNameLabel": "Nama kalender baru",
+            "errorNoCalendarName": "Masukkan nama untuk kalender baru."
         },
         "memberPhoneLabel": "Nomor telepon (opsional)",
         "memberEmailLabel": "Email (opsional)",

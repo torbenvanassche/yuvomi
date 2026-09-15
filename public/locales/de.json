@@ -1977,7 +1977,11 @@
             "success_one": "{{count}} Termin importiert.",
             "successWithSkipped": "{{count}} Termine importiert, {{skipped}} bereits vorhanden.",
             "successWithSkipped_one": "{{count}} Termin importiert, {{skipped}} bereits vorhanden.",
-            "allDuplicates": "Keine neuen Termine - alle waren bereits vorhanden."
+            "allDuplicates": "Keine neuen Termine - alle waren bereits vorhanden.",
+            "targetCalendarLabel": "Zielkalender",
+            "createNewCalendar": "Neuen Kalender erstellen",
+            "newCalendarNameLabel": "Name des neuen Kalenders",
+            "errorNoCalendarName": "Gib einen Namen für den neuen Kalender ein."
         },
         "memberPhoneLabel": "Telefonnummer (optional)",
         "memberEmailLabel": "E-Mail (optional)",

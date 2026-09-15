@@ -1899,7 +1899,11 @@
             "success_one": "Імпортовано {{count}} подію.",
             "successWithSkipped": "Імпортовано {{count}}, {{skipped}} уже існували.",
             "successWithSkipped_one": "Імпортовано {{count}} подію, {{skipped}} уже існували.",
-            "allDuplicates": "Немає нових подій - усі вже існували."
+            "allDuplicates": "Немає нових подій - усі вже існували.",
+            "targetCalendarLabel": "Цільовий календар",
+            "createNewCalendar": "Створити новий календар",
+            "newCalendarNameLabel": "Назва нового календаря",
+            "errorNoCalendarName": "Введіть назву нового календаря."
         },
         "memberPhoneLabel": "Номер телефону (необов'язково)",
         "memberEmailLabel": "Електронна пошта (необов'язково)",

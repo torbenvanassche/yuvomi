@@ -1954,7 +1954,11 @@
             "success_one": "Zaimportowano wydarzenie: {{count}}.",
             "successWithSkipped": "Zaimportowano {{count}}, pominięto już istniejące: {{skipped}}.",
             "successWithSkipped_one": "Zaimportowano wydarzenie: {{count}}, pominięto już istniejące: {{skipped}}.",
-            "allDuplicates": "Brak nowych wydarzeń - wszystkie już istniały."
+            "allDuplicates": "Brak nowych wydarzeń - wszystkie już istniały.",
+            "targetCalendarLabel": "Kalendarz docelowy",
+            "createNewCalendar": "Utwórz nowy kalendarz",
+            "newCalendarNameLabel": "Nazwa nowego kalendarza",
+            "errorNoCalendarName": "Podaj nazwę nowego kalendarza."
         },
         "memberPhoneLabel": "Numer telefonu (opcjonalnie)",
         "memberEmailLabel": "E-mail (opcjonalnie)",

@@ -1899,7 +1899,11 @@
             "success_one": "{{count}} etkinlik içe aktarıldı.",
             "successWithSkipped": "{{count}} etkinlik içe aktarıldı, {{skipped}} zaten vardı.",
             "successWithSkipped_one": "{{count}} etkinlik içe aktarıldı, {{skipped}} zaten vardı.",
-            "allDuplicates": "Yeni etkinlik yok - hepsi zaten mevcuttu."
+            "allDuplicates": "Yeni etkinlik yok - hepsi zaten mevcuttu.",
+            "targetCalendarLabel": "Hedef takvim",
+            "createNewCalendar": "Yeni takvim oluştur",
+            "newCalendarNameLabel": "Yeni takvim adı",
+            "errorNoCalendarName": "Yeni takvim için bir ad gir."
         },
         "memberPhoneLabel": "Telefon numarası (isteğe bağlı)",
         "memberEmailLabel": "E-posta (isteğe bağlı)",

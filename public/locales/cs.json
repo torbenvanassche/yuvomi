@@ -1942,7 +1942,11 @@
             "success_one": "Naimportována {{count}} událost.",
             "successWithSkipped": "Naimportováno {{count}}, {{skipped}} již existovalo.",
             "successWithSkipped_one": "Naimportována {{count}} událost, {{skipped}} již existovalo.",
-            "allDuplicates": "Žádné nové události - všechny už existovaly."
+            "allDuplicates": "Žádné nové události - všechny už existovaly.",
+            "targetCalendarLabel": "Cílový kalendář",
+            "createNewCalendar": "Vytvořit nový kalendář",
+            "newCalendarNameLabel": "Název nového kalendáře",
+            "errorNoCalendarName": "Zadej název nového kalendáře."
         },
         "memberPhoneLabel": "Telefonní číslo (volitelné)",
         "memberEmailLabel": "E-mail (volitelné)",

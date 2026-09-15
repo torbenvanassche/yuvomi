@@ -1899,7 +1899,11 @@
             "success_one": "{{count}} händelse importerad.",
             "successWithSkipped": "{{count}} händelser importerade, {{skipped}} fanns redan.",
             "successWithSkipped_one": "{{count}} händelse importerad, {{skipped}} fanns redan.",
-            "allDuplicates": "Inga nya händelser - alla fanns redan."
+            "allDuplicates": "Inga nya händelser - alla fanns redan.",
+            "targetCalendarLabel": "Målkalender",
+            "createNewCalendar": "Skapa ny kalender",
+            "newCalendarNameLabel": "Namn på ny kalender",
+            "errorNoCalendarName": "Ange ett namn för den nya kalendern."
         },
         "memberPhoneLabel": "Telefonnummer (valfritt)",
         "memberEmailLabel": "E-post (valfritt)",

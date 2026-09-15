@@ -1977,7 +1977,11 @@
             "success_one": "{{count}} na kaganapan ang na-import.",
             "successWithSkipped": "{{count}} na mga kaganapan ang na-import, {{skipped}} ang umiiral na.",
             "successWithSkipped_one": "{{count}} na kaganapan ang na-import, {{skipped}} ang umiiral na.",
-            "allDuplicates": "Walang bagong kaganapan - umiiral na ang lahat."
+            "allDuplicates": "Walang bagong kaganapan - umiiral na ang lahat.",
+            "targetCalendarLabel": "Target na kalendaryo",
+            "createNewCalendar": "Gumawa ng bagong kalendaryo",
+            "newCalendarNameLabel": "Pangalan ng bagong kalendaryo",
+            "errorNoCalendarName": "Maglagay ng pangalan para sa bagong kalendaryo."
         },
         "memberPhoneLabel": "Numero ng telepono (opsyonal)",
         "memberEmailLabel": "Email (opsyonal)",
