@@ -17,7 +17,7 @@
  *   → bypassCacheUntil (in-memory + Cache API für SW-Restart-Robustheit)
  */
 
-const APP_RELEASE        = '2.66.1';
+const APP_RELEASE        = '2.67.0';
 const APP_BUILD_REVISION = '__YUVOMI_BUILD_REVISION__';
 const CACHE_RELEASE      = `${APP_RELEASE}-${APP_BUILD_REVISION}`;
 const SHELL_CACHE        = `yuvomi-shell-${CACHE_RELEASE}`;
@@ -136,6 +136,11 @@ const APP_SHELL = [
   '/utils/folder-tree.js',
   '/utils/health-activity.js',
   '/utils/health-cycle.js',
+  '/utils/health-fasting.js',
+  '/components/fasting-controls.js',
+  '/components/fasting-dial.js',
+  '/components/fasting-help.js',
+  '/styles/fasting-controls.css',
   '/utils/health-labs.js',
   '/utils/health-meds.js',
   '/utils/health-overview.js',
@@ -261,8 +266,10 @@ const PAGE_MODULES = [
   '/pages/documents.js',
   '/pages/rewards.js',
   '/pages/health.js',
+  '/pages/health-fasting.js',
   '/pages/settings.js',
   '/pages/login.js',
+  '/pages/pair-display.js',
   '/pages/recipes.js',
   '/pages/pantry.js',
   '/pages/inventory.js',
@@ -320,6 +327,7 @@ const PAGE_MODULES = [
   '/settings/pages/documents-dms.js',
   '/settings/pages/admin-family.js',
   '/settings/pages/admin-api.js',
+  '/settings/pages/admin-displays.js',
   '/settings/pages/admin-backup.js',
   '/settings/pages/admin-weather.js',
   '/settings/pages/admin-immich.js',
@@ -619,7 +627,17 @@ function isCacheableApiGet(pathname) {
 // --------------------------------------------------------
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'CLEAR_API_CACHE') {
-    event.waitUntil(caches.delete(API_CACHE));
+    // QUITTIEREN, WENN DER ABSENDER EINEN PORT MITSCHICKT. Ohne Rueckmeldung
+    // weiss die Seite nie, wann der Cache wirklich weg ist, und ein sofortiges
+    // Neuladen kann noch aus ihm bedient werden - beim Koppeln waeren das die
+    // privaten Antworten der vorherigen Person. Ein Absender ohne Port (die
+    // aelteren Aufrufer) bekommt wie bisher nichts zurueck.
+    const port = event.ports && event.ports[0];
+    event.waitUntil(
+      caches.delete(API_CACHE)
+        .catch(() => false)
+        .then(() => { if (port) port.postMessage({ ok: true }); }),
+    );
   }
 });
 

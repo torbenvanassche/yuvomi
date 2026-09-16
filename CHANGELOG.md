@@ -9,6 +9,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A wall tablet can get an account of its own that only a paired device can use.** Under Settings an
+  administrator creates a display, gets a ten-character pairing code, and types it in once on the
+  tablet; from then on the tablet shows the dashboard, calendar, tasks and rewards, and nothing else.
+  A display is not a household member: it appears in no list of people, cannot be assigned anything,
+  and is never offered as a person. It has no usable password and cannot sign in with a username and
+  password or through SSO, so nobody has to type a household password on a device that hangs on a
+  wall and nobody ever signs out of. It reads household-visible entries only, never anybody's private
+  ones, and it can only read - ticking off and requesting a redemption come later (#1209). The
+  pairing code is valid once and for fifteen minutes, the credential lands in an httpOnly cookie that
+  no script on the page can read, and it stays valid until an administrator revokes it - with "last
+  seen" beside it, so revoking is an informed decision rather than a guess. Revoking takes effect on
+  the device's next request. (#1208)
+
+- **Ticking a task off can now name who did it, not just who tapped the checkbox.** A small person
+  button sits next to the checkbox and opens the list of household members; picking one marks the
+  task done and records that person as having done it. The checkbox itself is untouched - one tap,
+  exactly as before - and the button only appears where it answers something, so a household of one
+  never sees it and a task that is already done or filed away does not offer it. The completion now
+  keeps both people: who ticked it off, as always, and who did it. The history shows the person who
+  did the work, notes "ticked off by ..." beside it when the two differ, and its person filter
+  follows the displayed name, so filtering and display can no longer disagree. Points follow the
+  same answer: a named member who takes part in rewards receives them instead of the assignees, and
+  a named member who does not take part means no points at all rather than crediting somebody the
+  record just said did not do the work. Undoing a completion still withdraws exactly what it booked,
+  whoever received it. Nothing changes without the new button: leave it alone and the history shows
+  you, the assignees rule applies, and existing entries are left exactly as they were - they are not
+  backfilled with a claim nobody ever made. `PATCH /api/v1/tasks/{id}/status` takes an optional
+  `done_by_user_id` for this; it has to be a household member, and it only applies to the transition
+  into done. (#1205)
+
+### Security
+
+- **Reading the calendar no longer reaches the contact book, the sync accounts, or the sync targets.**
+  Permission for the API is granted per module, and the guard judged a request by the first part of
+  its path - so a credential that had been given the calendar alone also reached `GET
+  /birthdays/import/candidates`, which lists every contact with name and birth date, and the status
+  routes of the connected CalDAV, Outlook, Google and Apple accounts, which name the server address,
+  the user name, the account mail address and the last sync error - error text that comes from the
+  other side and regularly carries its address or an account identifier. The birthday-import routes
+  now ask for contact access as well, the status routes leave those management details out for anything but a signed-in person, and the two
+  sync-target lists - they name the connected accounts and their collection URLs - are limited to
+  whoever may actually save to them. If you use an API token scoped to `calendar:read` or
+  `tasks:read` for an integration that reads one of these, give it `contacts:read` or write access to
+  the module in question. The birthday page stops offering its import button where contacts are out
+  of reach. (#1241)
+
+- **A reward request and its wish text now stay between the person asking and whoever decides.** The
+  list of redemption requests handed every reader of the module up to 300 rows, each with the
+  free-form note and the avatar of the member who wrote it; the page showed you only your own, but it
+  filtered them after downloading everybody's. Approving and rejecting is an administrator's job, so
+  administrators still see all of them and everyone else now gets their own from the query. Nothing
+  changes in what the page shows. If you use an API token scoped to `rewards:read` for an integration
+  that reads the whole household's requests, it will now see only those of the member it acts as.
+  (#1241)
+
+## [2.67.0] - 2026-09-16
+
+### Added
+
+- **The cycle tab grows into a full tracker: visible flow strength, feelings, more fertility
+  signals, hard-private intimacy logging, PMS patterns, and a "today" insight bubble.** The day log
+  gains cervical mucus, LH and pregnancy tests, multi-select feelings (replacing the single mood),
+  and intimacy - cervical mucus, the two test results and intimacy are never shown to anyone but
+  yourself, even on days shared with the family, enforced by the server. On
+  `POST /api/v1/health/cycle/logs`, `mood` (kept for older clients) and `feelings` now both accept
+  only the fixed feelings list - an out-of-list value is a 400 instead of being stored as free text.
+  Saving a day log through the app always sends the current feelings selection, so an older
+  free-text mood value is cleared the next time that day is edited in the app; only a save that
+  omits both fields entirely (outside the app's own form) leaves it as-is. Flow strength finally
+  shows up everywhere it matters: a four-step dot scale on the calendar, a heaviest-flow chip per
+  period in the history, a per-cycle flow intensity chart, and a calm hint when recent periods run
+  repeatedly heavy or over a week. A bubble at the top answers the daily question at a glance -
+  cycle day and phase, plus whichever of these applies: period expected today (start it right
+  there), symptoms likely today, a PMS window approaching, or the fertile window. Predictions got
+  more honest along the way: a temperature-confirmed ovulation now also moves the month calendar
+  (ring and calendar can no longer disagree), implausible gaps from overlapping or future-dated
+  periods no longer poison the averages (the period dialog warns about both), the BBT chart spaces
+  its points by real dates and breaks across logging gaps, and the likelihood overlay projects into
+  the next cycle instead of only backwards. New per-person settings: contraception (hormonal methods
+  pause the fertile-window prediction, with the reason shown instead of an empty tile), a
+  perimenopause mode that predicts a date range rather than a false-precision single day, a
+  PMS-window toggle, and an opt-in partner reminder that shares only the predicted date - never any
+  log content. Period history can be imported from CSV (German date and separator formats included),
+  the Health overview shows the next period at a glance, and the trends section was restructured
+  around one expander per symptom with an added feelings-by-phase view and a pain summary.
+
 - **New optional module: Waste collection** (#1063). Define your household's waste types
   (recycling, organic, general, or your own, each with an icon and color) and a weekly or
   fixed-day-of-month pickup schedule for each. A single calculated pickup can be moved to a
@@ -56,6 +142,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A type's color comes from a curated palette instead of a free color picker, which had happily
   accepted a white or black icon that then disappeared against the light or dark background - an
   existing color outside the palette is kept, not silently overwritten.
+- **A fasting journal records timers and past fasts in Health** (Refs #1173).
+  Start now or earlier, record completed intervals, and edit or undo changes with
+  conflict protection. Elapsed/remaining clocks, personal goals and an optional
+  educational dial preserve the recorded time zone. History loads ten records at
+  a time; date filters and CSV cover the complete visible history. Family members
+  can read shared records; personal settings stay private. Fasting is available to
+  every member by default and an admin can switch it off per family role or person.
+  Yuvomi records fasting and does not provide medical advice.
 
 - **A calendar's default assignee can now be applied to the events it already imported** (#1154).
   Until now the mapping only reached events that arrived after it was set, so the first thing
@@ -150,6 +244,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A request with an API token is judged by the token's own role, even when an admin session comes
+  along.** If the same client also sent the session cookie of a signed-in administrator, a request
+  made with a member's API token could still pass as an administrator in several places: calendar
+  subscriptions and events, locked tasks, household note categories, documents and DMS connections,
+  recipe providers, the shift schedule and split expenses. Each of them had its own admin check that
+  also looked at the session. They now use the same check as every other route, which looks only at
+  the role of the person the token belongs to. Signing in as an administrator without a token keeps
+  full access, and a request with only a session or only a token behaves as before.
 - **Form fields have a clearly visible edge in both themes.** Text inputs, selects and text areas
   drew their resting edge in the same faint shade as card and group outlines, which rendered at 1.2
   to 1.5:1 against the surface around them - well below the 3:1 a control boundary needs for people
@@ -373,6 +475,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead, and nothing brought it back. The same could pull focus out of an open date picker. The
   first field now stays out of the way once focus has moved inside the dialog or into something on
   top of it, such as a date picker; focus that lands on the page behind the dialog still moves in.
+
+- **The warning about a password login that is still open now names the administrator condition**
+  (#1194). `AUTH_ALLOW_PASSWORD_LOGIN=false` only takes effect once an administrator account is
+  linked to the OIDC provider; a member signing in through SSO does not arm it, so that an
+  administrator without a linked account cannot be locked out of the administration. The startup
+  warning said that no account was linked, so an operator whose member had already signed in through
+  SSO read the switch as armed while the login form was still open. It now says administrator. In
+  the same pass the Portainer compose file stopped defaulting `OPENWEATHER_LANG` to `de`, where the
+  code, `.env.example`, the Unraid template and the installation guide all use `en`.
+
+- **Shared expenses embedded in Budget no longer skip a heading level** (#1190). The embedded tab
+  title is a level-2 heading, which left the group name beside it at the same level and its
+  Balances, Recent expenses and Activity cards directly under the title instead of under the group.
+  The group name is now a level-3 heading and those cards level 4, so the outline a screen reader
+  announces reads Budget, then Shared expenses, then the group, then the section. Nothing moves
+  visually: size, weight, line height, margin and color are unchanged.
+
+## [2.66.2] - 2026-09-16
+
+### Security
+
+- **A housekeeping staff account can no longer be signed in through SSO (GHSA-4jcg-7jvj-p4v9).**
+  Staff accounts have been refused at the password sign-in since v0.63.0, but the rule lived only in
+  that route. The OIDC callback found the same account through an identity already linked to it, or
+  linked it through a provider-verified email matching the account's contact email, and opened a
+  full session - with the second factor enabled, by way of the code prompt. The rule now sits in one
+  place that every sign-in path asks: the callback checks it before linking, before the second
+  factor and before the session, a staff account is never linked by email, and the session setup
+  itself refuses such an account as a last line. Only installations with OIDC configured were
+  affected; password sign-in and members signing in through SSO behave as before.
 
 ## [2.66.1] - 2026-09-14
 

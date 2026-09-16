@@ -404,7 +404,7 @@
         "historyUnknownMember": "Niet meer in het huishouden",
         "historyEmptyTitle": "Nog niets vastgelegd",
         "historyEmptyPersonTitle": "Niets vastgelegd voor deze persoon",
-        "historyEmptyDescription": "Hier zie je wie welke taak heeft afgevinkt, en wanneer.",
+        "historyEmptyDescription": "Hier zie je wie welke taak heeft gedaan, en wanneer.",
         "historyEmptyHint": "Vastleggen begint nu - wat eerder klaar was, is nergens genoteerd.",
         "historyLoadError": "Geschiedenis kon niet worden geladen",
         "historyLoadMore": "Meer tonen",
@@ -498,7 +498,10 @@
         "tagsSkippedLocked_one": "{{count}} vergrendelde taak overgeslagen.",
         "listLoadError": "Taken konden niet worden geladen.",
         "checklistToggle": "Item afvinken",
-        "checkConflict": "De taak is intussen gewijzigd. Open deze opnieuw."
+        "checkConflict": "De taak is intussen gewijzigd. Open deze opnieuw.",
+        "doneByPick": "Wie heeft “{{title}}” gedaan?",
+        "doneByToast": "Gedaan door {{name}}.",
+        "historyTickedBy": "afgevinkt door {{name}}"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} maaltijden",
@@ -2720,7 +2723,30 @@
         "healthVisibilityApplied_one": "Eén item aangepast.",
         "mealTypeNamesLabel": "Eigen namen",
         "mealTypeNamesHint": "Hoe jouw huishouden de vier maaltijden noemt. Laat leeg voor de ingebouwde naam. De naam verschijnt in elke taal precies zoals je hem typt.",
-        "mealTypeNamesSaved": "Namen opgeslagen."
+        "mealTypeNamesSaved": "Namen opgeslagen.",
+        "pageDisplays": "Wandtablets",
+        "pageDisplaysDescription": "Een wandtablet aanmaken, een apparaat koppelen en de toegang ervan intrekken.",
+        "displaysTitle": "Wandtablets",
+        "displaysHint": "Een wandtablet krijgt een eigen account dat alleen dit apparaat kan gebruiken. Het is geen gezinslid, meldt zich niet aan en ziet alleen wat zichtbaar is voor het huishouden.",
+        "displayDeviceNameLabel": "Naam van het tablet",
+        "displayDeviceNameHint": "Bijvoorbeeld “Keuken” of “Gang” - alleen om ze in deze lijst uit elkaar te houden.",
+        "displayCreate": "Wandtablet toevoegen",
+        "displayEmpty": "Nog geen wandtablet aangemaakt.",
+        "displayPaired": "Gekoppeld",
+        "displayNotPaired": "Nog niet gekoppeld",
+        "displayIssueCode": "Koppelcode genereren",
+        "displayDelete": "Verwijderen",
+        "displayDeleteConfirm": "“{{name}}” verwijderen?",
+        "displayPairingCodeLabel": "Koppelcode",
+        "displayPairingCodeHint": "15 minuten geldig en precies één keer te gebruiken. Open /pair op het tablet en voer hem daar in. Hij wordt alleen nu getoond.",
+        "displayDeviceUnnamed": "Naamloos apparaat",
+        "displayDeviceLastSeen": "Laatst gezien: {{when}}",
+        "displayDeviceNeverSeen": "Nog nooit verbonden",
+        "displayDeviceRevokedAt": "Ingetrokken: {{when}}",
+        "displayRevokeDevice": "Intrekken",
+        "displayRevokeConfirm": "Toegang van dit apparaat beëindigen?",
+        "displayRevokeDetail": "Het tablet toont onmiddellijk niets meer. Om het weer te gebruiken moet het opnieuw worden gekoppeld.",
+        "displayDeleteDetail": "Het account en alle gekoppelde apparaten worden verwijderd. Dit kan niet ongedaan worden gemaakt."
     },
     "login": {
         "tagline": "Welkom terug bij je gezinsplanner.",
@@ -3907,13 +3933,90 @@
         "accountUsernameHint": "E-mailadres of gebruikersnaam. Geen wachtwoordveld - Yuvomi bewaart geen wachtwoorden."
     },
     "health": {
+        "fasting": {
+            "title": "Vasten",
+            "emptyTitle": "Vasten",
+            "emptyDesc": "Start een persoonlijke vastentimer en houd je geschiedenis bij.",
+            "permissionLabel": "Vasten gebruiken",
+            "start": "Vasten starten",
+            "finish": "Vasten beëindigen",
+            "history": "Geschiedenis",
+            "export": "CSV exporteren",
+            "noHistory": "Nog geen voltooide vasten",
+            "ready": "Klaar voor je volgende vasten",
+            "startedAt": "Gestart op {{date}}",
+            "elapsedDays": "Dag {{days}}",
+            "goalReached": "Doel bereikt",
+            "goalTitle": "Je doel",
+            "goalHours": "Doel in uren",
+            "earlier": "Ik ben eerder begonnen",
+            "backfill": "Voltooide vastenperiode toevoegen",
+            "editStart": "Begintijd wijzigen",
+            "undoEnd": "Beëindiging ongedaan maken",
+            "deleted": "Vastenperiode verwijderd",
+            "person": "Persoon",
+            "readOnly": "Vastendagboek alleen-lezen",
+            "completedFrom": "Voltooid vanaf",
+            "completedTo": "Voltooid tot en met",
+            "applyFilter": "Datums toepassen",
+            "targetAt": "Doel: {{date}}",
+            "utcOffset": "UTC-afwijking (herhaald lokaal uur)",
+            "wallTimeError": "Deze lokale tijd bestaat niet in de vastgelegde tijdzone. Kies een andere tijd.",
+            "offline": "Maak opnieuw verbinding voordat je een vastenperiode wijzigt.",
+            "zoneMode": "Informatie op de wijzerplaat",
+            "zoneTimer": "Alleen timer",
+            "zoneEducational": "Informatieve fasen",
+            "zoneDetails": "Over deze fasen",
+            "zoneMeal": "Verwerking van de laatste maaltijd",
+            "zoneStored": "Gebruik van opgeslagen energie",
+            "zoneKetones": "Toenemend gebruik van vet en ketonen",
+            "zoneLater": "24 uur en langer: individuele reacties verschillen",
+            "zoneVariability": "Deze globale fasen overlappen elkaar. De overgang naar meer gebruik van vet en ketonen varieert, vaak over 12-36 uur. Deze timer meet geen stofwisselingstoestand en langer vasten is niet noodzakelijk beter.",
+            "extraDays": "+{{count}} dagen",
+            "extraDays_one": "+{{count}} dag",
+            "extraDays_few": "+{{count}} dagen",
+            "safetyDialog": "Yuvomi is een registratiemiddel, geen medisch hulpmiddel of medisch advies. Vasten is niet voor iedereen geschikt. Vraag professionele begeleiding, vooral tijdens zwangerschap of borstvoeding, voor kinderen en jongeren, bij een voorgeschiedenis van eetstoornissen, diabetes, relevante medicijnen of chronische aandoeningen. Je kunt een vastenperiode op elk moment beëindigen.",
+            "dateReadOnly": "Deze datum kan niet worden bewerkt in de datumkiezer. De oorspronkelijke tijdstempel blijft behouden; je kunt de andere velden wijzigen.",
+            "saveError": "Vasten kon niet worden opgeslagen.",
+            "loadError": "Vasten kon niet worden geladen.",
+            "zone": {
+                "early": "Vroege fase",
+                "fatBurning": "Neutrale fase",
+                "ketosis": "Late fase"
+            },
+            "custom": "Aangepast",
+            "startDate": "Begindatum",
+            "endDate": "Einddatum",
+            "note": "Notitie",
+            "remaining": "Resterend",
+            "noGoal": "Geen doel",
+            "goalHint": "Hele uren, maximaal 336 (14 dagen).",
+            "clockDefault": "Standaardweergave van de timer",
+            "clockAuto": "Automatisch (op basis van het doel)",
+            "clockElapsed": "Verstreken",
+            "clockRemaining": "Resterend",
+            "loadMore": "Nog 10 laden",
+            "goalNextHint": "Een doelwijziging past de huidige vastenperiode en het standaarddoel voor toekomstige vastenperiodes aan.",
+            "safetyTitle": "Voordat je begint",
+            "conflict": "Dit item is gewijzigd. Herlaad de pagina en probeer opnieuw.",
+            "finishedTitle": "Vasten beëindigd",
+            "editTitle": "Vasten bewerken",
+            "rating": "Hoe voel je je?",
+            "ratingValue": "{{value}} van 5 sterren",
+            "clearRating": "Beoordeling wissen",
+            "finishedHint": "Het einde is opgeslagen. Je kunt de tijden aanpassen en een beoordeling of notitie toevoegen.",
+            "rangeError": "Het einde moet na het begin liggen en mag niet in de toekomst liggen.",
+            "elapsed": "Vastentijd",
+            "sinceLast": "Sinds het laatste vasten"
+        },
         "tabs": {
             "overview": "Overzicht",
             "vitals": "Vitale waarden",
             "meds": "Medicijnen",
             "labs": "Labwaarden",
             "activity": "Activiteit",
-            "cycle": "Cyclus"
+            "cycle": "Cyclus",
+            "fasting": "Vasten"
         },
         "overview": {
             "title": "Overzicht",
@@ -4350,7 +4453,11 @@
                 "regular": "Regelmatig",
                 "irregular": "Onregelmatig",
                 "notEnoughData": "Te weinig gegevens",
-                "noPrediction": "Registreer een menstruatie voor voorspellingen."
+                "noPrediction": "Registreer een menstruatie voor voorspellingen.",
+                "fertilitySuppressedNote": "Vruchtbaar venster gepauzeerd: hormonale anticonceptie.",
+                "nextPeriodRangeSub": "Gemiddeld: {{date}}",
+                "partnerNextPeriod": "De menstruatie van {{name}} begint naar verwachting op {{date}}.",
+                "partnerNextPeriodNeutral": "Partnerherinnering: menstruatie"
             },
             "stats": {
                 "source": {
@@ -4358,11 +4465,14 @@
                     "history_one": "Gebaseerd op je laatste cyclus",
                     "insufficientHistory": "Voorlopig een standaardwaarde - registreer nog {{count}} cycli voor een persoonlijke voorspelling",
                     "insufficientHistory_one": "Voorlopig een standaardwaarde - registreer nog {{count}} cyclus voor een persoonlijke voorspelling",
-                    "default": "Standaardaanname (nog geen geschiedenis geregistreerd)"
+                    "default": "Standaardaanname (nog geen geschiedenis geregistreerd)",
+                    "historyOther": "Gebaseerd op je laatste {{count}} cycli",
+                    "historyOther_one": "Gebaseerd op je laatste cyclus"
                 }
             },
             "unit": {
-                "days": "{{value}} dagen"
+                "days": "{{value}} dagen",
+                "days_one": "{{value}} dag"
             },
             "today": {
                 "title": "Vandaag",
@@ -4376,7 +4486,9 @@
             "calendar": {
                 "title": "Agenda",
                 "prevMonth": "Vorige maand",
-                "nextMonth": "Volgende maand"
+                "nextMonth": "Volgende maand",
+                "likelihoodTitle": "Symptoompatronen",
+                "likelihoodCaption": "Kies een symptoom om te zien op welke dagen het, op basis van je geschiedenis, vaak voorkomt."
             },
             "weekday": {
                 "mon": "ma",
@@ -4393,13 +4505,16 @@
                 "fertile": "Vruchtbaar",
                 "ovulation": "Eisprong",
                 "today": "Vandaag",
-                "logged": "Item"
+                "logged": "Item",
+                "pms": "PMS-venster (patroon)"
             },
             "history": {
                 "title": "Verloop",
                 "ongoing": "lopend",
                 "empty": "Nog geen menstruaties geregistreerd.",
-                "cycleLength": "Cyclus {{value}} dagen"
+                "cycleLength": "Cyclus {{value}} dagen",
+                "cycleLength_one": "Cyclus {{value}} dag",
+                "flowHeaviest": "Max. {{value}}"
             },
             "trends": {
                 "title": "Trends",
@@ -4415,12 +4530,21 @@
                 "typical": "Typisch",
                 "atypical": "Atypisch",
                 "typicalRangeLabel": "Typisch bereik: {{min}}-{{max}} dagen",
-                "likelihoodTitle": "Symptoompatronen",
-                "likelihoodCaption": "Kies een symptoom om te zien op welke dagen het, op basis van je geschiedenis, vaak voorkomt.",
-                "likelyToday": "{{symptom}} komt vaak rond deze dag van je cyclus voor.",
                 "symptomTracked": "Geregistreerd",
                 "symptomPredicted": "Komt hier vaak voor",
-                "phaseOther": "Overig"
+                "phaseOther": "Overig",
+                "details": "Details",
+                "feelingFrequency": "Gevoelens-frequentie",
+                "flowLoad": "Bloedingsintensiteit per cyclus",
+                "flowLoadCaption": "Gebaseerd op je bloedingsregistraties - hoe vollediger je bijhoudt, hoe zinvoller dit is.",
+                "flowLoadColumn": "Bloedingslast",
+                "flowLoadValue": "{{load}} ({{days}} geregistreerd)",
+                "heavyBleedingHintHeavy": "Je laatste menstruaties zijn herhaaldelijk als \"hevig\" geregistreerd - dit is het bespreken met een arts waard.",
+                "heavyBleedingHintLong": "Minstens één van je laatste menstruaties duurde langer dan een week - dit is het bespreken met een arts waard.",
+                "painTitle": "Pijn",
+                "painCurrentCycleLabel": "Pijndagen deze cyclus",
+                "painAvgPerCycleLabel": "Gem. pijndagen per cyclus",
+                "painAvgIntensityLabel": "Gem. intensiteit"
             },
             "flow": {
                 "label": "Bloedverlies",
@@ -4489,7 +4613,9 @@
             },
             "period": {
                 "add": "Menstruatie registreren",
-                "edit": "Menstruatie bewerken"
+                "edit": "Menstruatie bewerken",
+                "warningFuture": "Startdatum ligt in de toekomst - voorspellingen zijn alleen gebaseerd op eerdere cycli.",
+                "warningOverlap": "Overlapt met een al geregistreerde cyclus."
             },
             "dayLog": {
                 "title": "Dag registreren",
@@ -4528,8 +4654,91 @@
                 "pregnancyMode": "Zwangerschapsmodus",
                 "dueDate": "Uitgerekende datum",
                 "pregnancyHint": "In de zwangerschapsmodus worden voorspellingen voor menstruatie en eisprong gepauzeerd. Dagelijks loggen blijft mogelijk.",
-                "saved": "Instellingen opgeslagen."
-            }
+                "saved": "Instellingen opgeslagen.",
+                "contraception": "Anticonceptiemethode",
+                "contraceptionHint": "Hormonale methoden pauzeren automatisch de voorspelling van het vruchtbare venster.",
+                "contraceptionUnset": "Niet opgegeven",
+                "contraceptionOptions": {
+                    "none": "Geen",
+                    "pill": "Pil",
+                    "hormonal_iud": "Hormoonspiraal",
+                    "copper_iud": "Koperspiraal",
+                    "implant": "Implantaat",
+                    "injection": "Prikpil",
+                    "patch": "Pleister",
+                    "ring": "Vaginale ring",
+                    "condom": "Condoom",
+                    "other": "Anders"
+                },
+                "perimenopauseMode": "Perimenopauze-modus",
+                "perimenopauseModeHint": "Voorspellingen worden getoond als bereik in plaats van één datum; de regelmaat-beoordeling wordt uitgeschakeld.",
+                "showPms": "PMS-venster tonen",
+                "notifyPartner": "Partner op de hoogte stellen",
+                "notifyPartnerHint": "De gekozen persoon ontvangt alleen de voorspelde datum, nooit symptomen, notities of andere gegevens.",
+                "notifyPartnerNoEligible": "Geen geschikt huishoudlid beschikbaar - alleen leden met toegang tot de module Gezondheid kunnen worden geïnformeerd.",
+                "notifyPartnerDaysBefore": "Herinnering voor partner"
+            },
+            "mucus": {
+                "label": "Baarmoederhalsslijm",
+                "hint": "Optioneel. Veranderingen in de substantie kunnen helpen de vruchtbare periode af te bakenen.",
+                "none": "Geen",
+                "dry": "Droog",
+                "sticky": "Plakkerig",
+                "creamy": "Romig",
+                "watery": "Waterig",
+                "eggwhite": "Eiwit-achtig"
+            },
+            "test": {
+                "label": "Tests",
+                "lhLabel": "LH-test",
+                "pregnancyLabel": "Zwangerschapstest",
+                "unset": "Niet getest",
+                "negative": "Negatief",
+                "positive": "Positief"
+            },
+            "feelings": {
+                "label": "Gevoelens"
+            },
+            "intimacy": {
+                "label": "Intimiteit",
+                "hint": "Blijft privé, ook als deze dag met het gezin wordt gedeeld.",
+                "none": "Niet opgegeven",
+                "protected": "Beschermd",
+                "unprotected": "Onbeschermd",
+                "solo": "Solo"
+            },
+            "quickLink": {
+                "painkiller": "Pijnstiller registreren",
+                "weight": "Gewicht registreren"
+            },
+            "bubble": {
+                "ariaLabel": "Cyclusstatus vandaag",
+                "line1": "Cyclusdag {{day}} · {{phase}}",
+                "periodToday": "Menstruatie vandaag verwacht - nu starten?",
+                "periodOverdue": "Menstruatie is {{count}} dagen over tijd - nu starten?",
+                "periodOverdue_one": "Menstruatie is {{count}} dag over tijd - nu starten?",
+                "periodStillOpen": "Je menstruatie staat nog als lopend geregistreerd - nu beëindigen?",
+                "peakPainDay": "Volgens je patroon is vandaag vaak je dag met de sterkste pijn ({{symptom}}).",
+                "likelySymptomsToday": "Vandaag waarschijnlijk: {{symptoms}}",
+                "pmsWindow": "PMS-venster waarschijnlijk vanaf {{weekday}}",
+                "upcomingSymptom": "Vanaf {{weekday}} waarschijnlijk: {{symptom}}",
+                "fertile": "Vruchtbaar venster tot {{date}}",
+                "fertileConfirmed": "Vruchtbaar venster (eisprong bevestigd) tot {{date}}"
+            },
+            "fertilityDisclaimerConfirmed": "De eisprong van deze cyclus is bevestigd door een temperatuurstijging. Toekomstige cycli blijven op de kalendermethode gebaseerd; dit vervangt geen anticonceptie of medisch advies.",
+            "import": {
+                "button": "Importeren",
+                "title": "Menstruatiegeschiedenis importeren",
+                "explainer": "CSV-bestand of geplakte tekst: één regel per menstruatie als „start_date,end_date” (einddatum optioneel), datums in JJJJ-MM-DD of DD-MM-JJJJ, gescheiden door komma of puntkomma.",
+                "fileLabel": "CSV-bestand kiezen",
+                "pasteLabel": "Of CSV-tekst plakken",
+                "submit": "Importeren",
+                "resultToast": "{{imported}} geïmporteerd, {{skipped}} overgeslagen.",
+                "errorsTitle": "Deze regels konden niet worden geïmporteerd:",
+                "emptyError": "Kies een CSV-bestand of plak tekst.",
+                "error": "Importeren mislukt."
+            },
+            "discoveryHint": "Tip: abonneer je op de voorspelde cyclus als ICS-feed onder <a href=\"/settings/personal/feeds\">Instellingen → Persoonlijk → Feeds</a>, of toon de cyclus-widget op het <a href=\"/\">Overzicht</a> via de aanpasmodus."
         },
         "duration": {
             "hm": "{{hours}} u {{minutes}} min",
@@ -5238,5 +5447,15 @@
         "continuesUntil": "…loopt door tot {{time}}",
         "overviewEmptyTitle": "Kies personen om te vergelijken",
         "overviewEmptyDescription": "Selecteer hierboven minstens één huisgenoot om de weekroosters naast elkaar te zien."
+    },
+    "pairDisplay": {
+        "title": "Tablet koppelen",
+        "intro": "Voer de koppelcode in die de instellingen tonen.",
+        "codeLabel": "Koppelcode",
+        "codeHint": "Tien tekens, hoofdletters of kleine letters maakt niet uit.",
+        "labelLabel": "Naam van dit apparaat (optioneel)",
+        "labelHint": "Helpt later te herkennen welk apparaat wordt bedoeld.",
+        "submit": "Koppelen",
+        "failed": "Deze koppelcode is niet geldig."
     }
 }

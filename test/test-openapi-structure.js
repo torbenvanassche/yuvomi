@@ -14,6 +14,31 @@ import { buildPaths } from '../server/openapi/paths/index.js';
 import { buildOpenApiSpec } from '../server/openapi.js';
 
 const pathsDir = new URL('../server/openapi/paths/', import.meta.url);
+test('fasting clients receive concrete lifecycle schemas, revision transports and date filters', () => {
+  const paths = buildOpenApiSpec({}).paths;
+  const schema = (path, method) => paths[`/api/v1/health/${path}`][method].requestBody.content['application/json'].schema;
+  const create = schema('fasting', 'post');
+  assert.deepEqual(create.required, ['start_tzid']);
+  assert.equal(create.properties.goal_minutes.multipleOf, 60);
+  assert.equal(create.properties.goal_minutes.maximum, 20160);
+  assert.equal(create.properties.end_at.nullable, true);
+  assert.equal(create.properties.note.maxLength, 2000);
+  assert.deepEqual(schema('fasting/{id}', 'patch').required, ['expected_revision']);
+  assert.deepEqual(schema('fasting/{id}/finish', 'post').required, ['expected_revision']);
+  assert.ok(paths['/api/v1/health/fasting'].post.responses[201]);
+  assert.ok(paths['/api/v1/health/fasting/{id}'].delete.responses[204]);
+  assert.ok(paths['/api/v1/health/fasting/{id}'].delete.parameters.some((p) => p.name === 'expected_revision' && !p.required));
+  assert.match(paths['/api/v1/health/fasting/settings'].put.description, /Personal settings are owner-only/);
+  assert.doesNotMatch(paths['/api/v1/health/fasting/settings'].put.description, /Caregivers may submit/);
+  assert.match(paths['/api/v1/health/fasting/acknowledge-safety'].post.description, /authenticated owner only/);
+  assert.match(paths['/api/v1/permissions/role/{familyRole}'].put.description, /health_use_fasting/);
+  for (const alias of ['fasting', 'fasting/history']) {
+    const names = paths[`/api/v1/health/${alias}`].get.parameters.map((p) => p.name);
+    for (const name of ['user_id', 'from', 'to', 'limit', 'before_at', 'before_id']) assert.ok(names.includes(name));
+    assert.ok(!names.includes('offset'));
+  }
+  assert.ok(paths['/api/v1/health/export/fasting'].get.responses[200].content['text/csv']);
+});
 const indexSrc = readFileSync(new URL('index.js', pathsDir), 'utf8');
 const moduleFiles = readdirSync(pathsDir)
   .filter((f) => f.endsWith('.js') && f !== 'index.js')
@@ -63,6 +88,32 @@ test('buildOpenApiSpec spiegelt buildPaths() vollstaendig', () => {
   assert.deepEqual(Object.keys(spec.paths), Object.keys(buildPaths()));
   assert.ok(spec.tags.length > 0, 'tags fehlen in der Spec');
   assert.ok(Object.keys(spec.components.schemas).length > 0, 'schemas fehlen in der Spec');
+});
+
+test('jede Variable im Pfad hat ihren Parameter', () => {
+  // OPENAPI VERLANGT ES, UND ES IST KEINE FORMSACHE: fehlt zu `{id}` der
+  // Eintrag, weisen Validatoren das ganze Dokument ab, und ein erzeugter Client
+  // bekommt keine Stelle, an der er die Id uebergeben koennte - der Aufruf
+  // laeuft dann in das 400 der Route. Aufgefallen an den Display-Routen aus
+  // #1208, wo alle drei parametrierten Operationen ihre Variablen verschwiegen;
+  // der uebrige Katalog war zu dem Zeitpunkt sauber, dieser Ratchet kostet also
+  // nichts und faengt die naechste vergessene Zeile statt nur einen Rueckfall
+  // in genau diesen dreien.
+  const fehlend = [];
+  for (const [pfad, operationen] of Object.entries(buildPaths())) {
+    const variablen = [...pfad.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
+    if (!variablen.length) continue;
+    for (const [methode, operation] of Object.entries(operationen)) {
+      const deklariert = new Set(
+        (operation?.parameters || []).filter((p) => p.in === 'path').map((p) => p.name),
+      );
+      for (const name of variablen) {
+        if (!deklariert.has(name)) fehlend.push(`${methode.toUpperCase()} ${pfad} -> {${name}}`);
+      }
+    }
+  }
+  assert.deepEqual(fehlend, [],
+    `Diese Operationen nennen eine Pfadvariable nicht als Parameter:\n  ${fehlend.join('\n  ')}`);
 });
 
 test('kein Pfad-Parameter mit Namens-Bedeutung ist als Zahl deklariert', () => {

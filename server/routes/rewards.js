@@ -11,6 +11,7 @@ import * as db from '../db.js';
 import { createLogger } from '../logger.js';
 import { getBalance, isEnrolled, postLedger } from '../services/rewards.js';
 import { householdMemberSql, newNonMembers, nonMemberMessage } from '../services/household-members.js';
+import { isAdminRequest } from '../middleware/require-admin.js';
 
 const log = createLogger('Rewards');
 const router = express.Router();
@@ -19,7 +20,7 @@ const MAX_COST = 1_000_000;
 const MAX_BONUS = 1_000_000;
 
 function requireAdmin(req, res, next) {
-  if (req.authRole !== 'admin') {
+  if (!isAdminRequest(req)) {
     return res.status(403).json({ error: 'Admin access required.', code: 403 });
   }
   next();
@@ -96,7 +97,7 @@ router.get('/overview', (req, res) => {
     const pointedTaskCount = d.prepare('SELECT COUNT(*) AS n FROM tasks WHERE points > 0').get().n;
     res.json({ data: {
       balances, catalog, pendingCount: pending,
-      isAdmin: req.authRole === 'admin', me: actingUser(req),
+      isAdmin: isAdminRequest(req), me: actingUser(req),
       setup: { participantCount, catalogCount, pointedTaskCount },
     } });
   } catch (err) {
@@ -162,7 +163,7 @@ router.put('/participants/:userId', requireAdmin, (req, res) => {
 // --------------------------------------------------------
 router.get('/catalog', (req, res) => {
   try {
-    const all = req.authRole === 'admin' && req.query.all === '1';
+    const all = isAdminRequest(req) && req.query.all === '1';
     const rows = db.get().prepare(`
       SELECT id, name, cost, icon, description, is_active, sort_order
       FROM reward_catalog
@@ -299,6 +300,18 @@ router.get('/redemptions', (req, res) => {
   try {
     const status = ['pending', 'fulfilled', 'rejected', 'cancelled'].includes(req.query.status)
       ? req.query.status : null;
+    // WER NICHT ENTSCHEIDET, SIEHT NUR SEINE EIGENEN ANFRAGEN.
+    //
+    // Das Bestaetigen und Ablehnen ist Administratorensache, und nur dafuer
+    // braucht jemand die Anfragen der anderen. Die Oberflaeche wusste das
+    // laengst - sie filtert die Antwort seit jeher auf die eigene Person
+    // (public/pages/rewards.js) -, aber sie filterte sie NACH dem Herunterladen.
+    // Bis zu 300 Zeilen samt freiem Wunschtext und Bild jedes Mitglieds gingen
+    // also an jeden hinaus, der das Modul lesen darf. Aufgefallen ist es an
+    // einem Wandtablett mit `rewards:read`, das gar keine eigenen Zeilen haben
+    // kann - der Fehler ist aelter und traf jedes Mitglied ohne Adminrecht.
+    const admin = isAdminRequest(req);
+    const me = actingUser(req);
     const rows = db.get().prepare(`
       SELECT r.id, r.user_id, r.catalog_id, r.reward_name, r.reward_icon, r.cost, r.status,
              r.note, r.decided_at, r.created_at,
@@ -307,10 +320,12 @@ router.get('/redemptions', (req, res) => {
       FROM reward_redemptions r
       JOIN users u ON u.id = r.user_id
       LEFT JOIN users dec ON dec.id = r.decided_by
-      ${status ? 'WHERE r.status = @status' : ''}
+      WHERE 1 = 1
+        ${status ? 'AND r.status = @status' : ''}
+        ${admin ? '' : 'AND r.user_id = @me'}
       ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.created_at DESC, r.id DESC
       LIMIT 300
-    `).all({ status });
+    `).all({ status, me });
     res.json({ data: rows });
   } catch (err) {
     log.error('GET /redemptions error:', err);
@@ -327,7 +342,7 @@ router.post('/redemptions', (req, res) => {
   try {
     const d = db.get();
     const me = actingUser(req);
-    const targetId = req.body?.user_id != null && req.authRole === 'admin' ? toInt(req.body.user_id) : me;
+    const targetId = req.body?.user_id != null && isAdminRequest(req) ? toInt(req.body.user_id) : me;
     if (!targetId) return res.status(400).json({ error: 'user_id is required.', code: 400 });
 
     const item = d.prepare('SELECT * FROM reward_catalog WHERE id = ? AND is_active = 1').get(toInt(req.body?.catalog_id));
@@ -385,7 +400,7 @@ router.patch('/redemptions/:id', (req, res) => {
     if (row.status !== 'pending')
       return res.status(409).json({ error: 'Redemption already decided.', code: 409 });
 
-    const isAdmin = req.authRole === 'admin';
+    const isAdmin = isAdminRequest(req);
     if ((action === 'fulfill' || action === 'reject') && !isAdmin)
       return res.status(403).json({ error: 'Admin access required.', code: 403 });
     if (action === 'cancel' && !isAdmin && row.user_id !== me)

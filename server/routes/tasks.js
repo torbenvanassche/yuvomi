@@ -5,6 +5,7 @@
  */
 
 import { createLogger } from '../logger.js';
+import { mayWriteModule } from '../permissions.js';
 import express from 'express';
 import * as db from '../db.js';
 import { documentVisibleSql } from '../services/document-access.js';
@@ -23,7 +24,8 @@ import { parseSyncTargetValue } from '../../public/utils/sync-target.js';
 import { mentionedUserIds } from '../../public/utils/mentions.js';
 import { toggleChecklistLine } from '../../public/utils/markdown-checklist.js';
 import { resolvePermissions } from '../permissions.js';
-import { householdMemberSql, newNonMembers, nonMemberMessage } from '../services/household-members.js';
+import { isAdminRequest } from '../middleware/require-admin.js';
+import { householdMemberSql, isHouseholdMember, newNonMembers, nonMemberMessage } from '../services/household-members.js';
 import { pushService } from '../services/push.js';
 import { todayKey } from '../utils/timezone.js';
 import {
@@ -316,9 +318,6 @@ function lockingTask(task) {
   return parent && parent.locked ? parent : null;
 }
 
-/** Admin - hier lokal, weil die Regel in der Route wohnt und nicht in einer Middleware. */
-function isAdmin(req) { return req.authRole === 'admin' || req.session?.role === 'admin'; }
-
 /**
  * Darf diese Person die DEFINITION der Aufgabe aendern oder sie loeschen? (#830)
  *
@@ -333,7 +332,7 @@ function isAdmin(req) { return req.authRole === 'admin' || req.session?.role ===
 function mayEditTaskDefinition(task, req) {
   const lock = lockingTask(task);
   if (!lock) return true;
-  if (isAdmin(req)) return true;
+  if (isAdminRequest(req)) return true;
   return lock.created_by === (req.authUserId || req.session?.userId);
 }
 
@@ -456,8 +455,16 @@ router.get('/categories', (_req, res) => {
 // Aufgabe dorthin zu schieben hieße, sie als Einkaufsposten zurückzubekommen.
 // Muss wie /categories vor den /:id-Routen stehen, sonst matcht „sync-targets" als :id.
 // --------------------------------------------------------
-router.get('/sync-targets', (_req, res) => {
+router.get('/sync-targets', (req, res) => {
   try {
+    // NUR FUER DEN, DER AUCH SPEICHERN DARF. Die Liste fuellt ein Feld im
+    // Aufgabendialog, und sie traegt Kontonamen samt Sammlungs-URL der
+    // angebundenen CalDAV-Konten. Der Kommentar darueber sagt "keine
+    // Server-URLs" - `listUrl` ist eine. Wer nicht schreiben darf, sieht den
+    // Dialog nie; ein Wandtablett mit `tasks:read` hatte die Liste trotzdem.
+    if (!mayWriteModule(req, 'tasks')) {
+      return res.status(403).json({ error: 'Write access to tasks is required.', code: 403 });
+    }
     const caldav = db.get().prepare(`
       SELECT s.account_id AS accountId, a.name AS accountName,
              s.list_url   AS listUrl,   s.list_name AS listName
@@ -1139,7 +1146,7 @@ router.put('/:id', (req, res) => {
     const status = (req.body.status === undefined || archiveRequested)
       ? task.status
       : req.body.status;
-    if (reopensSettledVisit(db.get(), task.id, task.status, status) && req.authRole !== 'admin') {
+    if (reopensSettledVisit(db.get(), task.id, task.status, status) && !isAdminRequest(req)) {
       return res.status(403).json({ error: 'Permission denied.', code: 403 });
     }
 
@@ -1512,15 +1519,28 @@ function spawnRecurrenceFollowup(task) {
 // --------------------------------------------------------
 // PATCH /api/v1/tasks/:id/status
 // Status einer Aufgabe schnell wechseln (z.B. Swipe-Geste / Checkbox).
-// Body: { status: 'open' | 'in_progress' | 'done' | 'archived' }
+// Body: { status: 'open' | 'in_progress' | 'done' | 'archived',
+//         done_by_user_id?: number|null }
 // Response: { data: { id, status, archived_at } }
 // 'archived' legt die Aufgabe ab, ohne ihren Status anzufassen (#688).
+//
+// `done_by_user_id` benennt, WER die Aufgabe erledigt hat (#1205) - wer
+// abgehakt hat, steht ohnehin fest und kommt weiter aus der Sitzung. Ohne
+// Angabe aendert sich nichts: der Verlauf zeigt die abhakende Person und die
+// Punkte folgen der Zuweisungsregel. Die Angabe wirkt nur beim UEBERGANG NACH
+// 'done'; bei jedem anderen Statuswechsel gibt es keine Erledigung, an der sie
+// haengen koennte, und sie wird still verworfen statt abgewiesen - eine
+// Sammelaktion, die alles auf 'open' setzt, soll nicht an einem mitgeschickten
+// Feld scheitern. GEPRUEFT WIRD DESHALB AUCH ERST DORT: eine Pruefung vor dem
+// Laden von `prev` sah den Uebergang noch gar nicht und wies eine Nutzlast ab,
+// die sie im selben Atemzug als bedeutungslos beschrieb (Review Runde 1).
 // --------------------------------------------------------
 router.patch('/:id/status', (req, res) => {
   try {
     const { status } = req.body;
     if (!VALID_STATUSES.includes(status))
       return res.status(400).json({ error: `Invalid status. Allowed: ${VALID_STATUSES.join(', ')}`, code: 400 });
+
 
     // Ganze Zeile, nicht nur der Status: die Rückrichtung (#617) braucht die
     // externen Kennungen, um den Statuswechsel dem CalDAV-Objekt zuzuordnen.
@@ -1536,8 +1556,35 @@ router.patch('/:id/status', (req, res) => {
       return res.json({ data: { id: Number(req.params.id), status: prev.status, archived_at: archivedAt } });
     }
 
-    if (reopensSettledVisit(db.get(), prev.id, prev.status, status) && req.authRole !== 'admin') {
+    if (reopensSettledVisit(db.get(), prev.id, prev.status, status) && !isAdminRequest(req)) {
       return res.status(403).json({ error: 'Permission denied.', code: 403 });
+    }
+
+    // Benannt werden koennen nur Haushaltsmitglieder (#1207, DECISIONS 4) -
+    // dieselbe Grenze, die auch das Zuweisen zieht, und derselbe Fehlertext.
+    // Ein Gast oder eine Haushaltshilfe ist keine Person, der der Verlauf eine
+    // Erledigung zuschreiben darf, und der Punktestand erst recht nicht.
+    //
+    // `isHouseholdMember()` UND NICHT `newNonMembers()`. Die Listenfassung
+    // meldet ausdruecklich nur Konten, die es GIBT und die keine Mitglieder
+    // sind - ein geloeschtes oder erfundenes Konto laesst sie durch, weil jede
+    // Route dafuer ihre eigene Antwort hat (so steht es in ihrem Kommentar).
+    // Diese Route hatte keine: die ID lief weiter in den Fremdschluessel der
+    // neuen Spalte, `INSERT OR IGNORE` unterdrueckt FOREIGN-KEY-Verletzungen
+    // nicht, die ganze Transaktion rollte zurueck - und der Aufrufer bekam 500
+    // statt der zugesagten 400, waehrend sein Statuswechsel still ausblieb
+    // (Review Runde 1). Die Einzelfrage beantwortet beides auf einmal, und die
+    // Absage bleibt eine: wer nicht benannt werden kann, kann nicht benannt
+    // werden - ob er fehlt oder nur nicht dazugehoert, aendert daran nichts.
+    const doneByRaw = req.body.done_by_user_id;
+    const namesDoer = status === 'done' && prev.status !== 'done'
+      && doneByRaw != null && doneByRaw !== '';
+    const doneByUserId = namesDoer ? Number(doneByRaw) : null;
+    if (namesDoer && (!Number.isInteger(doneByUserId) || !isHouseholdMember(doneByUserId, { db: db.get() }))) {
+      return res.status(400).json({
+        error: Number.isInteger(doneByUserId) ? nonMemberMessage([doneByUserId]) : 'Invalid done_by_user_id.',
+        code: 400,
+      });
     }
 
     // Statuswechsel und die Serien-Bewegung, die daraus folgt, sind eine Einheit:
@@ -1554,10 +1601,10 @@ router.patch('/:id/status', (req, res) => {
 
       syncHousekeepingPaymentStatus(db.get(), req.params.id, status);
       // Punkte-Gutschrift/Storno an den Aufgaben-Statuswechsel koppeln.
-      syncTaskRewards(db.get(), Number(req.params.id), prev.status, status, req.authUserId || req.session.userId);
+      syncTaskRewards(db.get(), Number(req.params.id), prev.status, status, req.authUserId || req.session.userId, doneByUserId);
       // Der Verlauf hängt am selben Übergang (#791). Dieser Weg trägt ihn
       // dreifach: Checkbox, Swipe und die Sammelaktion gehen alle hier durch.
-      syncTaskCompletion(db.get(), Number(req.params.id), prev.status, status, req.authUserId || req.session.userId);
+      syncTaskCompletion(db.get(), Number(req.params.id), prev.status, status, req.authUserId || req.session.userId, doneByUserId);
 
       // Zurückgenommenes Abhaken macht auch die Folgeinstanz rückgängig (#650).
       // Sonst stünde die beim Erledigen erzeugte nächste Instanz neben der wieder
@@ -1925,7 +1972,7 @@ function commentForWrite(req, { allowAdmin = false } = {}) {
     .get(req.params.commentId, task.id);
   if (!row) return { error: 404 };
 
-  const mayWrite = row.user_id === me || (allowAdmin && req.authRole === 'admin');
+  const mayWrite = row.user_id === me || (allowAdmin && isAdminRequest(req));
   if (!mayWrite) return { error: 403 };
   return { task, row, me };
 }
@@ -2066,7 +2113,7 @@ router.get('/meta/options', (req, res) => {
 // dasselbe Admin-Gate wie beim Setzen des Standards und beim Nachziehen.
 router.get('/points/affected', (req, res) => {
   try {
-    if (req.authRole !== 'admin') {
+    if (!isAdminRequest(req)) {
       return res.status(403).json({ error: 'Admin access required.', code: 403 });
     }
     const points = Number(req.query.points);
@@ -2088,7 +2135,7 @@ router.get('/points/affected', (req, res) => {
 // steht vorab im Bestätigungsdialog, der Wechsel ist also nie verdeckt.
 router.post('/points/rebase', (req, res) => {
   try {
-    if (req.authRole !== 'admin') {
+    if (!isAdminRequest(req)) {
       return res.status(403).json({ error: 'Admin access required.', code: 403 });
     }
     const from = Number(req.body.from);

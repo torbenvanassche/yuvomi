@@ -2049,11 +2049,20 @@ test('admin-family leaf owns family member + role management lazily', () => {
   assert.match(source, /buildFamilyRoleOptions/);
   assert.match(source, /family_role/);
   assert.match(source, /birth_date/);
+  assert.match(source, /capabilityStateText\('health_use_fasting'/);
+  assert.match(source, /item\.default \?\? permissionCatalog\?\.defaults\?\.capability/);
 
   // Family leaf must not own API token, backup, or version concerns.
   assert.doesNotMatch(source, /\/auth\/api-tokens/);
   assert.doesNotMatch(source, /\/backup\//);
   assert.doesNotMatch(source, /\/version/);
+});
+
+test('permission summary compares capability access with each catalog default', () => {
+  const source = read('../public/settings/pages/admin-permissions.js');
+  assert.match(source, /isPermissionDeviation\(item, access\)/);
+  assert.match(source, /accessShort\(access\)/);
+  assert.doesNotMatch(source, /effectiveCapabilityAccess\(item\) === 'allow'/);
 });
 
 test('admin-api leaf owns API token lifecycle with one-time secret display', () => {
@@ -2500,6 +2509,56 @@ test('More button active state keeps visible More identity and accessible active
   // Der sichtbare Text bleibt „Mehr", egal was im Namen steht.
   assert.match(source, /moreBtnLabel\.textContent\s*=\s*t\('nav\.more'\)/);
   assert.doesNotMatch(source, /moreBtn\.toggleAttribute\('aria-current',\s*inMoreSheet\)/);
+});
+
+test('wer die Zahl der Mitleser aendert, holt othersCanRead nach', () => {
+  // `othersCanRead` entscheidet, ob Aufgaben und Kalender ihre
+  // Sichtbarkeitsfelder ueberhaupt zeigen. Der Wert kommt aus /auth/me und
+  // liegt im Speicher - wer ihn nicht nachholt, laesst die Felder bis zum
+  // naechsten vollen Laden verborgen, und alles, was in derselben Sitzung
+  // entsteht, ist "fuer alle". Im Ein-Personen-Haushalt ist genau das der
+  // Sprung von 0 auf 1: ein angelegtes Wandtablett, ein eingerichtetes
+  // Hauspersonal, geaenderte Modulrechte.
+  // AN DIE MUTIERENDE STELLE GEBUNDEN, nicht an die Datei. Die erste Fassung
+  // fragte nur, ob `auth.me()` IRGENDWO in der Datei vorkommt - damit blieb sie
+  // gruen, wenn man die Auffrischung allein aus dem Loesch-Pfad entfernte,
+  // obwohl das der eigene, zweite Fall ist (gegengeprueft: 397 pass).
+  const STELLEN = [
+    { datei: '../public/settings/pages/admin-displays.js', was: 'Display anlegen', ruf: /api\.post\('\/displays'/ },
+    { datei: '../public/settings/pages/admin-displays.js', was: 'Display loeschen', ruf: /api\.delete\(`\/displays\// },
+    { datei: '../public/settings/pages/admin-permissions.js', was: 'Rechte speichern', ruf: /api\.put\(url/ },
+    { datei: '../public/pages/housekeeping.js', was: 'Hauspersonal anlegen', ruf: /api\.post\('\/housekeeping\/worker'/ },
+  ];
+  const fehlend = [];
+  for (const { datei, was, ruf } of STELLEN) {
+    const src = withoutCommentsKeepingLines(read(datei));
+    const importiert = /import\s*\{[^}]*\bauth\b[^}]*\}\s*from\s*'\/api\.js'/.test(src);
+    const stelle = src.search(ruf);
+    // Die Auffrischung muss NACH der Mutation stehen und nah dabei. 1500 Zeichen,
+    // weil der weiteste der vier Faelle 916 braucht (das Anlegen einer
+    // Haushaltshilfe reicht ein langes Objekt mit) - gemessen, nicht geraten,
+    // und immer noch etwas voellig anderes als "irgendwo in der Datei".
+    const nah = stelle >= 0 && /auth\.me\(\)/.test(src.slice(stelle, stelle + 1500));
+    if (!importiert || stelle < 0 || !nah) fehlend.push(`${datei} (${was})`);
+  }
+  assert.deepEqual(fehlend, [],
+    `Diese Stellen aendern die Zahl der Mitleser, ohne sie nachzuholen:\n  ${fehlend.join('\n  ')}`);
+});
+
+test('die Display-Leiste filtert haushaltweit abgeschaltete Module', () => {
+  // ROUTER.JS IST BROWSER-GEKOPPELT UND NICHT IMPORTIERBAR, deshalb misst diese
+  // Suite ihn am Quelltext (dieselbe Begruendung wie test-router-guest-guard.js).
+  // Der Display-Zweig gibt eine FESTE Liste zurueck - was ein Wandtablett darf,
+  // steht fest, was es GIBT, entscheidet der Haushalt. Ohne den Filter stuende
+  // ein abgeschalteter Kalender in der Leiste und schickte beim Antippen auf
+  // die Uebersicht zurueck, weil `navigate()` ihn ohnehin abweist.
+  const source = read('../public/router.js');
+  const zweig = source.match(/access_scope === 'display'\)\s*\{[\s\S]*?\n  \}/);
+  assert.ok(zweig, 'der Display-Zweig in navItems() steht noch da');
+  assert.match(zweig[0], /_disabledModules\.has\(/, 'er filtert die abgeschalteten Module');
+  // Das Dashboard ist die Startseite und laesst sich nicht abschalten - es darf
+  // nicht mit herausfallen, sonst haette ein Tablett gar keine Leiste mehr.
+  assert.match(zweig[0], /'dashboard'/);
 });
 
 test('mobile navigation derives five stable destinations from three favorites', () => {
@@ -15941,8 +16000,25 @@ test('PAGE-000: der Geltungsbereich ist nicht leer und deckt fast alle Seiten', 
     'Login und Setup zeichnen ohne App-Shell und gehoeren nicht in den Geltungsbereich');
   assert.ok(scope.length >= 15,
     `Nur ${scope.length} Seiten im Geltungsbereich - die Regeln pruefen fast nichts`);
-  assert.ok(scope.length >= all - 8,
-    `${all - scope.length} von ${all} Seiten sind ausgenommen - das ist wieder eine Allowlist`);
+  // ZWEI GRUENDE, NICHT EINER. Aussen vor bleibt eine Seite entweder, WEIL SIE
+  // NICHT HINTER DER SHELL ZEICHNET (Login, Setup, Einladung, Reset, Kopplung) -
+  // das ist Bauart und keine Schuld -, oder weil sie noch nicht migriert ist
+  // (COMPOSITION_PENDING). Die Zahl stand bis zum 16.09.2026 als flaches `- 8`
+  // da und warf beides zusammen; das Budget war damit genau aufgebraucht, und
+  // die naechste eigenstaendige Seite (die Display-Kopplung, #1208) liess den
+  // Nachweis rot werden, obwohl an der Ausnahmeliste nichts gewachsen war.
+  //
+  // Jetzt zaehlt jeder Grund fuer sich. Aufweichen laesst sich das nicht: die
+  // eigenstaendigen Seiten kommen aus `requiresAuth: false` im Router (eine
+  // Seite dort einzutragen hiesse, sie faende die App-Shell nicht mehr - das
+  // faellt sofort auf), und die Ausnahmeliste deckelt PAGE-011 bei
+  // COMPOSITION_PENDING_MAX.
+  const standaloneFiles = rows.filter((r) => !r.auth)
+    .filter((r) => existsSync(new URL(`../public/pages/${r.name}`, import.meta.url))).length;
+  const exempt = all - scope.length;
+  assert.ok(exempt <= standaloneFiles + COMPOSITION_PENDING_MAX,
+    `${exempt} von ${all} Seiten sind ausgenommen, erlaubt sind ${standaloneFiles} eigenstaendige `
+    + `plus ${COMPOSITION_PENDING_MAX} noch nicht migrierte - das ist wieder eine Allowlist`);
   assert.ok(compositionScopeCss().length >= 12,
     'Zu wenige Seiten-CSS im Geltungsbereich - die CSS-Regeln laufen ins Leere');
 });
@@ -17412,12 +17488,135 @@ test('withoutCommentsKeepingLines laesst Regex-Literale und URLs heil', () => {
     'ein echter Zeilenkommentar muss weiter fallen');
 });
 
+/* EIN ZEILENKOMMENTAR OEFFNET KEINEN BLOCK (Review zu #1232).
+ *
+ * Der Schnitt nahm erst Blockkommentare heraus, dann Zeilenkommentare, und
+ * kannte keine Strings. `// Accept: *` gefolgt von `/*` las er als Blockanfang
+ * und blendete alles bis zum naechsten Blockende irgendwo spaeter in der Datei
+ * aus, echten Code eingeschlossen (gemessen an server/utils/http.js und
+ * server/index.js). Der Admin-Praedikat-Guard war in solchen Spannen blind.
+ */
+test('withoutCommentsKeepingLines liest Kommentare und Strings in einem Durchgang', () => {
+  const zeilen = (src) => withoutCommentsKeepingLines(src).split('\n');
+
+  const verschluckt = zeilen([
+    '// Accept: */*',
+    "const a = req.authRole === 'admin';",
+    '/* echter Kommentar */',
+    'renderAll();',
+  ].join('\n'));
+  assert.equal(verschluckt.length, 4, 'die Zeilenzahl muss gleich bleiben');
+  assert.equal(verschluckt[0].trim(), '', 'der Zeilenkommentar faellt');
+  assert.equal(verschluckt[1], "const a = req.authRole === 'admin';",
+    'ein Blockanfang in einem Zeilenkommentar darf den Code darunter nicht verschlucken');
+  assert.equal(verschluckt[2].trim(), '', 'der echte Blockkommentar faellt');
+  assert.equal(verschluckt[3], 'renderAll();');
+
+  const inStrings = "const s = '/* kein Kommentar */'; const d = \"// auch keiner\";";
+  assert.equal(withoutCommentsKeepingLines(inStrings), inStrings,
+    'Kommentarzeichen in einem String-Literal sind kein Kommentar');
+
+  const inTemplate = 'const t = `\n<a href="x">// kein</a> /* auch nicht */\n${x /* weg */}`;';
+  assert.equal(withoutCommentsKeepingLines(inTemplate),
+    'const t = `\n<a href="x">// kein</a> /* auch nicht */\n${x          }`;',
+    'im Template-Literal bleibt der Text stehen, in der Ersetzung faellt der Kommentar');
+
+  const mehrzeilig = zeilen('a();\n/* eins\n zwei */\nb(); // weg');
+  assert.equal(mehrzeilig.length, 4, 'ein mehrzeiliger Blockkommentar behaelt seine Zeilen');
+  assert.deepEqual(mehrzeilig.slice(0, 3).map((z) => z.trim()), ['a();', '', '']);
+  assert.equal(mehrzeilig[3].trimEnd(), 'b();', 'nach Code faellt nur der Kommentar');
+
+  const regex = zeilen(String.raw`const r = /[/*]/g; const q = /'/;` + '\nnext();\n/* c */\nconst h = a / b; // weg');
+  assert.equal(regex[0], String.raw`const r = /[/*]/g; const q = /'/;`,
+    'Kommentar- und Anfuehrungszeichen in einem Regex-Literal oeffnen nichts');
+  assert.equal(regex[1], 'next();');
+  assert.equal(regex[3].trimEnd(), 'const h = a / b;', 'eine Division ist kein Regex-Literal');
+});
+
+/* EIN `${` BEGINNT EINEN AUSDRUCK (Review zu #1232, Runde 2).
+ *
+ * Der Scanner merkte sich das Template-Literal als fertigen Wert, auch wenn er
+ * nur bis zum `${` gelesen hatte. Ein `/` direkt dahinter galt deshalb als
+ * Division, das `/*` in `/[/*]/` als Blockanfang, und alles bis zum naechsten
+ * Blockende weiter unten fiel weg - der Code dazwischen eingeschlossen.
+ * Dieselbe Klasse an den Nachbarstellen: `}${` springt direkt in die naechste
+ * Ersetzung, ein Template in einer Ersetzung oeffnet selbst eine. Nach dem
+ * schliessenden Backtick bleibt es dagegen ein Wert, der `/` dort teilt.
+ */
+test('withoutCommentsKeepingLines liest nach `${` einen Ausdruck', () => {
+  const zeilen = (src) => withoutCommentsKeepingLines(src).split('\n');
+  const gate = "const a = req.authRole === 'admin';";
+
+  for (const [name, template] of [
+    ['direkt nach dem Backtick', 'const t = `${/[/*]/.test(value)}`;'],
+    ['nach einer vorigen Ersetzung', 'const t = `x${a}${/[/*]/.test(value)}`;'],
+    ['im Template einer Ersetzung', 'const t = `${`${/[/*]/.source}`}`;'],
+  ]) {
+    const z = zeilen([template, gate, '/* spaeter */', 'renderAll();'].join('\n'));
+    assert.equal(z[0], template, `${name}: das Regex-Literal bleibt heil`);
+    assert.equal(z[1], gate, `${name}: der Code darunter darf nicht verschwinden`);
+    assert.equal(z[2].trim(), '', `${name}: der echte Blockkommentar faellt`);
+    assert.equal(z[3], 'renderAll();');
+  }
+
+  assert.equal(withoutCommentsKeepingLines('const n = `${a}` / 2 + "/" + b; // weg').trimEnd(),
+    'const n = `${a}` / 2 + "/" + b;', 'nach dem schliessenden Backtick teilt der `/`');
+});
+
 /* EIN IMPORT OHNE AUFRUF IST TOTER CODE.
  *
  * Beim Entfernen der toten Aufrufe blieb in birthdays.js der Import stehen
  * (Review zu #1070). Er schadet nicht, aber er behauptet eine Beteiligung, die
  * es nicht gibt - und beim naechsten Lesen sucht jemand den Aufruf.
  */
+/**
+ * WER DAS HANDELNDE KONTO WECHSELT, LEERT DEN OFFLINE-CACHE.
+ *
+ * Der Service Worker haelt Antworten von `/dashboard`, `/tasks` und `/calendar`
+ * nach Request-URL vor und liefert sie aus, wenn das Netz fehlt. Am selben
+ * Geraet ist das ein Datenleck ueber den Nutzerwechsel hinweg: die naechste
+ * Person bekaeme offline die Daten der vorigen.
+ *
+ * Abmelden und Sitzungsende taten es laengst richtig. Die Kopplung eines
+ * Wandtabletts war der dritte Wechsel und tat es zuerst NICHT (#1208, Review) -
+ * ein Tablett, auf dem vorher jemand angemeldet war, haette die privaten
+ * Nutzlasten dieser Person weiter ausgeliefert, und zwar an ein Konto, das sie
+ * ausdruecklich nicht sehen darf.
+ *
+ * Die Liste ist eine Allowlist der Wechsel, nicht ein Suchmuster: ein vierter
+ * Wechsel faellt hier auf, weil ihn jemand eintragen muss.
+ */
+test('jeder Wechsel des handelnden Kontos leert den API-Cache', () => {
+  const WECHSEL = [
+    { datei: '../public/api.js', was: 'Abmelden und Sitzungsende' },
+    { datei: '../public/router.js', was: 'der Rueckweg auf die Anmeldeseite' },
+    { datei: '../public/pages/pair-display.js', was: 'die Kopplung eines Wandtabletts' },
+  ];
+  const fehlend = [];
+  for (const { datei, was } of WECHSEL) {
+    const src = withoutCommentsKeepingLines(read(datei));
+    const importiert = /import\s*\{[^}]*\bclearApiCache\b[^}]*\}\s*from\s*'\/sw-register\.js'/.test(src);
+    const ruft = /clearApiCache\s*\(/.test(src);
+    if (!importiert || !ruft) fehlend.push(`${datei} (${was})`);
+  }
+  assert.deepEqual(fehlend, [],
+    `Diese Kontowechsel leeren den Offline-Cache nicht:\n  ${fehlend.join('\n  ')}`);
+
+  // DAS ABSCHICKEN ALLEIN REICHT NICHT. `clearApiCache()` schickt eine
+  // Nachricht an den Service Worker; das Loeschen laeuft dort in einem
+  // `waitUntil`. Wer unmittelbar danach neu laedt, kann noch aus dem alten
+  // Cache bedient werden - bei der Kopplung waeren das die privaten Antworten
+  // der Person, die das Tablett vorher benutzt hat. Deshalb quittiert der
+  // Worker, und die Kopplungsseite WARTET darauf, bevor sie neu laedt.
+  const worker = withoutCommentsKeepingLines(read('../public/sw.js'));
+  assert.match(worker, /event\.ports/, 'der Worker nimmt einen Antwortport entgegen');
+  assert.match(worker, /port\.postMessage/, 'und quittiert darueber');
+  const register = withoutCommentsKeepingLines(read('../public/sw-register.js'));
+  assert.match(register, /new MessageChannel\(\)/, 'clearApiCache oeffnet den Kanal');
+  const kopplung = withoutCommentsKeepingLines(read('../public/pages/pair-display.js'));
+  assert.match(kopplung, /await clearApiCache\(/, 'die Kopplung wartet auf die Quittung');
+});
+
 test('wer refocusAfterRender importiert, ruft es auch', () => {
   const tot = [];
   for (const dir of ['../public/pages', '../public/components', '../public/settings/pages']) {
