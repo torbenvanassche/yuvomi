@@ -106,6 +106,19 @@ test('calendar feed token exports only one local calendar', async () => {
   assert.doesNotMatch(ics, /SUMMARY:Only shared feed/);
 });
 
+test('local calendar feeds exclude externally synchronized events', async () => {
+  const local = await createCalendar('Local only', '#445566');
+  const localEvent = await createEvent('Local event', local.id);
+  db.prepare(`
+    INSERT INTO calendar_events
+      (title, start_datetime, end_datetime, external_source, external_calendar_id, created_by)
+    VALUES (?, ?, ?, 'google', ?, ?)
+  `).run('Google event', '2035-05-01T11:00:00Z', '2035-05-01T12:00:00Z', 'google-id', ADMIN.id);
+  const ics = buildCalendarFeed(db, local.id, new Date('2035-05-02T00:00:00Z'), 'Europe/Brussels');
+  assert.match(ics, /SUMMARY:Local event/);
+  assert.doesNotMatch(ics, /SUMMARY:Google event/);
+});
+
 test('deleting a non-default calendar reassigns events to the default calendar', async () => {
   const temp = await createCalendar('Temporary', '#8844AA');
   const event = await createEvent('Move me', temp.id);

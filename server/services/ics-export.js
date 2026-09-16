@@ -263,7 +263,9 @@ function buildFeed(conn, userId, now = new Date(), tz = householdTimeZone(conn),
   const windowStart = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
     .toISOString().slice(0, 10);
   const feedZone = resolveFeedZone(tz);
-  const calendarFilterSql = options.localCalendarId ? 'AND e.local_calendar_id = ?' : '';
+  const calendarFilterSql = options.localCalendarId
+    ? 'AND e.external_source = \'local\' AND e.local_calendar_id = ?'
+    : '';
   const calendarFilterParams = options.localCalendarId ? [options.localCalendarId] : [];
   const calendarName = options.calendarName || 'Yuvomi';
 

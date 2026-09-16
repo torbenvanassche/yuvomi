@@ -1110,6 +1110,7 @@ function eventSourceKey(ev) {
   if (ev?.subscription_id) return `sub:${ev.subscription_id}`;
   const ref = ev?.source_calendar_ref_id ?? ev?.calendar_ref_id;
   if (ref) return `cal:${ref}`;
+  if (ev?.external_source === 'local' && ev?.local_calendar_id) return `local:${ev.local_calendar_id}`;
   return null;
 }
 
@@ -1130,6 +1131,13 @@ function passesSourceFilter(item) {
  */
 function calendarSources() {
   const quellen = new Map();
+  for (const calendar of state.localCalendars ?? []) {
+    quellen.set(`local:${calendar.id}`, {
+      key: `local:${calendar.id}`,
+      name: calendar.name,
+      color: calendar.color,
+    });
+  }
   for (const ev of state.events ?? []) {
     const key = eventSourceKey(ev);
     if (!key) continue;
@@ -1138,8 +1146,8 @@ function calendarSources() {
     // einen noch nicht hochgeladenen Termin ueber sein Ziel auf, `cal_name` und
     // `cal_color` folgen nur `calendar_ref_id` - und tragen bei Abos die Werte
     // des Abos. Fehlt beides, fuellt ein anderer Termin oder der Merker nach.
-    const name = ev.source_calendar_name || ev.cal_name || '';
-    const color = ev.source_calendar_color || ev.cal_color || null;
+    const name = ev.source_calendar_name || ev.cal_name || ev.local_calendar_name || '';
+    const color = ev.source_calendar_color || ev.cal_color || ev.local_calendar_color || null;
     if (bekannt) {
       bekannt.name ||= name;
       bekannt.color ||= color;
@@ -3850,7 +3858,7 @@ function restoreHiddenSources(userId) {
   try { stored = JSON.parse(localStorage.getItem(schluessel) ?? '[]'); } catch { stored = []; }
   if (!Array.isArray(stored)) return quellen;
   for (const eintrag of stored) {
-    if (!eintrag || !/^(?:cal|sub):\d+$/.test(String(eintrag.key))) continue;
+    if (!eintrag || !/^(?:cal|sub|local):\d+$/.test(String(eintrag.key))) continue;
     // Die Farbe landet als Scheibe im Blatt; aus dem Speicher nur, was eine Farbe ist.
     const color = /^#[0-9a-f]{3,8}$/i.test(String(eintrag.color ?? '')) ? eintrag.color : null;
     quellen.set(eintrag.key, { name: String(eintrag.name ?? ''), color });

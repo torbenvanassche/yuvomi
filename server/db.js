@@ -8382,8 +8382,13 @@ const MIGRATIONS = [
 
       db.prepare(`
         UPDATE calendar_events
+        SET local_calendar_id = NULL
+        WHERE external_source <> 'local'
+      `).run();
+      db.prepare(`
+        UPDATE calendar_events
         SET local_calendar_id = ?
-        WHERE local_calendar_id IS NULL
+        WHERE external_source = 'local' AND local_calendar_id IS NULL
       `).run(defaultId);
     },
   },
