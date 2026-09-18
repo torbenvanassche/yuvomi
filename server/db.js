@@ -8697,6 +8697,21 @@ const MIGRATIONS = [
   },
   {
     version: 218,
+    description: 'Reserved for documents expiry migration in PR #1255',
+    up: `SELECT 1;`,
+  },
+  {
+    version: 219,
+    description: 'Reserved for health prevention migration in PR #1256',
+    up: `SELECT 1;`,
+  },
+  {
+    version: 220,
+    description: 'Reserved for inventory service log migration in PR #1257',
+    up: `SELECT 1;`,
+  },
+  {
+    version: 221,
     description: 'Calendar: first-class local calendars with per-calendar feeds',
     up(db) {
       const tableExists = db.prepare(`
