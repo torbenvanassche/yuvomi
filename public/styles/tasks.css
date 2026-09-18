@@ -735,8 +735,38 @@
   transition: border-color var(--transition-fast), background-color var(--transition-fast);
 }
 
-.task-status-btn:hover::after {
+/* DAS ZEICHEN IST AUSGENOMMEN, statt seine Farbe zurueckzuschreiben.
+ *
+ * Hier stand die Ausnahme zuerst als Gegenregel (`--static:hover::after` mit
+ * `border-color: var(--color-text-tertiary)`), und die war eine FARBAUSSAGE mit
+ * Spezifitaet (0,2,1): sie schlug `--done::after` und `--in_progress::after`
+ * (beide (0,1,1)) und faerbte beim Ueberfahren den gruenen Ring einer
+ * erledigten Aufgabe grau. Das Zeichen bekam damit genau die Hover-Reaktion,
+ * die es nicht haben soll - nur in einer anderen Farbe (Review zu PR #1252).
+ *
+ * `:not()` sagt stattdessen, was gemeint ist: der KNOPF reagiert, das ZEICHEN
+ * nicht. Keine zweite Farbaussage, also auch nichts, was den Zustandsring
+ * ueberstimmen koennte. */
+.task-status-btn:not(.task-status-btn--static):hover::after {
   border-color: var(--module-accent, var(--color-accent));
+}
+
+/* DAS ZEICHEN STATT DES KNOPFS (#467), dieselbe Bauart wie
+ * `.subtask-item__checkbox--static` aus #1209: der Ring bleibt, weil er die
+ * Auskunft traegt - ob die Aufgabe erledigt ist -, aber nichts an ihm lockt
+ * mehr zum Tippen. Der Zeiger wird neutral, und die vergroesserte Trefflaeche
+ * (`::before`) verschwindet: sie ist fuer eine Beruehrung da, die es hier nicht
+ * mehr gibt. Den Hover-Rahmen nimmt die Regel oben aus, nicht eine Gegenregel
+ * hier - siehe die Begruendung dort.
+ *
+ * `cursor` steht NACH der Basisregel: gleiche Spezifitaet entscheidet die
+ * Quellreihenfolge, und davor stehend waere es wirkungslos gewesen. */
+.task-status-btn--static {
+  cursor: default;
+}
+
+.task-status-btn--static::before {
+  content: none;
 }
 
 /* Auf Mobile trägt die Kategorie-Section-Überschrift die Kategorie bereits —
@@ -820,6 +850,25 @@
   animation: check-pop var(--duration-md) var(--ease-out);
 }
 
+/* KEIN `check-pop` AM ZUSTANDSZEICHEN (#467). Die Animation quittiert eine
+ * BERUEHRUNG; an einem `span`, den niemand antippen kann, liefe sie bei jedem
+ * Neuzeichnen der Liste los und behauptete ein Abhaken, das gerade nicht
+ * stattfand.
+ *
+ * ZWEI KLASSEN IM SELEKTOR, NICHT EINE. `animation: none` stand zuerst in
+ * `.task-status-btn--static` (Zeile 751) - eine einzelne Klasse wie
+ * `--done` hier, also gleiche Spezifitaet, und weil `--static` WEITER OBEN
+ * steht, gewann `--done` nach Quellreihenfolge. Die Deklaration war damit
+ * wirkungslos, und der Kommentar darueber behauptete das Gegenteil (Review zu
+ * PR #1252). (0,2,0) haengt an keiner Position: wer die Bloecke morgen
+ * umsortiert, kippt die Regel nicht.
+ *
+ * Es steht NICHT in der reduced-motion-Abfrage: das ist keine Frage der
+ * Bewegungsvorliebe, sondern eine falsche Aussage. */
+.task-status-btn--done.task-status-btn--static {
+  animation: none;
+}
+
 /* Skalierungs-Pops unter reduzierter Bewegung abschalten (Audit F-07);
  * der Farbwechsel trägt das Feedback allein. */
 @media (prefers-reduced-motion: reduce) {
@@ -852,6 +901,24 @@
 }
 
 .task-status-btn--done .task-status-btn__check { display: block; }
+
+/* Am Wandtablett IST der Haken die Personenauswahl (#1209).
+ *
+ * DER KNOPF SIEHT AUS WIE JEDER ANDERE HAKEN, und das ist Absicht. Am Display
+ * ist „ich" niemand - ein Tipp kann dort nicht abhaken, er muss fragen, fuer
+ * wen. Das ist ein Unterschied im VERHALTEN, nicht im Aussehen: wer an der
+ * Kuechenwand steht, soll denselben Ring sehen wie auf seinem Telefon und nicht
+ * erst ein neues Bauteil lernen. Der Statusknopf wird dort gar nicht gezeichnet,
+ * dieser hier steht an seiner Stelle, und er traegt dieselbe Basisklasse - also
+ * auch die Trefflaeche im ::before und den Ausgleich, der die Zeilenhoehe
+ * unveraendert laesst.
+ *
+ * DAS ICON DES POPOVER-TRIGGERS FAELLT DESHALB WEG. `popoverMenuHtml()` setzt
+ * immer eines, und ein `icon-md`-Haken mitten im leeren Ring waere ein dritter
+ * Zustand neben offen und erledigt - eine Aufgabe saehe aus, als waere sie
+ * schon abgehakt. Der Ring aus `::after` traegt die Darstellung allein, genau
+ * wie bei einer offenen Aufgabe. */
+.task-status-btn--pick > .icon-md { display: none; }
 
 .task-card__body {
   flex: 1;
@@ -1200,7 +1267,12 @@
 /* Dieselbe Modulton-Einladung wie am grossen Statusknopf (oben) und an
  * .item-check (shopping.css) - die Unteraufgabe war der dritte Abhakmoment
  * und der einzige ohne sie (Signaturelement-Runde 2026-08-31). */
-.subtask-item__checkbox:hover {
+/* Wie am Statusknopf daneben: das Zeichen ist AUSGENOMMEN, statt seine Farbe
+ * zurueckzuschreiben. Die alte Gegenregel (`--static:hover` mit
+ * `border-color: var(--color-border)`) trug (0,2,0) und schlug damit
+ * `--done` (0,1,0) - am Wandtablett wurde der gruene Rahmen einer erledigten
+ * Teilaufgabe beim Ueberfahren grau, seit #1209. */
+.subtask-item__checkbox:not(.subtask-item__checkbox--static):hover {
   border-color: var(--module-accent, var(--color-accent));
 }
 
@@ -1214,6 +1286,39 @@
   background-color: var(--color-success);
   border-color: var(--color-success);
   animation: check-pop var(--duration-sm) var(--ease-out);
+}
+
+/* Am Wandtablett ist die Teilaufgabe ein Zustandszeichen, kein Bedienelement
+ * (#1209). Sie traegt dieselbe Grundform, damit die Liste dort nicht anders
+ * aussieht als anderswo - aber nichts, was eine Beruehrung verspricht: kein
+ * Zeigerwechsel, keine Modulton-Einladung beim Ueberfahren, und vor allem
+ * keine 15px-Trefflaeche um ein Element, das nichts tut. Der erste Anlauf war
+ * ein `disabled`-Knopf: die Form eines Bedienelements ohne seine Wirkung.
+ *
+ * DIE STELLE IST TEIL DER REGEL. Diese drei Regeln muessen NACH den
+ * Basisregeln darueber stehen: sie haetten sonst dieselbe Spezifitaet und
+ * verloeren nach Quellreihenfolge - sichtbar waere nichts, die Kaesten saehen
+ * weiter aus wie Knoepfe. Genau so ist es beim ersten Anlauf passiert, als der
+ * Block versehentlich in der `prefers-reduced-motion`-Abfrage weiter oben
+ * landete: dort wirkte er fuer niemanden, und nebenbei verlor
+ * `.task-status-btn--done` sein `animation: none`. */
+.subtask-item__checkbox--static {
+  cursor: default;
+}
+
+/* Dieselbe Stelle, derselbe Grund wie bei `.task-status-btn--done.--static`
+ * daneben - und derselbe Kaskadenfehler: `.subtask-item__checkbox--done`
+ * (Zeile 1258) traegt `check-pop` und steht davor. Am Wandtablett lief die
+ * Animation deshalb seit #1209 an jeder erledigten Teilaufgabe mit, bei jedem
+ * Neuzeichnen; mit dem Nur-lesen-Zeichen (#467) gilt das nun auch auf dem
+ * Telefon eines Mitglieds. Zwei Klassen, damit es nicht wieder an der
+ * Reihenfolge haengt. */
+.subtask-item__checkbox--done.subtask-item__checkbox--static {
+  animation: none;
+}
+
+.subtask-item__checkbox--static::before {
+  content: none;
 }
 
 .subtask-item__checkbox-icon {
@@ -1289,9 +1394,27 @@
   min-height: 60vh;
 }
 
+/* VIER Spalten, nicht drei. KANBAN_COLS() in pages/tasks.js fuehrt offen,
+ * laufend, erledigt und abgelegt; hier stand `repeat(3, 1fr)`, also fiel die
+ * vierte in eine zweite Rasterzeile unter die erste Spalte. Weil eine
+ * Rasterzeile ihre Hoehe von ihrer hoechsten Zelle nimmt, wanderte "Abgelegt"
+ * mit jeder erledigten Aufgabe weiter nach unten - das Desktop-Symptom aus
+ * #1250. Die Drei-Spalten-Regel stammt aus dem Redesign vom Maerz, die vierte
+ * Spalte kam Ende April dazu: die Spalte wurde ergaenzt, das Layout nicht.
+ *
+ * Zwei Stufen statt einer: vier Spalten waeren ab 640px je rund 160px breit,
+ * und eine Aufgabenkarte traegt dort Titel, Faelligkeit und Personen.
+ * `minmax(0, 1fr)` statt `1fr`, weil ein langer Titel ohne Leerzeichen die
+ * Spalte sonst ueber ihren Anteil hinaus aufzieht. */
 @media (min-width: 640px) {
   .kanban-board {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .kanban-board {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
 
@@ -1301,6 +1424,32 @@
   display: flex;
   flex-direction: column;
   min-height: 200px;
+}
+
+/* Eine zugeklappte Spalte ist nur noch ihr Kopf (#1250) - ohne das behielte sie
+ * ihre 200px und waere fast so hoch wie mit ein paar Karten darin, das
+ * Zuklappen also folgenlos. `min-height: auto` statt `0`: der Kopf traegt seine
+ * eigene Hoehe, und die soll er behalten. */
+.kanban-col--collapsed {
+  min-height: auto;
+}
+
+/* Der Kopf traegt die Gruppen-Grammatik aus list-row.css (.list-group__toggle,
+ * .list-group__chevron) - hier steht nur, was das Brett davon abweichend
+ * braucht: der Knopf fuellt die Zeile bis zum Zaehler. */
+.kanban-col__toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: start;
 }
 
 .kanban-col__header {
@@ -1330,6 +1479,15 @@
   gap: var(--space-2);
   min-height: 80px;
   transition: background-color var(--transition-fast);
+}
+
+/* `hidden` ALLEIN REICHT HIER NICHT, und das ist keine Vorsichtsmassnahme: die
+ * Regel darueber setzt `display: flex`, und eine Klassenregel sticht das
+ * `[hidden] { display: none }` des Browsers. Ohne diese Zeile traegt eine
+ * zugeklappte Spalte ihr Attribut und bleibt trotzdem stehen - sichtbar, voll,
+ * und fuer Screenreader zugleich als versteckt ausgewiesen. */
+.kanban-col__body[hidden] {
+  display: none;
 }
 
 .kanban-card {

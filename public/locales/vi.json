@@ -501,7 +501,10 @@
         "checkConflict": "Công việc đã thay đổi trong lúc này. Vui lòng mở lại.",
         "doneByPick": "Ai đã làm “{{title}}”?",
         "doneByToast": "Do {{name}} làm.",
-        "historyTickedBy": "đánh dấu bởi {{name}}"
+        "historyTickedBy": "đánh dấu bởi {{name}}",
+        "reminderLockedNeedsDueDate": "Công việc này có một nhắc nhở mà bạn không được phép thay đổi. Vì vậy nó cần một ngày đến hạn.",
+        "kanbanColCollapse": "Thu gọn cột",
+        "kanbanColExpand": "Mở rộng cột"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} bữa ăn",
@@ -2746,7 +2749,8 @@
         "displayRevokeDevice": "Thu hồi",
         "displayRevokeConfirm": "Kết thúc quyền truy cập của thiết bị này?",
         "displayRevokeDetail": "Máy tính bảng lập tức không hiển thị gì nữa. Để dùng tiếp, phải ghép nối lại.",
-        "displayDeleteDetail": "Tài khoản và mọi thiết bị đã ghép nối sẽ bị xóa. Không thể hoàn tác."
+        "displayDeleteDetail": "Tài khoản và mọi thiết bị đã ghép nối sẽ bị xóa. Không thể hoàn tác.",
+        "backupCliForeignKeyHint": "Bản sao lưu từ một cài đặt khác mang theo mã hóa của cài đặt đó: hãy đặt DB_ENCRYPTION_KEY thành giá trị của nó trước khi khởi động, nếu không Yuvomi sẽ không còn khởi động được sau khi thay tệp."
     },
     "login": {
         "tagline": "Chào mừng bạn trở lại trình lập kế hoạch gia đình.",
@@ -2895,7 +2899,10 @@
         "customDays": "Ngày",
         "customWeeks": "Tuần",
         "sectionTitlePlural": "Lời nhắc",
-        "sharedWithAssignees": "Những người được giao sự kiện này cũng nhận được lời nhắc này."
+        "sharedWithAssignees": "Những người được giao sự kiện này cũng nhận được lời nhắc này.",
+        "offsetAfterDue": "Sau ngày đến hạn",
+        "afterDueHint": "Lời nhắc này nằm sau ngày đến hạn ({{when}}) và giữ nguyên khi bạn lưu. Chọn thời gian nhắc trước để dời nó.",
+        "readOnlyNotice": "Nhắc nhở thuộc về Lịch. Nếu không có quyền ghi ở đó, cài đặt này giữ nguyên."
     },
     "birthdays": {
         "inDays": "trong {{days}} ngày",
@@ -4007,7 +4014,22 @@
             "finishedHint": "Đã lưu thời điểm kết thúc. Bạn có thể sửa thời gian, thêm đánh giá hoặc ghi chú.",
             "rangeError": "Kết thúc phải sau bắt đầu và không được ở tương lai.",
             "elapsed": "Thời gian nhịn ăn",
-            "sinceLast": "Từ lần nhịn ăn trước"
+            "sinceLast": "Từ lần nhịn ăn trước",
+            "noRecord": "Không có bản ghi",
+            "goalCoverage": "Đã ghi mục tiêu cho {{records}} trong {{total}} lần nhịn ăn",
+            "goalCoverage_one": "Đã ghi mục tiêu cho {{records}} trong {{total}} lần nhịn ăn",
+            "chartLegend": "Thời lượng thực tế (trái) và mục tiêu đã ghi (phải); các giá trị là tổng theo từng ngày hoàn thành.",
+            "capturedGoal": "Mục tiêu đã ghi",
+            "statsTitle": "Thống kê",
+            "statsCount": "Tổng số lần nhịn ăn",
+            "statsTotal": "Tổng thời lượng",
+            "statsAverage": "Trung bình",
+            "statsCurrentStreak": "Chuỗi hiện tại",
+            "statsLongestStreak": "Chuỗi dài nhất",
+            "statsWeekly": "Lần nhịn ăn trong bảy ngày qua",
+            "allTime": "Toàn bộ lịch sử",
+            "thisYear": "Năm nay",
+            "last30Days": "30 ngày qua"
         },
         "tabs": {
             "overview": "Tổng quan",

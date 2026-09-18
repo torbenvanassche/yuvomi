@@ -152,6 +152,58 @@ let db;
 // --------------------------------------------------------
 
 /**
+ * Meldung für eine Datenbank, die sich mit dem gesetzten Key nicht öffnen lässt.
+ *
+ * Zwei verschiedene Ursachen erzeugen denselben SQLCipher-Fehler, und die alte
+ * Meldung nannte nur die erste. Die zweite hat einen Melder zwei Tage gekostet
+ * (#1267): er hatte die Datenbankdatei von Hand ersetzt, das Write-Ahead-Log der
+ * VORHERIGEN Datenbank lag daneben, und SQLite liest dessen Frames beim Öffnen
+ * mit - verschlüsselt mit dem alten Key. Die Datei selbst ist dann einwandfrei
+ * und der Key stimmt; nur das Journal gehört nicht dazu.
+ *
+ * Der zweite Absatz ist bewusst BEDINGT formuliert, und das ist der Kern seiner
+ * Fassung: ein `-wal` neben der Datenbank ist KEIN Hinweis auf einen Dateitausch.
+ * `journal_mode = WAL` steht dauerhaft, und es gibt nirgends einen SIGTERM- oder
+ * SIGINT-Handler, der die Verbindung vor dem Stoppen schließt - SQLite räumt das
+ * Journal aber nur beim sauberen Schließen weg. Nach einem gewöhnlichen
+ * Container-Stop liegt es also da, und zwar als EIGENES Journal dieser Datenbank.
+ * Ein unbedingtes „lösch es" würde hier bestätigte, nur noch nicht
+ * gecheckpointete Transaktionen verwerfen und den eigentlichen Schlüsselfehler
+ * nicht einmal berühren - derselbe Fehlertyp, gegen den dieser ganze Vorgang
+ * geht (Review-Befund auf PR #1275). Deshalb: die Bedingung kennt nur der Admin
+ * („hast du die Datei von Hand ersetzt?"), und der Rat lautet beiseitelegen,
+ * nicht löschen.
+ *
+ * Der dritte Satz ist der eigentliche Grund für #1267: die Restore-Meldung
+ * riet dazu, den Key zu tauschen und neu zu starten. Wer das auf einer Instanz
+ * mit eigener verschlüsselter Datenbank tut, landet genau hier und kommt nicht
+ * mehr an die Oberfläche - der Weg zurück gehört deshalb in die Meldung.
+ * @returns {string}
+ */
+function undecryptableDatabaseError() {
+  const lines = [
+    `[DB] Wrong encryption key - ${DB_PATH} could not be decrypted with DB_ENCRYPTION_KEY.`,
+    'The key that opens this file is the one it was created with. If you just changed '
+    + 'DB_ENCRYPTION_KEY to take over a backup from another installation, change it back: '
+    + 'this database belongs to this instance, and a key swap alone does not import anything - '
+    + 'it only locks you out of what is here.',
+  ];
+  if (existsSync(`${DB_PATH}-wal`)) {
+    lines.push(
+      `A write-ahead log is lying next to the database (${DB_PATH}-wal). On its own that means `
+      + 'nothing is wrong with it: after any stop that was not a clean shutdown the log stays, and '
+      + 'it then belongs to THIS database and can hold committed transactions that are not in the '
+      + 'main file yet. Do not delete it in that case - it would throw those away and would not fix '
+      + 'the key. It is only a cause of this error if you replaced the database file by hand, '
+      + 'because then the log belongs to the database you replaced and is still read on open. If '
+      + `that is what happened, stop Yuvomi and move ${DB_PATH}-wal and ${DB_PATH}-shm aside `
+      + 'before starting again.'
+    );
+  }
+  return lines.join(' ');
+}
+
+/**
  * Datenbankverbindung öffnen, SQLCipher-Key setzen, Migrations ausführen.
  * Einmalig beim Serverstart aufrufen.
  * @param {{ plaintextBackup?: boolean }} [options] `plaintextBackup: false`
@@ -189,10 +241,7 @@ function init({ plaintextBackup = true } = {}) {
     try {
       assertReadable(db);
     } catch {
-      throw new Error(
-        `[DB] Wrong encryption key — ${DB_PATH} could not be decrypted. ` +
-        'Check DB_ENCRYPTION_KEY against the value used when the database was created.'
-      );
+      throw new Error(undecryptableDatabaseError());
     }
   }
 
@@ -8589,6 +8638,65 @@ const MIGRATIONS = [
   },
   {
     version: 217,
+    description: 'Reminders of a deleted task or event are removed with it',
+    // DIE ERINNERUNG GEHOERT DEM DING, NICHT DEM FENSTER, DAS ES GELOESCHT HAT.
+    //
+    // `reminders.entity_type`/`entity_id` sind ein WEICHER Verweis - die einzige
+    // Fremdschluesselspalte der Tabelle ist `created_by`. Aufgeraeumt hat bisher
+    // allein der Client: `deleteTaskWithUndo` schickte hinter dem DELETE der
+    // Aufgabe noch ein `DELETE /reminders?entity_type=task&entity_id=...`, mit
+    // stummem `catch`. Drei Wege liessen die Zeile stehen, und alle drei kamen
+    // vor: der `keepalive`-Aufruf beim Zuklappen des Tabs geht verloren; die
+    // Aufgabe wird ueber /api/v1 oder MCP geloescht, wo kein Client mitraeumt;
+    // oder der Aufrufer hat `tasks: write` und `calendar: read`, dann antwortet
+    // der Loeschweg mit 403 und das `catch` verschluckt ihn. Uebrig blieb eine
+    // Erinnerung an eine Aufgabe, die es nicht mehr gibt - sie feuert als
+    // Benachrichtigung mit leerem Text (entity_title ist dann NULL, siehe
+    // services/notifications.js) und steht in /reminders/pending.
+    //
+    // Ein VIERTER Fall, den der Client gar nicht abdecken KONNTE: er loescht nur
+    // die eigenen Zeilen (`AND created_by = ?`). Die Erinnerung, die sich ein
+    // anderes Haushaltsmitglied auf dieselbe Aufgabe gesetzt hatte, ueberlebte
+    // sie auch bei perfektem Netz.
+    //
+    // WARUM EIN TRIGGER UND NICHT EINE ZEILE IN DER ROUTE: Aufgaben und Termine
+    // verschwinden an mehr als einer Stelle. DELETE /tasks/:id, die per CASCADE
+    // mitgehenden Unteraufgaben, discardRecurrenceFollowup() beim Zuruecknehmen
+    // eines Hakens, deleteVisitLinks() in housekeeping.js, dazu bei Terminen der
+    // Google-/ICS-/CalDAV-Abgleich und calendar-prune.js. Eine Regel, die in
+    // einer Route WOHNT, deckt genau diese eine Route ab; die naechste Stelle
+    // erbt sie nicht. Im Trigger gilt sie fuer jedes DELETE, auch fuer das per
+    // Fremdschluessel ausgeloeste (nachgemessen: AFTER-DELETE feuert auch fuer
+    // CASCADE-Zeilen, ohne dass `recursive_triggers` noetig waere).
+    //
+    // WAS EIN KUENFTIGER TABELLEN-REBUILD BEACHTEN MUSS: `ALTER TABLE ... RENAME
+    // TO tasks` verliert die Trigger der alten Tabelle - genau wie bei
+    // `trg_search_tasks_ad`, das die Rebuilds in v114/v117 (tasks) und v166/v194
+    // (calendar_events) deshalb jedes Mal neu anlegen.
+    // test/test-reminder-orphans.js faehrt die volle Migrationskette und loescht
+    // danach wirklich eine Aufgabe, faellt also auf, wenn es jemand vergisst.
+    up: `
+      DELETE FROM reminders
+      WHERE entity_type = 'task'
+        AND NOT EXISTS (SELECT 1 FROM tasks WHERE tasks.id = reminders.entity_id);
+
+      DELETE FROM reminders
+      WHERE entity_type = 'event'
+        AND NOT EXISTS (SELECT 1 FROM calendar_events WHERE calendar_events.id = reminders.entity_id);
+
+      CREATE TRIGGER IF NOT EXISTS trg_reminders_tasks_ad
+      AFTER DELETE ON tasks BEGIN
+        DELETE FROM reminders WHERE entity_type = 'task' AND entity_id = OLD.id;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS trg_reminders_events_ad
+      AFTER DELETE ON calendar_events BEGIN
+        DELETE FROM reminders WHERE entity_type = 'event' AND entity_id = OLD.id;
+      END;
+    `,
+  },
+  {
+    version: 218,
     description: 'Calendar: first-class local calendars with per-calendar feeds',
     up(db) {
       const tableExists = db.prepare(`
@@ -8842,16 +8950,84 @@ async function backupToFile(destinationPath) {
   return destinationPath;
 }
 
+/**
+ * Warum eine Backup-Datei nicht lesbar ist - so genau, wie es hier zu wissen ist.
+ *
+ * SQLite sagt zu jeder Datei, die es nicht entziffern kann, denselben Satz:
+ * `file is not a database`. Für ein Backup aus einer ANDEREN Installation ist
+ * das die häufigste und zugleich die irreführendste Auskunft - die Datei ist
+ * heil, es fehlt nur der Schlüssel, mit dem sie geschrieben wurde. Gemeldet
+ * als #1267: der Umzug von einer Instanz mit selbst gesetzten Secrets auf eine,
+ * die sich ihre eigenen erzeugt, endete im Restore-Dialog bei „is not a file",
+ * und der Nutzer schloss daraus auf ein kaputtes Backup. Danach hat er die
+ * Datenbankdatei von Hand ersetzt und die Instanz zerlegt - der teure Teil des
+ * Fehlers steckt nicht im Abbruch, sondern in dem, wozu die Auskunft einlädt.
+ *
+ * Unterschieden wird am Dateikopf, nicht geraten: eine unverschlüsselte
+ * SQLite-Datei beginnt mit `SQLite format 3\0`. Fehlt der Kopf, ist die Datei
+ * verschlüsselt ODER überhaupt keine Datenbank - beides kann von hier aus nicht
+ * auseinandergehalten werden, deshalb nennt die Meldung den wahrscheinlichen
+ * Fall zuerst und den anderen im letzten Satz.
+ *
+ * Die Auskunft hat es beim zweiten Anlauf erneut getan, und das ist der Grund
+ * fuer die Fassung von jetzt: sie riet, DB_ENCRYPTION_KEY auf den Key der
+ * Quellinstanz zu setzen und neu zu starten. Auf einer Instanz OHNE eigenen Key
+ * stimmt das - ihre Klartextdatenbank wird beim Start mitverschluesselt, und
+ * danach passt der Key zu beidem. Auf einer Instanz MIT eigenem Key ist es eine
+ * Sackgasse: die eigene Datenbank ist mit dem alten Key verschluesselt, `init()`
+ * bricht beim naechsten Start ab, und der Dialog, der den Rat gegeben hat, ist
+ * nicht mehr erreichbar. Deshalb steht der Rat nur noch im `!DB_KEY`-Zweig; der
+ * andere verweist auf den Weg ueber die Kommandozeile, der Datei und Key
+ * zusammen umstellt (#1267).
+ */
+function unreadableBackupError(encrypted, cause) {
+  if (!encrypted) {
+    return new Error('Backup file is not a valid Yuvomi database.', { cause });
+  }
+  if (!DB_KEY) {
+    return new Error(
+      'Backup file could not be read: it has no plain SQLite header, so it is likely encrypted - '
+      + 'and DB_ENCRYPTION_KEY is not set on this instance, so there is nothing to decrypt it with. '
+      + 'A backup carries the encryption of the instance that wrote it: set DB_ENCRYPTION_KEY to '
+      + "that instance's key and restart Yuvomi, then restore again. If the file was never "
+      + 'encrypted, it is not a valid Yuvomi database.',
+      { cause }
+    );
+  }
+  return new Error(
+    "Backup file could not be decrypted with this instance's DB_ENCRYPTION_KEY. A backup carries "
+    + 'the encryption of the instance that wrote it, so a backup from another installation cannot '
+    + 'be read here. Do NOT just set DB_ENCRYPTION_KEY to that installation\'s key and restart: '
+    + "this instance's own database is encrypted with the key it has now, so after the swap Yuvomi "
+    + 'would not start at all and this dialog would be out of reach. Taking over a backup from '
+    + 'another installation replaces the database file and sets the key together, with Yuvomi '
+    + 'stopped - see "CLI / Docker Compose restore" on this page. If both installations really do '
+    + 'have the same key, the file is not a Yuvomi database.',
+    { cause }
+  );
+}
+
 function validateBackupFile(sourcePath) {
   // Backups, die vor der Verschlüsselungs-Umstellung entstanden sind, liegen im
   // Klartext vor. Sie müssen einspielbar bleiben — würden wir ihnen den Key
   // aufsetzen, läse SQLite sie als verschlüsselt und die Validierung schlüge
   // fehl. Nach dem Restore verschlüsselt init() sie ohnehin.
   const encrypted = !isPlaintextDatabase(sourcePath);
-  const candidate = new Database(sourcePath, { readonly: true, fileMustExist: true });
+  let candidate;
+  try {
+    candidate = new Database(sourcePath, { readonly: true, fileMustExist: true });
+  } catch (err) {
+    // Das Öffnen zählt mit: eine Datei, an der schon der Konstruktor scheitert,
+    // liefe sonst an der Diagnose vorbei und käme als rohe SQLite-Zeile heraus.
+    throw unreadableBackupError(encrypted, err);
+  }
   try {
     if (encrypted) applyEncryptionKey(candidate);
-    assertReadable(candidate);
+    try {
+      assertReadable(candidate);
+    } catch (err) {
+      throw unreadableBackupError(encrypted, err);
+    }
     const row = candidate.prepare(`
       SELECT name
       FROM sqlite_master

@@ -37,6 +37,7 @@ import { renderUserMultiSelect, getSelectedUserIds, bindUserMultiSelect, renderA
 import { withChosenPeople } from '/utils/people-picker.js';
 import { othersCanRead } from '/utils/household.js';
 import { wireTablist } from '/utils/tablist.js';
+import { isNavModuleReadOnly } from '/permissions.js';
 // EINE Schalterform, auch hier. Das Primitiv liegt unter `/settings/`, weil
 // dort sein Anlass lag (vier Schalterformen nebeneinander, Critique
 // 2026-07-27) - die Funktion selbst ist geteiltes UI-Vokabular und kein
@@ -431,6 +432,25 @@ const DATE_KEY_RE = /^\d{4}-\d{2}-\d{2}$/;
  * Stundenlinien, Termine, Now-Linie) folgt automatisch. JS kennt die Dichte
  * gar nicht, es kennt nur den Bezug. */
 const HOUR_VAR = '--cal-hour-height';
+
+/**
+ * Darf dieser Nutzer in den Kalender schreiben? (#467)
+ *
+ * Der Kalender kennt keinen Bedienpunkt, der ZUSTAND anzeigt und dabei
+ * schreibt - anders als der Erledigt-Haken einer Aufgabe. Jeder Schreibweg hier
+ * ist eine reine Handlung (anlegen, bearbeiten, loeschen, zuruecksetzen), und
+ * alle verschwinden deshalb, statt gesperrt dazustehen. Was bleibt, ist die
+ * ganze Leseseite: blaettern, filtern, suchen, Termin oeffnen.
+ *
+ * `reminders` und `birthdays` laufen serverseitig auf dasselbe Modul
+ * (server/scopes.js) - ein Erinnerungs-Schreibvorgang aus dem Terminformular
+ * faellt damit unter dieselbe Sperre.
+ *
+ * Selbes Muster wie readOnly() in public/pages/waste.js und schedule.js.
+ */
+function readOnly() {
+  return isNavModuleReadOnly('calendar');
+}
 
 /** Vertikaler Versatz einer Minutenzahl als calc() gegen die Stundenhoehe. */
 function hourOffset(minutes) {
@@ -1615,9 +1635,13 @@ export async function render(container, { user }) {
     <div class="calendar-page app-page app-page--full" id="calendar-page" data-composition="full">
       <div class="page-toolbar page-toolbar--wrap cal-toolbar" id="cal-toolbar"></div>
       <div id="cal-body" style="flex:1;display:flex;flex-direction:column;overflow:hidden;"></div>
+      ${/* Die CSS-Regel html[data-module-readonly] .page-fab (layout.css) blendet
+            ihn ohnehin aus; hier faellt er ganz weg, damit `findPageFab` unten
+            nicht doch noch einen Anlegeweg verdrahtet. */ ''}
+      ${readOnly() ? '' : `
       <button class="page-fab" id="fab-new-event" aria-label="${t('calendar.newEvent')}" data-dock-label="${t('newLabel.calendar')}">
         <i data-lucide="plus" class="icon-xl" aria-hidden="true"></i>
-      </button>
+      </button>`}
     </div>
   `);
 
@@ -1712,6 +1736,27 @@ export async function render(container, { user }) {
 // Toolbar
 // --------------------------------------------------------
 
+/**
+ * Der Zeitraum-Kopf: zurueck, Wert, vor - und DAHINTER der Reset. „Heute" ist
+ * ein Reset, kein Navigationsschritt: hinter dem Stepper statt vor den
+ * Pfeilen. Das ist die Regel, die budget.js an „Aktuell" festhaelt, und seit
+ * #1164 gilt sie fuer alle drei Zeitraum-Koepfe (Kalender, Wochenplan,
+ * Budget). Als eigener Baustein, damit der Verhaltenstest die GERENDERTE
+ * Reihenfolge prueft (test-calendar.js), statt Quelltext zu lesen.
+ */
+function periodNavHtml() {
+  return `
+      <button class="btn btn--icon" id="cal-prev" aria-label="${t('calendar.back')}">
+        <i data-lucide="chevron-left" aria-hidden="true"></i>
+      </button>
+      <span class="cal-toolbar__label" id="cal-label"></span>
+      <button class="btn btn--icon" id="cal-next" aria-label="${t('calendar.forward')}">
+        <i data-lucide="chevron-right" aria-hidden="true"></i>
+      </button>
+      <button class="btn btn--secondary cal-toolbar__today" id="cal-today">${t('calendar.today')}</button>
+  `;
+}
+
 function renderToolbar() {
   const bar = _container.querySelector('#cal-toolbar');
   if (!bar) return;
@@ -1751,16 +1796,7 @@ function renderToolbar() {
   bar.replaceChildren();
   bar.insertAdjacentHTML('beforeend', `
     <h1 class="page-toolbar__title">${t('calendar.title')}</h1>
-    <div class="page-toolbar__center cal-toolbar__month">
-      <button class="btn btn--secondary cal-toolbar__today" id="cal-today">${t('calendar.today')}</button>
-      <button class="btn btn--icon" id="cal-prev" aria-label="${t('calendar.back')}">
-        <i data-lucide="chevron-left" aria-hidden="true"></i>
-      </button>
-      <span class="cal-toolbar__label" id="cal-label"></span>
-      <button class="btn btn--icon" id="cal-next" aria-label="${t('calendar.forward')}">
-        <i data-lucide="chevron-right" aria-hidden="true"></i>
-      </button>
-    </div>
+    <div class="page-toolbar__center cal-toolbar__month">${periodNavHtml()}</div>
     <div class="page-toolbar__actions">
       ${filterBtnHtml}
       <button class="btn btn--icon cal-toolbar__calendars-btn" id="cal-calendars"
@@ -1779,10 +1815,11 @@ function renderToolbar() {
               aria-expanded="false">
         <i data-lucide="search" aria-hidden="true"></i>
       </button>
+      ${readOnly() ? '' : `
       <button class="btn btn--primary toolbar-new-btn" id="cal-add" aria-label="${t('calendar.addEvent')}">
         <i data-lucide="plus" aria-hidden="true"></i>
         <span class="toolbar-new-btn__label">${t('newLabel.calendar')}</span>
-      </button>
+      </button>`}
     </div>
     <!-- Bar-Zeile des Kopfs (Werkzeugzeilen-Regel, layout.css): das Ansichts-
          Segment hatte im Actions-Slot bei 1280px 212px fuer 245px Inhalt -
@@ -1809,7 +1846,7 @@ function renderToolbar() {
   bar.querySelector('#cal-prev').addEventListener('click', () => navigate(-1));
   bar.querySelector('#cal-next').addEventListener('click', () => navigate(1));
   bar.querySelector('#cal-today').addEventListener('click', goToday);
-  bar.querySelector('#cal-add').addEventListener('click', () => openEventModal({ mode: 'create', date: newEventDate() }));
+  bar.querySelector('#cal-add')?.addEventListener('click', () => openEventModal({ mode: 'create', date: newEventDate() }));
   bar.querySelector('#cal-calendars').addEventListener('click', openLocalCalendarsModal);
   bar.querySelector('#cal-search').addEventListener('click', openCalendarSearch);
   bar.querySelector('#cal-filters').addEventListener('click', openCalendarFilters);
@@ -1895,26 +1932,44 @@ function syncViewPanel() {
  *
  * Ein Knopf, der an den aktuellen Zeitraum zurueckfuehrt, ist sinnlos, solange
  * man dort steht - Apple Kalender und Fantastical blenden ihn genau dann aus.
- * Hier ist er ausserdem die Gegenmassnahme zu `flex-basis: 0` am Center-Slot
- * (layout.css): der engere Slot kappt das Zeitraum-Label sonst auf seine
- * 7ch-Untergrenze, und die 66px dieses Knopfes sind genau die, die fehlen.
  *
- * `hidden` STATT ENTFERNEN, und das ist der Punkt: der Slot behaelt seine
- * Basis 0 und bleibt in der Titelzeile, egal ob der Knopf da ist. Die
- * KOPFHOEHE springt beim Navigieren damit nicht - nur die Labelbreite aendert
- * sich. Ein Kopf, der beim Blaettern seine Hoehe wechselt, waere derselbe
- * Fehler, den die kollabierende Leiste mit ihrem negativen `top` vermeidet.
+ * `.is-current` STATT `hidden` (PR #1200 Review): `hidden` loeste in
+ * `display: none` auf und entfernte die Box aus dem Fluss - das Label daneben
+ * traegt `flex: 1 1 auto` und wuchs in den frei gewordenen Platz, wodurch "›"
+ * beim Erscheinen/Verschwinden des Knopfes um dessen Breite ruckte. Ein Klick
+ * auf "›", der den aktuellen Zeitraum verlaesst, liess den Reset dadurch genau
+ * an der Stelle auftauchen, an der eben noch "›" stand - ein zweiter Klick
+ * ohne Mausbewegung traf den Reset statt des Pfeils (gemessen 7/11 ueber 33
+ * Layouts). `.is-current` (layout.css) blendet nur per `visibility` aus, die
+ * Box bleibt im Fluss und der Slot bleibt gleich breit, egal ob der Knopf zu
+ * sehen ist. `inert` nimmt ihm zusaetzlich Zeiger, Fokus und A11y-Baum, ohne
+ * ihn wie `hidden` aus dem Layout zu nehmen.
+ *
+ * War der Knopf fokussiert, als er aktuell wurde (Enter/Space auf "Heute"
+ * fuehrt genau dorthin), holt sich `syncTodayButton()` selbst den Fokus vorher
+ * auf einen Stepper daneben (kein eigener Helfer - die paar Zeilen weiter
+ * unten, direkt vor dem `inert`-Zuweisen) - sonst faellt er auf `<body>`, weil
+ * `inert` ein fokussiertes Element ebenso blurred wie `display: none` es taete.
  *
  * Die Frage „ist heute zu sehen" beantwortet der ANGEZEIGTE BEREICH, nicht
  * eine Fallunterscheidung je Ansicht: `getRangeForView` kennt ihn fuer alle
  * vier, und eine zweite Rechnung daneben waere die naechste Stelle, an der
  * Monat und Agenda auseinanderlaufen.
  */
-function syncTodayButton() {
-  const btn = _container.querySelector('#cal-today');
+function syncTodayButton(root = _container) {
+  const btn = root?.querySelector('#cal-today');
   if (!btn) return;
   const { from, to } = getRangeForView(state.view, state.cursor);
-  btn.hidden = state.today >= from && state.today <= to;
+  const isCurrent = state.today >= from && state.today <= to;
+  // `typeof document` statt eines nackten Bezeichners: Testumgebungen ohne
+  // DOM stubben `document` nicht immer, und ein nackter Bezeichner wirft dort
+  // schon beim Werteauswerten, bevor `isCurrent` ihn kurzschliessen kann.
+  const active = typeof document !== 'undefined' ? document.activeElement : null;
+  if (isCurrent && active === btn) {
+    (root.querySelector('#cal-prev') || root.querySelector('#cal-next'))?.focus();
+  }
+  btn.classList.toggle('is-current', isCurrent);
+  btn.inert = isCurrent;
 }
 
 function getWeekNumber(dateStr) {
@@ -3250,7 +3305,7 @@ function renderAgendaView(container) {
         ? emptyStateHTML({
           icon: 'calendar-plus',
           title: t('calendar.agendaEmpty'),
-          action: { label: t('calendar.newEvent'), attrs: { id: 'agenda-empty-cta' } },
+          action: readOnly() ? undefined : { label: t('calendar.newEvent'), attrs: { id: 'agenda-empty-cta' } },
         })
         : groups.map(({ date, events, tasks, holidays, schedule, waste }) => `
           <div class="agenda-day">
@@ -4006,7 +4061,7 @@ function renderCalendarSearchState(kind) {
       <div class="cal-search-status">
         <i data-lucide="calendar-search" class="cal-search-status__icon" aria-hidden="true"></i>
         <p class="cal-search-status__text">${esc(t('calendar.searchEmpty', { query: searchQuery }))}</p>
-        <button class="btn btn--secondary" id="cal-search-empty-cta">${esc(t('calendar.newEvent'))}</button>
+        ${readOnly() ? '' : `<button class="btn btn--secondary" id="cal-search-empty-cta">${esc(t('calendar.newEvent'))}</button>`}
       </div>`);
     // Bewusst ohne newEventDate(): die Trefferliste ersetzt die Ansicht, es steht
     // gerade kein Zeitraum auf dem Schirm, auf den ein Vorschlag sich beziehen könnte.
@@ -4104,6 +4159,8 @@ async function openFoundEvent(ev) {
 }
 
 export const __test = {
+  // Die Nur-lesen-Weiche (#467) und der Anlegeweg, den sie als erstes schliesst.
+  readOnly, openEventModal,
   buildEventModalContent,
   fetchWindow,
   getWeekRange,
@@ -4166,7 +4223,6 @@ export const __test = {
   wasteEnabled,
   wasteOccurrencesOnDay,
   renderWasteChip,
-  activeFilterCount,
   availableLayers,
   renderAgendaView,
   renderMonthView,
@@ -4174,6 +4230,8 @@ export const __test = {
   wasteTypeOptions,
   restoreWasteTypeFilter,
   buildLayerRowsHtml,
+  periodNavHtml,
+  syncTodayButton,
 };
 
 function renderAgendaEvent(ev, dayStr) {
@@ -4408,7 +4466,11 @@ async function openEventDetail(ev, anchor = null) {
   let reminders = [];
   const remindersReady = loadReminderForEvent(reminderOwnerId(ev)).then((r) => { reminders = r; });
 
-  const actions = [{
+  // LOESCHEN, ZURUECKSETZEN UND BEARBEITEN FALLEN WEG, DIE KARTE BLEIBT (#467).
+  // "In Karte oeffnen" ist der einzige Eintrag dieser Fusszeile, der nichts
+  // schreibt - er gehoert deshalb auch einem Nur-lesen-Nutzer. Die Liste faengt
+  // bei `calendar: read` leer an und nimmt unten nur noch ihn auf.
+  const actions = readOnly() ? [] : [{
     id: 'detail-delete',
     label: t('common.delete'),
     variant: 'danger-ghost',
@@ -4446,7 +4508,7 @@ async function openEventDetail(ev, anchor = null) {
 
   // ICS-Abos: Ein lokal geänderter Termin lässt sich auf das Original
   // zurücksetzen. Die Aktion gehört zum Objekt, also in die Fußzeile.
-  if (ev.external_source === 'ics' && ev.user_modified === 1) {
+  if (ev.external_source === 'ics' && ev.user_modified === 1 && !readOnly()) {
     actions.push({
       id: 'detail-ics-reset',
       label: t('calendar.ics.reset'),
@@ -4476,7 +4538,9 @@ async function openEventDetail(ev, anchor = null) {
     anchor,
     sections: renderEventDetail(ev, reminders),
     actions,
-    edit: {
+    // Ohne `edit` baut die geteilte Ansicht keinen Bearbeiten-Knopf
+    // (components/detail-view.js) - dasselbe Muster wie in der Aufgabenansicht.
+    edit: readOnly() ? undefined : {
       label: t('common.edit'),
       title: t('calendar.editEvent'),
       // Das Formular wartet auf die Erinnerungen, die Leseansicht nicht. Ohne
@@ -4906,6 +4970,12 @@ function wireVisibilityWarning(panel, selectSel, msName, warnSel) {
 }
 
 function openEventModal({ mode, event = null, date = null, reminder = null, time = null }) {
+  // DER LETZTE RIEGEL VOR DEM FORMULAR. Es gibt sieben Wege hierher - Kopfknopf,
+  // FAB, Klick in eine leere Stunde der Wochen- und der Tagesansicht, zwei
+  // Leerzustands-CTAs und der Bearbeiten-Weg der Detailansicht. Sie alle
+  // einzeln zu sperren waere sechs Chancen, eine zu vergessen; der siebte Weg,
+  // der morgen dazukommt, findet den Riegel hier ohnehin.
+  if (readOnly()) return;
   if (mode === 'edit' && event?.housekeeping_visit_id) {
     window.yuvomi.navigate(`/housekeeping?editVisit=${event.housekeeping_visit_id}`);
     return;
@@ -5559,6 +5629,10 @@ function confirmLocalWholeSeriesDelete(event) {
 }
 
 async function saveEvent(overlay, mode, event, existingReminder = null, attachmentState = null) {
+  // Dasselbe wie in handleFormSubmit der Aufgabenseite: das Formular steht bei
+  // `calendar: read` nicht offen, aber ein Dialog kann es gewesen sein, als die
+  // Rechte wechselten.
+  if (readOnly()) return;
   const eventId = event?.id;
   const saveBtn = overlay.querySelector('#modal-save');
   const title   = overlay.querySelector('#modal-title').value.trim();
@@ -5813,7 +5887,6 @@ async function deleteEvent(event) {
   const target = event?.series_id
     ? calendarOccurrenceDeleteTarget(event, 'series')
     : { method: 'delete', path: `/calendar/${event.id}` };
-  const reminderEntityId = event?.series_id ?? event.id;
   scheduleCalendarDeleteWithUndo({
     state,
     deleteScope: {
@@ -5824,8 +5897,13 @@ async function deleteEvent(event) {
     message: t('calendar.deletedToast'),
     schedule: scheduleUndoableDelete,
     requestDelete: async ({ keepalive }) => {
+      // Die Erinnerungen des Termins raeumt der Server mit ab (Migration v217,
+      // AFTER-DELETE-Trigger auf `calendar_events`). Der zweite Aufruf, der hier
+      // stand, konnte das nicht leisten: beim Zuklappen des Tabs ging er
+      // verloren, sein stummes `catch` verschluckte ein 403, und er loeschte nur
+      // die EIGENEN Zeilen - die per #921 an Zugewiesene verteilten blieben
+      // stehen.
       await api.delete(target.path, { keepalive });
-      api.delete(`/reminders?entity_type=event&entity_id=${reminderEntityId}`, { keepalive }).catch(() => {});
       if (!keepalive) refreshReminders();
     },
     isViewActive: () => Boolean(_container?.isConnected),
@@ -5959,6 +6037,10 @@ function confirmExternalSeriesDelete(event) {
 }
 
 async function requestDeleteEvent(event) {
+  // Der Riegel vor jedem Loeschweg: die Fusszeile der Detailansicht ist der
+  // sichtbare, die drei Serien-Varianten darunter (ganze Reihe, dieser und
+  // folgende, einzelner Termin) haengen alle an dieser einen Weiche.
+  if (readOnly()) return;
   if (isExternalRecurringSeries(event)) {
     if (await confirmExternalSeriesDelete(event)) await deleteEvent(event);
     return;

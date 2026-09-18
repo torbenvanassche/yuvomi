@@ -501,7 +501,10 @@
         "checkConflict": "A feladat időközben megváltozott. Nyissa meg újra.",
         "doneByPick": "Ki végezte el ezt: „{{title}}”?",
         "doneByToast": "Elvégezte: {{name}}.",
-        "historyTickedBy": "kipipálta: {{name}}"
+        "historyTickedBy": "kipipálta: {{name}}",
+        "reminderLockedNeedsDueDate": "Ehhez a feladathoz emlékeztető tartozik, amelyet nem módosíthatsz. Ezért határidőre van szüksége.",
+        "kanbanColCollapse": "Oszlop összecsukása",
+        "kanbanColExpand": "Oszlop kibővítése"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} étkezésből",
@@ -2746,7 +2749,8 @@
         "displayRevokeDevice": "Visszavonás",
         "displayRevokeConfirm": "Megszünteted ennek az eszköznek a hozzáférését?",
         "displayRevokeDetail": "A táblagép azonnal semmit sem mutat többé. A további használathoz újra kell párosítani.",
-        "displayDeleteDetail": "A fiók és az összes párosított eszköz törlődik. Ezt nem lehet visszavonni."
+        "displayDeleteDetail": "A fiók és az összes párosított eszköz törlődik. Ezt nem lehet visszavonni.",
+        "backupCliForeignKeyHint": "A másik telepítésből származó biztonsági mentés annak titkosítását hordozza: indítás előtt állítsa a DB_ENCRYPTION_KEY értékét arra, különben a Yuvomi a fájlcsere után már nem indul el."
     },
     "login": {
         "tagline": "Üdv újra a családi tervezőben.",
@@ -2895,7 +2899,10 @@
         "customDays": "Nap",
         "customWeeks": "Hét",
         "sectionTitlePlural": "Emlékeztetők",
-        "sharedWithAssignees": "Az eseményhez rendelt személyek is megkapják ezt az emlékeztetőt."
+        "sharedWithAssignees": "Az eseményhez rendelt személyek is megkapják ezt az emlékeztetőt.",
+        "offsetAfterDue": "A határidő után",
+        "afterDueHint": "Ez az emlékeztető a határidő után van ({{when}}), és mentéskor változatlan marad. Válasszon előzetes időt az áthelyezéséhez.",
+        "readOnlyNotice": "Az emlékeztetők a Naptárhoz tartoznak. Ott írási jog nélkül ez a beállítás változatlan marad."
     },
     "birthdays": {
         "inDays": "{{days}} nap múlva",
@@ -4007,7 +4014,22 @@
             "finishedHint": "A befejezés mentve. Módosíthatod az időpontokat, és értékelést vagy megjegyzést adhatsz hozzá.",
             "rangeError": "A végnek a kezdet után kell lennie, és nem lehet a jövőben.",
             "elapsed": "Böjt időtartama",
-            "sinceLast": "Az utolsó böjt óta"
+            "sinceLast": "Az utolsó böjt óta",
+            "noRecord": "Nincs bejegyzés",
+            "goalCoverage": "{{total}} böjtből {{records}} esetében van rögzített cél",
+            "goalCoverage_one": "{{total}} böjtből {{records}} esetében van rögzített cél",
+            "chartLegend": "Tényleges időtartam (balra) és rögzített cél (jobbra); az értékek a befejezés dátuma szerinti összegek.",
+            "capturedGoal": "Rögzített cél",
+            "statsTitle": "Statisztikák",
+            "statsCount": "Böjtök összesen",
+            "statsTotal": "Teljes időtartam",
+            "statsAverage": "Átlag",
+            "statsCurrentStreak": "Jelenlegi sorozat",
+            "statsLongestStreak": "Leghosszabb sorozat",
+            "statsWeekly": "Böjtök az elmúlt hét napban",
+            "allTime": "Teljes előzmény",
+            "thisYear": "Idén",
+            "last30Days": "Utolsó 30 nap"
         },
         "tabs": {
             "overview": "Áttekintés",

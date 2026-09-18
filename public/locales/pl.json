@@ -513,7 +513,10 @@
         "checkConflict": "Zadanie zostało w międzyczasie zmienione. Otwórz je ponownie.",
         "doneByPick": "Kto wykonał „{{title}}”?",
         "doneByToast": "Wykonał(a) {{name}}.",
-        "historyTickedBy": "odhaczone przez {{name}}"
+        "historyTickedBy": "odhaczone przez {{name}}",
+        "reminderLockedNeedsDueDate": "To zadanie ma przypomnienie, którego nie możesz zmienić. Dlatego wymaga terminu.",
+        "kanbanColCollapse": "Zwiń kolumnę",
+        "kanbanColExpand": "Rozwiń kolumnę"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} posiłki",
@@ -2758,7 +2761,8 @@
         "displayRevokeDevice": "Unieważnij",
         "displayRevokeConfirm": "Zakończyć dostęp tego urządzenia?",
         "displayRevokeDetail": "Tablet natychmiast przestaje cokolwiek pokazywać. Aby znów go używać, trzeba go ponownie sparować.",
-        "displayDeleteDetail": "Konto i wszystkie sparowane urządzenia zostaną usunięte. Tego nie można cofnąć."
+        "displayDeleteDetail": "Konto i wszystkie sparowane urządzenia zostaną usunięte. Tego nie można cofnąć.",
+        "backupCliForeignKeyHint": "Kopia z innej instalacji niesie jej szyfrowanie: przed uruchomieniem ustaw DB_ENCRYPTION_KEY na jej wartość, w przeciwnym razie Yuvomi po podmianie pliku już się nie uruchomi."
     },
     "login": {
         "tagline": "Witaj ponownie w swoim planerze rodzinnym.",
@@ -2907,7 +2911,10 @@
         "customDays": "Dni",
         "customWeeks": "Tygodnie",
         "sectionTitlePlural": "Przypomnienia",
-        "sharedWithAssignees": "Osoby przypisane do tego wydarzenia również otrzymają to przypomnienie."
+        "sharedWithAssignees": "Osoby przypisane do tego wydarzenia również otrzymają to przypomnienie.",
+        "offsetAfterDue": "Po terminie",
+        "afterDueHint": "To przypomnienie wypada po terminie ({{when}}) i przy zapisie pozostaje bez zmian. Wybierz wyprzedzenie, aby je przesunąć.",
+        "readOnlyNotice": "Przypomnienia należą do Kalendarza. Bez prawa zapisu tam to ustawienie pozostaje bez zmian."
     },
     "birthdays": {
         "inDays": "za {{days}} dni",
@@ -4007,7 +4014,22 @@
             "finishedHint": "Koniec zapisano. Możesz zmienić godziny oraz dodać ocenę lub notatkę.",
             "rangeError": "Koniec musi być po początku i nie może być w przyszłości.",
             "elapsed": "Czas postu",
-            "sinceLast": "Od ostatniego postu"
+            "sinceLast": "Od ostatniego postu",
+            "noRecord": "Brak wpisu",
+            "goalCoverage": "Zapisano cele dla {{records}} z {{total}} postów",
+            "goalCoverage_one": "Zapisano cel dla {{records}} z {{total}} postów",
+            "chartLegend": "Rzeczywisty czas (po lewej) i zapisany cel (po prawej); wartości są sumami dla każdej daty zakończenia.",
+            "capturedGoal": "Zapisany cel",
+            "statsTitle": "Statystyki",
+            "statsCount": "Łączna liczba postów",
+            "statsTotal": "Łączny czas",
+            "statsAverage": "Średnia",
+            "statsCurrentStreak": "Bieżąca seria",
+            "statsLongestStreak": "Najdłuższa seria",
+            "statsWeekly": "Posty z ostatnich siedmiu dni",
+            "allTime": "Cała historia",
+            "thisYear": "Ten rok",
+            "last30Days": "Ostatnie 30 dni"
         },
         "tabs": {
             "overview": "Przegląd",

@@ -501,7 +501,10 @@
         "checkConflict": "The task has changed in the meantime. Please open it again.",
         "doneByPick": "Who did “{{title}}”?",
         "doneByToast": "Done by {{name}}.",
-        "historyTickedBy": "ticked off by {{name}}"
+        "historyTickedBy": "ticked off by {{name}}",
+        "reminderLockedNeedsDueDate": "This task has a reminder you are not allowed to change. It therefore needs a due date.",
+        "kanbanColCollapse": "Collapse column",
+        "kanbanColExpand": "Expand column"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} meals",
@@ -2746,7 +2749,8 @@
         "displayRevokeDevice": "Revoke",
         "displayRevokeConfirm": "End this device's access?",
         "displayRevokeDetail": "The tablet stops showing anything immediately. To use it again it has to be paired anew.",
-        "displayDeleteDetail": "The account and all paired devices are removed. This cannot be undone."
+        "displayDeleteDetail": "The account and all paired devices are removed. This cannot be undone.",
+        "backupCliForeignKeyHint": "A backup from another installation carries that installation's encryption: set DB_ENCRYPTION_KEY to its value before starting, otherwise Yuvomi will no longer start after the file swap."
     },
     "login": {
         "tagline": "Welcome back to your family planner.",
@@ -2895,7 +2899,10 @@
         "customDays": "Days",
         "customWeeks": "Weeks",
         "sectionTitlePlural": "Reminders",
-        "sharedWithAssignees": "Anyone assigned to this event gets this reminder too."
+        "sharedWithAssignees": "Anyone assigned to this event gets this reminder too.",
+        "offsetAfterDue": "After the due date",
+        "afterDueHint": "This reminder is after the due date ({{when}}) and stays unchanged when you save. Pick a lead time to move it.",
+        "readOnlyNotice": "Reminders belong to the Calendar. Without write access there, this setting stays unchanged."
     },
     "birthdays": {
         "inDays": "in {{days}} days",
@@ -4007,7 +4014,22 @@
             "finishedHint": "The end is saved. You can adjust the times and add a rating or note.",
             "rangeError": "The end must be after the start and not in the future.",
             "elapsed": "Fasting time",
-            "sinceLast": "Since your last fast"
+            "sinceLast": "Since your last fast",
+            "noRecord": "No record",
+            "goalCoverage": "Goals recorded for {{records}} of {{total}} fasts",
+            "goalCoverage_one": "Goal recorded for {{records}} of {{total}} fasts",
+            "chartLegend": "Actual duration (left) and recorded goal (right); values are totals for each completion date.",
+            "capturedGoal": "Recorded goal",
+            "statsTitle": "Statistics",
+            "statsCount": "Total fasts",
+            "statsTotal": "Total duration",
+            "statsAverage": "Average",
+            "statsCurrentStreak": "Current streak",
+            "statsLongestStreak": "Longest streak",
+            "statsWeekly": "Fasts in the last seven days",
+            "allTime": "All time",
+            "thisYear": "This year",
+            "last30Days": "Last 30 days"
         },
         "tabs": {
             "overview": "Overview",

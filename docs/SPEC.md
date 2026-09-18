@@ -1999,6 +1999,55 @@ Revoking sets `revoked_at` rather than deleting, like an API token, and takes ef
 next request - the credential is checked against the database every time, so there is no cached state
 to catch up with.
 
+**What a display does, not only what it sees (#1209, decided in #913).** A paired display may act,
+on behalf of a person chosen on the device, for exactly two things: tick a task off, and request a
+redemption. Nothing else - no creating, editing or deleting, and no settings.
+
+The permission is **two routes, not a module scope**. `DISPLAY_SCOPES` stays a read-only list;
+`PATCH /api/v1/tasks/{id}/status` and `POST /api/v1/rewards/redemptions` are named one by one in
+`DISPLAY_WRITE_ROUTES`, with exact method and path patterns. Raising the scopes to `tasks:write`
+would have been the obvious move and the wrong one: a scope covers a whole module, so it would open
+fourteen further writing routes and turn the promise in the ticket into something every route has to
+restate. It would also change what the app **draws** - module access drives navigation, tiles and the
+create button alike - so a tablet would show controls the server then refuses. Both global gates in
+`server/index.js` ask the same list; the module level stays `read`.
+
+**The chosen person carries the rules, not the device.** The person has to be named (there is no
+silent fallback to the display account, which would record work nobody did), has to be a household
+member through the one predicate (#1207, so guests, staff and other displays are out), and has to be
+allowed to write that module herself - without that last check the tablet would be the way around
+module permissions. A task has to be visible to the whole household, and that refusal is **404, not
+403**: an invisible task does not exist for this device, and 403 would confirm that it does. The
+visibility check runs **before** the status check, and that order is the promise rather than a
+detail: the other way round, a payload with any status other than `done` answered 403 for a task
+that exists and 404 for one that does not, and the difference between those two answers is exactly
+the disclosure the 404 is there to prevent. Only the
+transition into `done` is allowed; taking it back reverses points and discards a recurrence
+follow-up, and corrections stay with the household. Deciding a redemption stays wherever the
+household put it (`rewards_require_approval`) - the display asks, it never approves.
+
+`GET /api/v1/displays/people` fills the picker: household members with name, colour and picture,
+plus `can_tick_off` and `can_redeem` from the same permission resolution the write routes apply, so
+the picker never offers someone the next call would refuse. It deliberately carries none of the
+contact details `/family/members` returns, for the reason `DISPLAY_PREFERENCE_KEYS` exists: a tablet
+hangs in the open.
+
+**On the tablet the person is chosen per tap, and nothing is remembered.** Tapping a task opens the
+list of people and asks who did it; picking one ticks the task off and records that person. The
+status button is not drawn on a display at all - this picker takes its place and carries the same
+ring, so the control looks like the one on everyone's phone and only behaves differently. A remembered
+person would have been the other option and is deliberately not it: a kitchen wall would keep showing
+the one from the afternoon. A task that is already done gets no button there, because undoing a tick
+is a correction and corrections stay with the household. The two-person threshold the picker uses for
+signed-in people does not apply: on a wall there is no self, so even a household of one has to name
+somebody. On the rewards page each person keeps their own request button, driven by `can_redeem`; the
+catalogue has none, because it opens the dialog without a person.
+
+**One seam worth knowing.** A display has no session, but `csrfMiddleware` keeps its token in
+`req.session`. Reading never hit this, because safe methods pass through. The first writing path a
+tablet takes therefore runs over an **empty session** that the browser carries alongside the device
+credential, and without it every write answers 403 - the same 403 a missing permission gives.
+
 ### ICS Subscriptions
 External calendar feeds subscribed by users (read-only, auto-synced).
 
@@ -2997,13 +3046,24 @@ or benefits from longer fasting. Active metadata shows recorded-zone start/targe
 History uses keyset pages (default 10, maximum 100), ordered by start_at DESC,
 id DESC. Both before_at and before_id come from next_cursor. GET /fasting aliases
 /fasting/history. user_id/from/to apply to history and CSV; from/to are inclusive
-YYYY-MM-DD completion dates in each record's captured zone. Invalid/reversed dates
+YYYY-MM-DD completion dates in the household display time zone. Invalid/reversed dates
 return 400 FASTING_DATE_RANGE_INVALID. CSV columns are start_at,end_at,start_tzid,
 duration_minutes,goal_minutes,goal_reached,rating,note,visibility, with spreadsheet
 formula-safe escaping. Revision conflicts return numeric code 409 and separate
 reason FASTING_REVISION_CONFLICT, FASTING_ACTIVE_EXISTS or FASTING_OVERLAP; current
 contains a conflicting row where available. Missing acknowledgement returns
 FASTING_ACK_REQUIRED. POST retries use Idempotency-Key. API data is not SW-cached.
+
+Fasting insights use completed records only. All-time/calendar-year/rolling-30-day
+summaries contain count, totalMinutes and averageMinutes. Aggregate completion dates,
+calendar boundaries, streaks, weekly buckets, and history/CSV date filters consistently
+use household display_tzid. A completed
+fast reaching its captured goal credits ceil(actual duration / 24 hours) dates
+ending on completion. Overlapping credits count once; interval merging avoids
+per-day allocation. Current streak ends today/yesterday; longest is historical.
+Weekly buckets contain date,count,totalMinutes,nullable summed goalMinutes,
+goalCount,hasRecord. Missing days differ from completed sub-minute records; the
+chart shows actual/captured-goal values and partial goal coverage.
 
 **`health_vitals`** — one row per measurement.
 
@@ -4118,7 +4178,7 @@ The surface carries four things, in this order: **the time**, large (this is whe
 **Views:**
 - List view (default): grouped by category or due date (toggleable), filter: person, priority, status. **Category groups follow the managed order (v2.39.0, #845):** their sequence is the position in the category list the server returns, i.e. the `sort_order` set by dragging in **Manage categories** - not the alphabet. Until then the groups were sorted with `localeCompare(b, 'de')`, which ignored that order, compared the internal key rather than the visible label (`misc` sorts under M while the page shows "Sonstiges"), and applied German collation to every language. A category missing from the list sorts last, and only among those does the label decide, in the active locale. **Each of those three axes takes several values at once (v1.78.1, #671)** and combines them with OR — "high or medium" is a question worth asking, while AND across two priorities would always be empty, since a task carries exactly one. The axes still combine with AND among themselves, so every row narrows the list. **Category joined them as a further axis (D#1017, v2.65.0)**, in the List and on the Board alike (the Board cannot group, since its columns are the status), with the same OR semantics - the server had accepted a repeatable `?category=` since #814, only the filter panel lacked the group. Tags stay AND-combined (see [Task Tags](#task-tags-migration-v115-586)); there a task really can carry both. `GET /api/v1/tasks` takes each value as its own parameter (`?priority=high&priority=medium`) and keeps accepting a single one
 - **Collapsible groups (v2.28.0, #812):** each group header is a button (`aria-expanded`, keyboard-reachable) that folds its rows away; the count stays on the collapsed header, so the size of a folded group is still readable. Collapsed groups are stored per device in `localStorage` (`yuvomi:taskCollapsedGroups`) as `<mode>:<id>` — the mode belongs in the key because a category may be named like a due-date group, and the id is the category key or a fixed name (`overdue`/`today`/`thisWeek`/`nextWeek`/`later`/`noDate`), never the translated label: `groupBy()` returns `{ id, label, tasks }` for exactly that reason, otherwise "Heute" and "Today" would be two groups and every language switch would unfold everything. Only collapsed state is stored, so a newly created category appears open.
-- Kanban: columns Open → In Progress → Done plus the archive, drag & drop. **The board drags through the shared sortable wrapper since v2.60.0 (#808)**, which distinguishes a long press from a short one (`delay: 120`, `delayOnTouchOnly`): holding picks a card up, swiping stays scrolling, and the mouse still drags immediately. Before that the board carried two drag implementations of its own — native HTML5 DnD for the mouse and a hand-written touch simulation beside it — and the touch half had a threshold of the wrong kind: eight pixels of distance and no time, so scrolling over a card took it along. The board stores no order *within* a column, so it offers none (`sort: false`); the advance-status button on each card is excluded from dragging and remains the keyboard path
+- Kanban: columns Open → In Progress → Done plus the archive, drag & drop. The layout gives each of the four its own column from 1024px and places two per row between 640px and 1024px, where four would leave about 160px per card; below 640px they stack. Until #1250 the rule placed three per row at every width above 640px, so the archive dropped into a second grid row underneath the first column and was pushed further down with every completed task, since a grid row takes its height from its tallest cell. **The board drags through the shared sortable wrapper since v2.60.0 (#808)**, which distinguishes a long press from a short one (`delay: 120`, `delayOnTouchOnly`): holding picks a card up, swiping stays scrolling, and the mouse still drags immediately. Before that the board carried two drag implementations of its own — native HTML5 DnD for the mouse and a hand-written touch simulation beside it — and the touch half had a threshold of the wrong kind: eight pixels of distance and no time, so scrolling over a card took it along. The board stores no order *within* a column, so it offers none (`sort: false`); the advance-status button on each card is excluded from dragging and remains the keyboard path. **Collapsible columns (#1250):** each column header is a button (`aria-expanded`, `aria-controls`, keyboard-reachable) that folds its column down to the header, with the count left beside it so a folded column can still say how much it hides - the same grammar as the collapsible list groups above, and the same rule that only the collapsed state is stored (`localStorage`, `yuvomi:taskCollapsedKanbanCols`, by status). The board needs this more than the list does: it deliberately drops the status filter from its query and asks for the archive as well, so it shows every task the household ever had and nothing ages out, while `GET /api/v1/tasks` applies no limit and the project does not paginate lists. Two details differ from the list. The column body is hidden rather than left out, because `aria-controls` needs a target that exists - and it needs its own `display: none` rule, since `.kanban-col__body` sets `display: flex` and a class rule outranks the browser's `[hidden]`. A folded column is also skipped when the sortables are wired: SortableJS does not read visibility, so an instance on a hidden node would keep accepting cards, and a dropped card would vanish into a column nobody can see. Folding is available under `tasks: read` as well - it changes what is shown, not what is stored
 - **History (v2.44.0, #791):** the third view, and the only one that does not show tasks but
   occurrences: who ticked off what, and when. Grouped by calendar day in the display timezone
   (`zonedDateKey`, not `completed_at.slice(0, 10)` — the stored instant is UTC, so a tick at 23:30

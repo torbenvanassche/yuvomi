@@ -501,7 +501,10 @@
         "checkConflict": "Uppgiften har ändrats under tiden. Öppna den igen.",
         "doneByPick": "Vem gjorde ”{{title}}”?",
         "doneByToast": "Gjord av {{name}}.",
-        "historyTickedBy": "bockad av {{name}}"
+        "historyTickedBy": "bockad av {{name}}",
+        "reminderLockedNeedsDueDate": "Den här uppgiften har en påminnelse som du inte får ändra. Därför behövs ett slutdatum.",
+        "kanbanColCollapse": "Fäll ihop kolumnen",
+        "kanbanColExpand": "Fäll ut kolumnen"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} måltider",
@@ -2746,7 +2749,8 @@
         "displayRevokeDevice": "Återkalla",
         "displayRevokeConfirm": "Avsluta den här enhetens åtkomst?",
         "displayRevokeDetail": "Plattan slutar genast visa något. För att använda den igen måste den parkopplas på nytt.",
-        "displayDeleteDetail": "Kontot och alla parkopplade enheter tas bort. Det går inte att ångra."
+        "displayDeleteDetail": "Kontot och alla parkopplade enheter tas bort. Det går inte att ångra.",
+        "backupCliForeignKeyHint": "En säkerhetskopia från en annan installation bär den installationens kryptering: ange DB_ENCRYPTION_KEY till dess värde innan du startar, annars startar Yuvomi inte längre efter filbytet."
     },
     "login": {
         "tagline": "Välkommen tillbaka till din familjeplanerare.",
@@ -3010,7 +3014,10 @@
         "customDays": "dagar",
         "customWeeks": "Veckor",
         "sectionTitlePlural": "Påminnelser",
-        "sharedWithAssignees": "Den som är tilldelad den här händelsen får också den här påminnelsen."
+        "sharedWithAssignees": "Den som är tilldelad den här händelsen får också den här påminnelsen.",
+        "offsetAfterDue": "Efter förfallodatumet",
+        "afterDueHint": "Den här påminnelsen ligger efter förfallodatumet ({{when}}) och ändras inte när du sparar. Välj en framförhållning för att flytta den.",
+        "readOnlyNotice": "Påminnelser hör till Kalendern. Utan skrivrättighet där förblir den här inställningen oförändrad."
     },
     "onboarding": {
         "step1Title": "Välkommen till {{name}}",
@@ -4007,7 +4014,22 @@
             "finishedHint": "Slutet har sparats. Du kan ändra tiderna och lägga till betyg eller anteckning.",
             "rangeError": "Slutet måste vara efter starten och får inte ligga i framtiden.",
             "elapsed": "Fastetid",
-            "sinceLast": "Sedan senaste fastan"
+            "sinceLast": "Sedan senaste fastan",
+            "noRecord": "Ingen registrering",
+            "goalCoverage": "Mål registrerade för {{records}} av {{total}} fastor",
+            "goalCoverage_one": "Mål registrerat för {{records}} av {{total}} fastor",
+            "chartLegend": "Faktisk längd (vänster) och registrerat mål (höger); värdena är summor per slutdatum.",
+            "capturedGoal": "Registrerat mål",
+            "statsTitle": "Statistik",
+            "statsCount": "Totalt antal fastor",
+            "statsTotal": "Total varaktighet",
+            "statsAverage": "Genomsnitt",
+            "statsCurrentStreak": "Aktuell serie",
+            "statsLongestStreak": "Längsta serie",
+            "statsWeekly": "Fastor under de senaste sju dagarna",
+            "allTime": "Hela historiken",
+            "thisYear": "I år",
+            "last30Days": "Senaste 30 dagarna"
         },
         "tabs": {
             "overview": "Översikt",

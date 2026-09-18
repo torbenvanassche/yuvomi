@@ -103,9 +103,13 @@ export async function deleteTaskWithUndo(id, { container = null, onChanged = () 
   scheduleUndoableDelete({
     message: t('tasks.deletedToast'),
     commit: async ({ keepalive }) => {
+      // Die Erinnerungen der Aufgabe raeumt der Server mit ab (Migration v217,
+      // AFTER-DELETE-Trigger auf `tasks`). Hier stand dafuer ein zweiter Aufruf
+      // mit stummem `catch` - er ging beim Zuklappen des Tabs verloren, lief bei
+      // `tasks: write` + `calendar: read` in ein verschlucktes 403, und selbst
+      // wenn er ankam, loeschte er nur die EIGENEN Zeilen: die Erinnerung, die
+      // sich jemand anderes auf dieselbe Aufgabe gesetzt hatte, blieb stehen.
       await api.delete(`/tasks/${id}`, { keepalive });
-      // Erinnerungen für diese Aufgabe ebenfalls entfernen
-      api.delete(`/reminders?entity_type=task&entity_id=${id}`, { keepalive }).catch(() => {});
       if (keepalive) return; // Seite verschwindet — kein UI-Refresh mehr
       refreshReminders();
       await onChanged();
@@ -144,13 +148,35 @@ export async function addSubtask(parentId, { onChanged = () => {} } = {}) {
 // Bausteine der Leseansicht
 // --------------------------------------------------------
 
-// Was aus dem aktuellen Status als Nächstes kommt. Abgelegte Aufgaben führen
-// keine Weiterschaltung: sie sind aus dem Lauf genommen, nicht angehalten - ihr
-// Knopf holt zurück (siehe openTaskDetail).
-const NEXT_STATUS = {
-  open:        { status: 'in_progress', labelKey: 'tasks.detailStart',  icon: 'circle-dot' },
-  in_progress: { status: 'done',        labelKey: 'tasks.detailFinish', icon: 'check' },
-  done:        { status: 'open',        labelKey: 'tasks.detailReopen', icon: 'rotate-ccw' },
+// Wohin eine Aufgabe aus ihrem aktuellen Status gebracht werden kann. Abgelegte
+// Aufgaben führen keine Weiterschaltung: sie sind aus dem Lauf genommen, nicht
+// angehalten - ihr Knopf holt zurück (siehe openTaskDetail).
+//
+// EINE OFFENE AUFGABE HAT ZWEI ZIELE, und das ist der Punkt. Bis v2.67.0 stand
+// hier eine Kette: `open` führte ausschließlich nach `in_progress`, `done` war
+// erst von dort erreichbar. Wer abhaken wollte, musste also erst STARTEN, die
+// Ansicht erneut öffnen und dann erledigen - zwei Durchgänge für den Vorgang,
+// der laut dem Kommentar an der Aktionsliste der häufigste Grund ist, eine
+// Aufgabe überhaupt zu öffnen. Auf dem Handy war dieser Weg zusätzlich der
+// einzige: die Listenkarte blendet ihre Inline-Aktionen unter 640px aus
+// (tasks.css), und die Übersicht zeigt gar keinen Statusknopf, sondern öffnet
+// diese Ansicht (dashboard.js, `openTaskFromOverview`). Dazwischen war nichts
+// zu sehen - die Übersichtszeile trägt den Status nicht, sah nach dem ersten
+// Tipp also aus wie davor, und der Tipp wirkte verschluckt (#1251).
+//
+// Das Zwischenstadium bleibt: `in_progress` ist eine Angabe über die Aufgabe,
+// keine Durchgangsstation. Es steht nur nicht mehr im Weg.
+const STATUS_ACTIONS = {
+  open: [
+    { id: 'task-detail-finish', status: 'done',        labelKey: 'tasks.detailFinish', icon: 'check',      variant: 'secondary' },
+    { id: 'task-detail-start',  status: 'in_progress', labelKey: 'tasks.detailStart',  icon: 'circle-dot', variant: 'ghost' },
+  ],
+  in_progress: [
+    { id: 'task-detail-finish', status: 'done',        labelKey: 'tasks.detailFinish', icon: 'check',      variant: 'secondary' },
+  ],
+  done: [
+    { id: 'task-detail-reopen', status: 'open',        labelKey: 'tasks.detailReopen', icon: 'rotate-ccw', variant: 'secondary' },
+  ],
 };
 
 /** Prioritätsbadge als DOM - dieselbe Optik wie auf der Karte. */
@@ -211,11 +237,30 @@ function subtaskListNode(task, ctx) {
   const wrap = document.createElement('div');
   wrap.className = 'detail-subtasks';
 
+  // ZUSTAND ANZEIGEN ODER UMSCHALTEN - dieselbe Zeile, zwei Bauarten (#467).
+  // Wer nur lesen darf, bekommt sie als `span` mit einer Beschriftung, die den
+  // ZUSTAND nennt. Ein `disabled`-Knopf waere hier doppelt falsch: er traegt
+  // Trefflaeche und Hover weiter und verspricht „als erledigt markieren" fuer
+  // eine Beruehrung, die nichts tut - und `.detail-subtask:disabled` bedeutet
+  // in diesem Stylesheet „gerade unterwegs" (cursor: progress), also haette die
+  // Zeile dauerhaft einen Ladecursor getragen. Dieselbe Entscheidung wie an der
+  // Teilaufgabe der Liste (public/pages/tasks.js) und am Tablett (#1209).
+  const nurLesen = isNavModuleReadOnly('tasks');
+
   const paint = (row, status, title) => {
-    row.className = status === 'done' ? 'detail-subtask detail-subtask--done' : 'detail-subtask';
+    row.className = [
+      'detail-subtask',
+      status === 'done' ? 'detail-subtask--done' : '',
+      nurLesen ? 'detail-subtask--static' : '',
+    ].filter(Boolean).join(' ');
     row.dataset.status = status;
-    row.setAttribute('aria-pressed', String(status === 'done'));
-    row.setAttribute('aria-label', t('tasks.subtaskMarkDone', { title }));
+    if (nurLesen) {
+      row.setAttribute('role', 'img');
+      row.setAttribute('aria-label', `${title}: ${t(status === 'done' ? 'tasks.statusDone' : 'tasks.statusOpen')}`);
+    } else {
+      row.setAttribute('aria-pressed', String(status === 'done'));
+      row.setAttribute('aria-label', t('tasks.subtaskMarkDone', { title }));
+    }
     const icon = document.createElement('i');
     icon.dataset.lucide = status === 'done' ? 'check-circle-2' : 'circle';
     icon.className = 'icon-sm';
@@ -227,10 +272,18 @@ function subtaskListNode(task, ctx) {
   };
 
   const appendRow = (s) => {
-    const row = document.createElement('button');
-    row.type = 'button';
+    const row = document.createElement(nurLesen ? 'span' : 'button');
+    if (!nurLesen) row.type = 'button';
     row.dataset.subtaskId = String(s.id);
     paint(row, s.status, s.title);
+    // Die Zeile BLEIBT - sie sagt, ob der Teilschritt erledigt ist, und das ist
+    // auch der Auskunft wert, die niemand umschalten darf. Der Anlegen-Knopf
+    // darunter haengt dagegen an `mayAdd` und faellt ganz weg; er sagt nichts,
+    // er tut nur etwas.
+    if (nurLesen) {
+      wrap.appendChild(row);
+      return row;
+    }
 
     row.addEventListener('click', async () => {
       const previous = row.dataset.status;
@@ -785,9 +838,22 @@ function descriptionNode(task) {
   // verlangt: sie zeigt den VOLLSTÄNDIGEN Text (die Zeilennummern am Kästchen
   // sind also die der Aufgabe) und sie kennt die Aufgaben-Id. Das Dashboard und
   // die Kalender-Chips bekommen diese Optionen deshalb ausdrücklich nicht.
+  //
+  // BEI `tasks: read` IST DAS KÄSTCHEN EIN ZEICHEN (#467). `PATCH
+  // /tasks/:id/check` verlangt Schreibrecht, und der Server kennt dafür keine
+  // Ausnahme - auch keine für ein Wandtablett, dessen zwei erlaubten Routen
+  // diese nicht enthalten. Interaktiv gelassen wäre es genau das Symptom, das
+  // dieser Vorgang beseitigt: der Haken springt optimistisch um, der Aufruf
+  // endet im 403, der Haken springt zurück und ein roter Toast erklärt es auf
+  // Englisch. Die Dekorationsform des Renderers wäre zu wenig - sie ist
+  // `aria-hidden`, und dann verlöre ein Nur-lesen-Nutzer die Auskunft selbst.
+  const nurLesen = isNavModuleReadOnly('tasks');
   box.insertAdjacentHTML('beforeend', renderMarkdownLight(text, {
-    checklist: { interactive: true, toggleLabel: t('tasks.checklistToggle') },
+    checklist: nurLesen
+      ? { stateLabels: { checked: t('tasks.statusDone'), unchecked: t('tasks.statusOpen') } }
+      : { interactive: true, toggleLabel: t('tasks.checklistToggle') },
   }));
+  if (nurLesen) return box;
   box.addEventListener('click', (e) => {
     const hit = e.target.closest('.note-md-box[data-md-line]');
     if (hit) toggleDescriptionCheck(task, hit);
@@ -811,6 +877,9 @@ function descriptionNode(task) {
  * kennt.
  */
 async function toggleDescriptionCheck(task, box) {
+  // Der Riegel neben dem weggelassenen Listener - dieselbe Paarung wie an der
+  // Teilaufgabenzeile: ausgeblendet ist nicht dasselbe wie unerreichbar.
+  if (isNavModuleReadOnly('tasks')) return;
   const line    = parseInt(box.dataset.mdLine, 10);
   const checked = box.dataset.mdChecked !== '1';
   const expect  = splitKeepingLineEndings(task.description)[line * 2];
@@ -892,7 +961,7 @@ export function openTaskDetail({
 }) {
   const ctx = { users, currentUserId, isAdmin, categories, container, onChanged };
   const archived = isArchived(task);
-  const next = archived ? null : NEXT_STATUS[task.status];
+  const statusActions = archived ? [] : (STATUS_ACTIONS[task.status] ?? []);
   // Gesperrte Aufgabe (#830): der Weiterschalt-Knopf bleibt, Loeschen, Ablegen
   // und Bearbeiten fallen weg. Die Detailansicht ist der zweite Einstieg neben
   // der Zeile - blendete nur die Zeile aus, waere die Sperre hier zu umgehen.
@@ -915,13 +984,20 @@ export function openTaskDetail({
 
   // Der häufigste Grund, eine Aufgabe zu öffnen, ist sie abzuhaken. Bisher
   // führte dieser Weg durch ein Formular mit sieben Auswahlfeldern.
-  if (next) {
-    actions.push({
-      id: 'task-detail-advance',
-      label: t(next.labelKey),
-      variant: 'secondary',
-      icon: next.icon,
-      onClick: ({ button }) => advanceTaskStatus(task, next.status, button, ctx),
+  //
+  // Bei `tasks: read` faellt er weg statt gesperrt dazustehen: er traegt keinen
+  // Zustand, den er anzeigen koennte - was die Aufgabe IST, steht zwei Zeilen
+  // darueber als "Status: offen". Ein grauer Knopf "Als erledigt markieren"
+  // waere nur ein Versprechen, das der Server mit 403 einloest.
+  if (!isNavModuleReadOnly('tasks')) {
+    statusActions.forEach((step) => {
+      actions.push({
+        id: step.id,
+        label: t(step.labelKey),
+        variant: step.variant,
+        icon: step.icon,
+        onClick: ({ button }) => advanceTaskStatus(task, step.status, button, ctx),
+      });
     });
   }
 
@@ -955,9 +1031,40 @@ export function openTaskDetail({
  * den neuen Stand sofort, weil das Abhaken sonst wie ein verschluckter Klick
  * wirkt. Scheitert der Aufruf, kommt die alte Beschriftung zurück.
  */
+/**
+ * Die Statusknoepfe, die gerade in der Ansicht stehen.
+ *
+ * Gebraucht, seit eine offene Aufgabe ZWEI davon traegt (#1251). Vorher war je
+ * Status genau einer da, und `btnLoading()` - das nur den angeklickten sperrt -
+ * war damit ein vollstaendiger Riegel. Jetzt stehen Erledigen und Starten
+ * nebeneinander, jeder mit eigenem Listener, und die Ansicht bleibt offen, bis
+ * die Antwort da ist.
+ *
+ * WAS OHNE DEN RIEGEL PASSIERT, und es ist kein kosmetischer Schaden: wer auf
+ * einer langsamen Leitung Erledigen tippt und dann Starten, schickt zwei
+ * Schreibvorgaenge los. Der erste bucht Punkte, schreibt die Erledigung fort
+ * und legt bei einer Serie die naechste Instanz an. Der zweite liest `prev`
+ * frisch, findet `done` vor, und weil `prev.status === 'done' && status !==
+ * 'done'` gilt, storniert er die Gutschrift, verwirft die Erledigung und
+ * LOESCHT die eben angelegte Folgeinstanz (`discardRecurrenceFollowup` in
+ * server/routes/tasks.js). Uebrig bleibt eine laufende Aufgabe, deren
+ * Erledigung verschwunden ist - und bei einer Serie ihr naechster Termin dazu.
+ */
+const STATUS_ACTION_IDS = Object.values(STATUS_ACTIONS).flat().map((step) => step.id);
+
+function statusActionButtons() {
+  return [...new Set(STATUS_ACTION_IDS)]
+    .map((id) => document.getElementById(id))
+    .filter(Boolean);
+}
+
 async function advanceTaskStatus(task, status, button, ctx) {
   const previous = task.status;
   const stop = btnLoading(button);
+  // Die Geschwister werden nur gesperrt, nicht in den Ladezustand versetzt: der
+  // Spinner gehoert an den Knopf, den jemand gedrueckt hat.
+  const siblings = statusActionButtons().filter((el) => el !== button);
+  siblings.forEach((el) => { el.disabled = true; });
   try {
     await api.patch(`/tasks/${task.id}/status`, { status });
     task.status = status;
@@ -969,6 +1076,7 @@ async function advanceTaskStatus(task, status, button, ctx) {
   } catch (err) {
     task.status = previous;
     stop();
+    siblings.forEach((el) => { el.disabled = false; });
     // Gescheitert ist ein Schreibvorgang, kein Laden - tasks.loadError („Aufgabe
     // konnte nicht geladen werden") beschriebe den falschen Vorgang.
     window.yuvomi.showToast(err.message ?? t('common.errorGeneric'), 'danger');
@@ -1061,3 +1169,10 @@ function seriesHistoryNode(task) {
 
   return list;
 }
+
+/**
+ * Fuer die Tests: der Zeilenbauer der Teilaufgaben. Er ist die eine Stelle, an
+ * der sich die Nur-lesen-Regel (#467) an dieser Ansicht MESSEN laesst - alles
+ * andere hier haengt an `openDetailView` und damit am echten DOM.
+ */
+export const __test = { subtaskListNode, descriptionNode };

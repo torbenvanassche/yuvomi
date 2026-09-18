@@ -21,7 +21,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, existsSync, readFileSync, readdirSync, copyFileSync } from 'node:fs';
+import { mkdtempSync, existsSync, readFileSync, readdirSync, copyFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import Database from 'better-sqlite3-multiple-ciphers';
@@ -411,4 +411,337 @@ test('ein echter Key, der zufällig mit REPLACE beginnt, wird nicht abgefangen',
 
   assert.ok(existsSync(dbPath), 'Datenbank muss angelegt werden');
   assert.ok(!isPlaintext(dbPath), 'und verschlüsselt sein');
+});
+
+/* EIN BACKUP AUS EINER FREMDEN INSTALLATION SCHEITERT AM SCHLUESSEL, NICHT AN SICH.
+ *
+ * `restoreFromFile()` oeffnet die hochgeladene Datei mit dem Key DIESER Instanz.
+ * Passt er nicht, sagt SQLite denselben Satz wie zu jeder beliebigen fremden
+ * Datei: `file is not a database`. Die Route reicht ihn woertlich an den
+ * Restore-Dialog durch, und dort liest er sich als „dein Backup ist kaputt".
+ *
+ * Gemeldet als #1267: Umzug von einer Instanz mit selbst gesetzten Secrets auf
+ * eine, die sich ihre eigenen erzeugt. Der Melder hat daraufhin die
+ * Datenbankdatei im Container von Hand ersetzt und die Installation zerlegt -
+ * der teure Teil des Fehlers steckt nicht im Abbruch, sondern darin, wozu die
+ * Auskunft einlaedt.
+ *
+ * Gemessen werden beide Richtungen: die Meldung muss den Schluessel nennen, wo
+ * er die Ursache ist, und sie darf es NICHT tun, wo die Datei wirklich keine
+ * Datenbank ist - sonst schickt sie den naechsten in die falsche Richtung.
+ */
+
+/**
+ * BEIDE verschluesselten Zweige muessen die ZWEITE Moeglichkeit nennen.
+ *
+ * Ohne Klartext-Kopf ist eine Datei verschluesselt ODER ueberhaupt keine
+ * Datenbank - ein hochgeladenes Zip, ein abgebrochener Download. Welches von
+ * beidem, kann `validateBackupFile()` nicht wissen, und eine Meldung, die sich
+ * auf den Schluessel festlegt, schickt einen Admin ohne gesetzten Key genau so
+ * in die Irre wie die rohe SQLite-Zeile es in #1267 getan hat: er sucht nach
+ * einem Schluessel, den es nie gab.
+ *
+ * Der erste Anlauf dieses PRs hatte genau diese Asymmetrie - der Zweig MIT Key
+ * nannte die Alternative, der ohne behauptete flach „it is encrypted" (Befund
+ * der Review-Runde auf #1272). Deshalb steht die Regel hier als eigene Probe
+ * und nicht als Nebensatz in einem der beiden Faelle: die naechste Umformulierung
+ * soll sie nicht wieder verlieren koennen.
+ */
+function nenntSchluesselUndAlternative(err, fall) {
+  assert.match(err.message, /DB_ENCRYPTION_KEY/, `${fall}: die Meldung muss den Schluessel nennen`);
+  assert.match(
+    err.message,
+    /is not a (valid )?Yuvomi database/,
+    `${fall}: die Meldung darf die zweite Moeglichkeit nicht verschweigen`
+  );
+  return true;
+}
+
+/** Ein echtes Backup einer Instanz mit `key` - ueber den Weg, den die App nimmt. */
+async function backupFromInstance(key) {
+  const dir = tmpDir();
+  const mod = await bootDb(join(dir, 'quelle.db'), key);
+  const backupPath = join(dir, 'backup.db');
+  await mod.backupToFile(backupPath);
+  return backupPath;
+}
+
+test('ein Backup mit fremdem Schluessel nennt den Schluessel als Ursache', async () => {
+  const backupPath = await backupFromInstance('schluessel-der-alten-instanz-0123');
+  assert.ok(!isPlaintext(backupPath), 'Vorbedingung: das Backup ist verschluesselt');
+
+  const ziel = await bootDb(join(tmpDir(), 'yuvomi.db'), 'schluessel-der-neuen-instanz-0123');
+
+  await assert.rejects(
+    () => ziel.restoreFromFile(backupPath),
+    (err) => nenntSchluesselUndAlternative(err, 'fremder Schluessel'),
+    'die Meldung muss den Schluessel nennen, nicht nur „is not a database"'
+  );
+});
+
+test('ohne eigenen Schluessel sagt die Meldung, dass gar keiner gesetzt ist', async () => {
+  const backupPath = await backupFromInstance('schluessel-der-alten-instanz-0123');
+  const ziel = await bootDb(join(tmpDir(), 'yuvomi.db'), null);
+
+  // Der Unterschied ist kein Wortspiel: hier gibt es nichts zu vergleichen,
+  // `applyEncryptionKey()` ist ohne Key ein Leerlauf. Wer „falscher Schluessel"
+  // liest, sucht an der falschen Stelle - er hat ueberhaupt keinen.
+  await assert.rejects(
+    () => ziel.restoreFromFile(backupPath),
+    (err) => /DB_ENCRYPTION_KEY is not set on this instance/.test(err.message)
+      && nenntSchluesselUndAlternative(err, 'kein Key gesetzt'),
+    'ohne gesetzten Key muss die Meldung genau das sagen'
+  );
+});
+
+test('mit dem richtigen Schluessel laeuft derselbe Restore durch', async () => {
+  const KEY_QUELLE = 'schluessel-der-alten-instanz-0123';
+  const backupPath = await backupFromInstance(KEY_QUELLE);
+  const ziel = await bootDb(join(tmpDir(), 'yuvomi.db'), KEY_QUELLE);
+
+  // Ohne diesen Fall waere die Suite auch dann gruen, wenn JEDER Restore mit
+  // der neuen Meldung abbraeche - die Diagnose darf den Weg nicht zumauern.
+  const result = await ziel.restoreFromFile(backupPath);
+  assert.ok(result.schemaVersion > 0, 'der Restore muss durchlaufen und eine Schemaversion melden');
+});
+
+test('eine Datei, die wirklich keine Datenbank ist, bekommt weiter die alte Auskunft', async () => {
+  const dir = tmpDir();
+  const fremd = join(dir, 'kein-backup.db');
+  // Klartext-SQLite-Kopf, dahinter Unsinn: damit ist die Datei nachweislich
+  // nicht verschluesselt, und der Schluessel ist als Ursache ausgeschlossen.
+  writeFileSync(fremd, Buffer.concat([PLAINTEXT_HEADER, Buffer.from('kein gueltiger Inhalt')]));
+
+  const ziel = await bootDb(join(dir, 'yuvomi.db'), KEY);
+
+  await assert.rejects(
+    () => ziel.restoreFromFile(fremd),
+    (err) => /not a valid Yuvomi database|file is not a database/.test(err.message)
+      && !/DB_ENCRYPTION_KEY/.test(err.message),
+    'eine unverschluesselte Datei darf den Schluessel nicht beschuldigen'
+  );
+});
+
+/*
+ * ---------------------------------------------------------------------------
+ * #1267, zweiter Anlauf: die Auskunft selbst war die Sackgasse.
+ *
+ * Nach der ersten Runde nannte die Restore-Meldung zwar den Schluessel, gab aber
+ * eine Anweisung dazu: „set DB_ENCRYPTION_KEY to it and restart Yuvomi, then
+ * restore again". Der Melder hat sie befolgt und stand danach vor einer Instanz,
+ * die gar nicht mehr startete - die eigene Datenbank ist mit dem eigenen
+ * Schluessel verschluesselt, `init()` bricht ab, und der Dialog, der den Rat
+ * gegeben hat, ist ab da unerreichbar. Die Auskunft war nicht ungenau, sie war
+ * ein Weg ins Aus.
+ *
+ * Die Faelle darunter halten drei Dinge auseinander, die sich beim naechsten
+ * Umformulieren leicht wieder vermischen:
+ *   - MIT eigenem Schluessel ist der Rat falsch und muss ausdruecklich davor
+ *     warnen (er ist genau das, was der Melder getan hat),
+ *   - OHNE eigenen Schluessel ist derselbe Rat RICHTIG - die Klartextdatenbank
+ *     wird beim Start mitverschluesselt, danach passt der Schluessel zu beidem.
+ *     Nachgemessen, nicht angenommen, bevor die Unterscheidung in den Code kam.
+ *   - der Abbruch beim Start muss den Rueckweg nennen, sonst sitzt man fest.
+ * ---------------------------------------------------------------------------
+ */
+
+test('mit eigenem Schluessel warnt die Meldung vor dem Schluesseltausch, statt ihn zu raten', async () => {
+  const backupPath = await backupFromInstance('schluessel-der-alten-instanz-0123');
+  const ziel = await bootDb(join(tmpDir(), 'yuvomi.db'), 'schluessel-der-neuen-instanz-0123');
+
+  await assert.rejects(
+    () => ziel.restoreFromFile(backupPath),
+    (err) => {
+      // Der Kern: die Meldung darf den Handgriff, der den Melder ausgesperrt
+      // hat, nicht mehr empfehlen, und sie muss die Folge benennen.
+      assert.match(
+        err.message,
+        /Do NOT just set DB_ENCRYPTION_KEY/,
+        'die Meldung muss vom Schluesseltausch abraten'
+      );
+      assert.match(
+        err.message,
+        /would not start at all/,
+        'sie muss sagen, was der Tausch anrichtet - sonst liest er sich wie eine Vorsichtsmassnahme'
+      );
+      assert.match(
+        err.message,
+        /CLI \/ Docker Compose restore/,
+        'und sie muss den Weg nennen, der wirklich traegt'
+      );
+      return true;
+    },
+    'die Meldung mit eigenem Schluessel darf nicht in die Sackgasse raten'
+  );
+});
+
+test('ohne eigenen Schluessel bleibt der Rat zum Setzen des Schluessels stehen', async () => {
+  const backupPath = await backupFromInstance('schluessel-der-alten-instanz-0123');
+  const ziel = await bootDb(join(tmpDir(), 'yuvomi.db'), null);
+
+  // Regressionsschutz gegen eine Korrektur, die zu weit greift: hier ist der
+  // Rat richtig, weil `encryptPlaintextDatabase()` die eigene Klartextdatenbank
+  // beim naechsten Start mit genau diesem Schluessel verschluesselt. Wer die
+  // Warnung aus dem anderen Zweig hierher kopiert, nimmt dem Admin den einzigen
+  // Weg, der ohne Kommandozeile auskommt.
+  await assert.rejects(
+    () => ziel.restoreFromFile(backupPath),
+    (err) => {
+      assert.match(
+        err.message,
+        /restart Yuvomi, then restore again/,
+        'ohne eigenen Schluessel muss der Weg ueber .env erhalten bleiben'
+      );
+      assert.ok(
+        !/Do NOT just set DB_ENCRYPTION_KEY/.test(err.message),
+        'die Warnung aus dem anderen Zweig gehoert hier nicht hin'
+      );
+      return true;
+    },
+    'der Zweig ohne Schluessel darf nicht mitkorrigiert werden'
+  );
+});
+
+test('der Abbruch beim Start nennt den Rueckweg statt nur den Schluessel zu pruefen', async () => {
+  const quelle = await backupFromInstance('schluessel-der-alten-instanz-0123');
+  const dir = tmpDir();
+  const eigene = join(dir, 'yuvomi.db');
+  copyFileSync(quelle, eigene);
+
+  // Die Lage des Melders: die Datenbank gehoert zu Schluessel A, in der
+  // Umgebung steht B. Ohne den Rueckweg in der Meldung bleibt nur Raten.
+  await assert.rejects(
+    () => bootDb(eigene, 'ein-ganz-anderer-schluessel-0123'),
+    (err) => {
+      assert.match(err.message, /Wrong encryption key/, 'der Anlass muss weiter oben stehen');
+      assert.match(
+        err.message,
+        /change it back/,
+        'die Meldung muss den Rueckweg nennen - ohne ihn sitzt man fest'
+      );
+      assert.ok(
+        !/—/.test(err.message),
+        'kein Em-Dash in einer Meldung, die in Logs und Tickets landet'
+      );
+      return true;
+    },
+    'der Startabbruch darf nicht bei „check the key" aufhoeren'
+  );
+});
+
+test('das eigene Journal nach einem unsauberen Stopp wird NICHT zum Loeschen empfohlen', async () => {
+  const dir = tmpDir();
+  const eigene = join(dir, 'yuvomi.db');
+  const KEY_EIGEN = 'schluessel-dieser-instanz-0123456';
+
+  // Der Fall, den die erste Fassung dieses Fixes uebersehen hat (Review-Befund
+  // auf PR #1275): `journal_mode = WAL` steht dauerhaft, und es gibt nirgends
+  // einen SIGTERM-Handler, der die Verbindung schliesst. Nach einem gewoehnlichen
+  // Container-Stopp liegt das Journal also da - als EIGENES Journal dieser
+  // Datenbank, mit bestaetigten Transaktionen, die noch nicht in der Hauptdatei
+  // stehen. Wer hier „loesch es" liest, wirft sie weg und hat den Schluessel
+  // trotzdem nicht repariert.
+  const laufend = new Database(eigene);
+  laufend.pragma("cipher = 'sqlcipher'");
+  laufend.pragma(`key="x'${Buffer.from(KEY_EIGEN, 'utf8').toString('hex')}'"`);
+  laufend.pragma('journal_mode = WAL');
+  laufend.exec('CREATE TABLE eigener_marker (a INTEGER)');
+  laufend.prepare('INSERT INTO eigener_marker VALUES (1)').run();
+  // Kein close(): genau das unterlaesst auch ein `docker stop`.
+  assert.ok(existsSync(`${eigene}-wal`), 'Vorbedingung: das eigene Journal liegt da');
+
+  await assert.rejects(
+    () => bootDb(eigene, 'ein-vertippter-schluessel-0123456'),
+    (err) => {
+      assert.match(
+        err.message,
+        /Do not delete it in that case/,
+        'die Meldung muss vom Loeschen des eigenen Journals abraten'
+      );
+      assert.match(
+        err.message,
+        /committed transactions that are not in the main file yet/,
+        'und sagen, was dabei verlorenginge'
+      );
+      assert.ok(
+        !/stop Yuvomi, delete/i.test(err.message),
+        'kein unbedingter Loeschbefehl - die Bedingung kennt nur der Admin'
+      );
+      assert.match(
+        err.message,
+        /move .*-wal and .*-shm aside/,
+        'und wenn doch, dann beiseitelegen statt loeschen'
+      );
+      return true;
+    },
+    'ein eigenes Journal darf nicht zum Wegwerfen empfohlen werden'
+  );
+  laufend.close();
+});
+
+test('ein liegengebliebenes Write-Ahead-Log wird als eigene Ursache genannt', async () => {
+  const quelle = await backupFromInstance('schluessel-der-alten-instanz-0123');
+  const dir = tmpDir();
+  const eigene = join(dir, 'yuvomi.db');
+  copyFileSync(quelle, eigene);
+
+  // Ein echtes, ungecheckpointetes WAL einer FREMDEN Datenbank danebenlegen -
+  // genau das bleibt liegen, wenn jemand die .db-Datei von Hand tauscht. Die
+  // Datei selbst ist einwandfrei und der Schluessel stimmt; trotzdem scheitert
+  // das Oeffnen, weil SQLite die Frames des fremden Journals mitliest. Genau
+  // diese Kombination hat in #1267 wie ein falscher Schluessel ausgesehen.
+  const fremdDir = tmpDir();
+  const fremd = join(fremdDir, 'fremd.db');
+  const offen = new Database(fremd);
+  offen.pragma("cipher = 'sqlcipher'");
+  offen.pragma(`key="x'${Buffer.from('schluessel-der-neuen-instanz-0123', 'utf8').toString('hex')}'"`);
+  offen.pragma('journal_mode = WAL');
+  offen.exec('CREATE TABLE fremd_marker (a INTEGER)');
+  offen.prepare('INSERT INTO fremd_marker VALUES (1)').run();
+  // Bewusst NICHT schliessen: close() checkpointet und raeumt das WAL weg.
+  copyFileSync(`${fremd}-wal`, `${eigene}-wal`);
+  offen.close();
+
+  await assert.rejects(
+    () => bootDb(eigene, 'schluessel-der-alten-instanz-0123'),
+    (err) => {
+      assert.match(
+        err.message,
+        /write-ahead log is lying next to the database/,
+        'die zweite Ursache muss genannt werden - der Schluessel stimmt hier ja'
+      );
+      assert.match(
+        err.message,
+        /only a cause of this error if you replaced the database file by hand/,
+        'und zwar BEDINGT: von hier aus ist nicht zu sehen, ob das Journal dazugehoert'
+      );
+      assert.match(err.message, /-wal/, 'die Meldung muss die Datei benennen, die weg muss');
+      assert.match(err.message, /-shm/, 'und die zweite dazu - eine allein reicht nicht');
+      return true;
+    },
+    'ein fremdes WAL darf nicht als falscher Schluessel durchgehen'
+  );
+});
+
+test('ohne liegengebliebenes Log schweigt die Meldung davon', async () => {
+  const quelle = await backupFromInstance('schluessel-der-alten-instanz-0123');
+  const dir = tmpDir();
+  const eigene = join(dir, 'yuvomi.db');
+  copyFileSync(quelle, eigene);
+  assert.ok(!existsSync(`${eigene}-wal`), 'Vorbedingung: hier liegt kein Journal');
+
+  // Die Gegenrichtung, und sie ist kein Beiwerk: ein Absatz ueber eine Datei,
+  // die es nicht gibt, schickt in eine Richtung, in der nichts zu finden ist -
+  // dieselbe Art Fehler wie die Auskunft, die diesen Befund ausgeloest hat.
+  await assert.rejects(
+    () => bootDb(eigene, 'ein-ganz-anderer-schluessel-0123'),
+    (err) => {
+      assert.ok(
+        !/write-ahead log is lying next to the database/.test(err.message),
+        'ohne Journal darf die Meldung keines erfinden'
+      );
+      return true;
+    },
+    'die WAL-Diagnose darf nicht unbedingt erscheinen'
+  );
 });

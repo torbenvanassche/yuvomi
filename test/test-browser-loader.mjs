@@ -98,7 +98,12 @@ const STUBS = {
   '/rrule-ui.js': `
     export const renderRRuleFields = () => '';
     export const bindRRuleEvents = () => {};
-    export const getRRuleValues = () => ({});
+    // Das leere Objekt ist fuer jede Suite richtig, die nur das MARKUP prueft -
+    // aber es hat kein 'valid_until', und jeder Formular-Handler, der die
+    // Wiederholung mitliest, bricht damit sofort mit "invalidDate" ab. Suiten,
+    // die einen Handler wirklich FAHREN, setzen globalThis.__rruleValues -
+    // dasselbe Muster wie __apiStub in /api.js.
+    export const getRRuleValues = () => globalThis.__rruleValues ?? ({});
     export const describeRRule = () => '';
     export const recurrenceRow = () => ({ icon: 'repeat', label: '', value: '' });
     export const intervalUnitLabel = () => '';
@@ -124,7 +129,12 @@ const STUBS = {
     export const updateHeaderAction = () => null;
     export const validateAll = () => true;
     export const promptModal = async (...args) => globalThis.__promptModal?.(...args) ?? null;
-    export const btnLoading = () => {};
+    // Gibt eine FUNKTION zurueck wie das Original - der Aufrufer haelt sie als
+    // stop() fest und ruft sie im Fehlerpfad. Ein leeres Objekt hier liess jeden
+    // Test sterben, der genau diesen Pfad faehrt, und zwar an einem TypeError
+    // statt an der Sache, die er messen wollte. Den Knopfzustand baut der Stub
+    // bewusst NICHT nach: wer ihn pruefen will, wuerde sonst den Stub messen.
+    export const btnLoading = () => () => {};
     export const btnSuccess = () => {};
     export const btnError = () => {};
     export const refocusAfterRender = () => {};
@@ -132,7 +142,17 @@ const STUBS = {
     export const forgetRestore = () => {};
   `,
   '/components/detail-view.js': `
-    export const openDetailView = () => ({ update: () => true, isOpen: () => true });
+    // Tests, die pruefen wollen, WELCHE Bedienelemente ein Aufrufer anbietet -
+    // die Statusknoepfe der Aufgaben-Leseansicht etwa -, setzen
+    // globalThis.__openDetailView und bekommen die Optionen in die Hand,
+    // dasselbe Muster wie __apiStub in /api.js. Ohne das bleibt es beim stummen
+    // Rueckgabewert wie bisher. Ein Guard ueber den QUELLTEXT der Ansicht
+    // taete es hier nicht: er sieht eine Aktionsliste, die gebaut wird, nicht
+    // eine, die auch bei diesem Status herauskommt.
+    export const openDetailView = (options) => {
+      globalThis.__openDetailView?.(options);
+      return { update: () => true, isOpen: () => true };
+    };
     export const closeDetailView = () => {};
     export const detailRowEl = () => null;
     export const visibilityRow = () => ({ icon: 'users', label: '', value: '' });
@@ -158,7 +178,31 @@ const STUBS = {
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#039;');
     export const fmtLocation = (value) => String(value ?? '');
-    export const renderMarkdownLight = (value) => String(value ?? '');
+    // Wie __renderUserMultiSelect weiter unten: Suiten, die pruefen wollen, WAS
+    // ein Aufrufer dem Markdown-Renderer uebergibt (die Checklisten-Optionen
+    // etwa), setzen globalThis.__renderMarkdownLight. Ohne das bleibt es beim
+    // durchgereichten Text wie bisher - der Stub soll nicht die halbe
+    // Markdown-Umschrift nachbauen.
+    export const renderMarkdownLight = (value, options) => (
+      typeof globalThis.__renderMarkdownLight === 'function'
+        ? globalThis.__renderMarkdownLight(value, options)
+        : String(value ?? '')
+    );
+  `,
+  '/utils/sortable.js': `
+    // Suiten, die pruefen wollen, WORAUF eine Seite das Ziehen ueberhaupt
+    // einhaengt, setzen globalThis.__sortableCalls auf ein Array und bekommen
+    // je Aufruf das Element und die Optionen - dasselbe Muster wie __apiStub in
+    // /api.js. Der Riegel, den das misst, ist nicht im Markup zu sehen: eine
+    // Ablegezone, die gar nicht erst verdrahtet wird, sieht im HTML aus wie
+    // jede andere.
+    export const isDragActive = () => false;
+    export const makeSortable = async (listEl, opts) => {
+      if (Array.isArray(globalThis.__sortableCalls)) {
+        globalThis.__sortableCalls.push({ el: listEl, opts });
+      }
+      return { destroy() {} };
+    };
   `,
   '/reminders.js': `
     export const refresh = async () => {};

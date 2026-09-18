@@ -513,7 +513,10 @@
         "checkConflict": "Die Aufgabe wurde inzwischen geändert. Bitte erneut öffnen.",
         "doneByPick": "Wer hat „{{title}}“ erledigt?",
         "doneByToast": "Erledigt von {{name}}.",
-        "historyTickedBy": "abgehakt von {{name}}"
+        "historyTickedBy": "abgehakt von {{name}}",
+        "reminderLockedNeedsDueDate": "Diese Aufgabe hat eine Erinnerung, die du nicht ändern darfst. Sie braucht deshalb ein Fälligkeitsdatum.",
+        "kanbanColCollapse": "Spalte einklappen",
+        "kanbanColExpand": "Spalte ausklappen"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} Mahlzeiten",
@@ -2758,7 +2761,8 @@
         "displayRevokeDevice": "Widerrufen",
         "displayRevokeConfirm": "Zugang dieses Geräts beenden?",
         "displayRevokeDetail": "Das Tablett zeigt sofort nichts mehr. Zum Weiterbenutzen muss es neu gekoppelt werden.",
-        "displayDeleteDetail": "Das Konto und alle gekoppelten Geräte werden entfernt. Das lässt sich nicht rückgängig machen."
+        "displayDeleteDetail": "Das Konto und alle gekoppelten Geräte werden entfernt. Das lässt sich nicht rückgängig machen.",
+        "backupCliForeignKeyHint": "Stammt das Backup aus einer anderen Installation, trägt es deren Verschlüsselung: Setze DB_ENCRYPTION_KEY vor dem Start auf den Wert jener Installation, sonst startet Yuvomi nach dem Dateitausch nicht mehr."
     },
     "login": {
         "tagline": "Willkommen zurück bei deinem Familienplaner.",
@@ -2907,7 +2911,10 @@
         "customDays": "Tage",
         "customWeeks": "Wochen",
         "sectionTitlePlural": "Erinnerungen",
-        "sharedWithAssignees": "Wer diesem Termin zugewiesen ist, bekommt diese Erinnerung ebenfalls."
+        "sharedWithAssignees": "Wer diesem Termin zugewiesen ist, bekommt diese Erinnerung ebenfalls.",
+        "offsetAfterDue": "Nach der Fälligkeit",
+        "afterDueHint": "Die Erinnerung liegt nach der Fälligkeit ({{when}}) und bleibt beim Speichern unverändert. Wähle einen Vorlauf, um sie zu verschieben.",
+        "readOnlyNotice": "Erinnerungen gehören zum Kalender. Ohne Schreibrecht dort bleibt diese Einstellung unverändert."
     },
     "birthdays": {
         "inDays": "in {{days}} Tagen",
@@ -4007,7 +4014,22 @@
             "finishedHint": "Das Ende ist gespeichert. Du kannst Zeiten anpassen und eine Bewertung oder Notiz ergänzen.",
             "rangeError": "Das Ende muss nach dem Beginn liegen und darf nicht in der Zukunft liegen.",
             "elapsed": "Fastenzeit",
-            "sinceLast": "Seit dem letzten Fasten"
+            "sinceLast": "Seit dem letzten Fasten",
+            "noRecord": "Kein Eintrag",
+            "goalCoverage": "Ziele für {{records}} von {{total}} Einträgen erfasst",
+            "goalCoverage_one": "Ziel für {{records}} von {{total}} Einträgen erfasst",
+            "chartLegend": "Tatsächliche Dauer (links) und erfasstes Ziel (rechts); die Werte sind Summen je Abschlusstag.",
+            "capturedGoal": "Aufgezeichnetes Ziel",
+            "statsTitle": "Statistik",
+            "statsCount": "Fasten insgesamt",
+            "statsTotal": "Gesamtdauer",
+            "statsAverage": "Durchschnitt",
+            "statsCurrentStreak": "Aktuelle Serie",
+            "statsLongestStreak": "Längste Serie",
+            "statsWeekly": "Fasten der letzten sieben Tage",
+            "allTime": "Gesamter Zeitraum",
+            "thisYear": "Dieses Jahr",
+            "last30Days": "Letzte 30 Tage"
         },
         "tabs": {
             "overview": "Übersicht",

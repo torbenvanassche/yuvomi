@@ -501,7 +501,10 @@
         "checkConflict": "Görev bu arada değişti. Lütfen yeniden açın.",
         "doneByPick": "“{{title}}” görevini kim yaptı?",
         "doneByToast": "{{name}} yaptı.",
-        "historyTickedBy": "işaretleyen: {{name}}"
+        "historyTickedBy": "işaretleyen: {{name}}",
+        "reminderLockedNeedsDueDate": "Bu görevde değiştirmenize izin verilmeyen bir hatırlatıcı var. Bu nedenle bir bitiş tarihi gerekiyor.",
+        "kanbanColCollapse": "Sütunu daralt",
+        "kanbanColExpand": "Sütunu genişlet"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} öğünden",
@@ -2746,7 +2749,8 @@
         "displayRevokeDevice": "İptal et",
         "displayRevokeConfirm": "Bu cihazın erişimi sonlandırılsın mı?",
         "displayRevokeDetail": "Tablet hemen hiçbir şey göstermez. Yeniden kullanmak için tekrar eşleştirilmesi gerekir.",
-        "displayDeleteDetail": "Hesap ve eşleştirilmiş tüm cihazlar kaldırılır. Bu geri alınamaz."
+        "displayDeleteDetail": "Hesap ve eşleştirilmiş tüm cihazlar kaldırılır. Bu geri alınamaz.",
+        "backupCliForeignKeyHint": "Başka bir kurulumdan gelen yedek, o kurulumun şifrelemesini taşır: başlatmadan önce DB_ENCRYPTION_KEY değerini ona ayarlayın, aksi halde dosya değiştirildikten sonra Yuvomi artık başlamaz."
     },
     "login": {
         "tagline": "Aile planlayıcına tekrar hoş geldin.",
@@ -3010,7 +3014,10 @@
         "customDays": "Days",
         "customWeeks": "Weeks",
         "sectionTitlePlural": "Hatırlatıcılar",
-        "sharedWithAssignees": "Bu etkinliğe atanan kişiler de bu hatırlatmayı alır."
+        "sharedWithAssignees": "Bu etkinliğe atanan kişiler de bu hatırlatmayı alır.",
+        "offsetAfterDue": "Son tarihten sonra",
+        "afterDueHint": "Bu hatırlatıcı son tarihten sonra ({{when}}) ve kaydettiğinizde değişmeden kalır. Taşımak için bir hatırlatma süresi seçin.",
+        "readOnlyNotice": "Hatırlatıcılar Takvime aittir. Orada yazma yetkiniz yoksa bu ayar değişmeden kalır."
     },
     "onboarding": {
         "step1Title": "{{name}} uygulamasına hoş geldiniz",
@@ -4007,7 +4014,22 @@
             "finishedHint": "Bitiş kaydedildi. Saatleri düzenleyebilir, puan veya not ekleyebilirsiniz.",
             "rangeError": "Bitiş başlangıçtan sonra olmalı ve gelecekte olmamalıdır.",
             "elapsed": "Oruç süresi",
-            "sinceLast": "Son oruçtan bu yana"
+            "sinceLast": "Son oruçtan bu yana",
+            "noRecord": "Kayıt yok",
+            "goalCoverage": "{{total}} orucun {{records}} tanesi için hedef kaydedildi",
+            "goalCoverage_one": "{{total}} orucun {{records}} tanesi için hedef kaydedildi",
+            "chartLegend": "Gerçek süre (solda) ve kaydedilen hedef (sağda); değerler her tamamlanma tarihinin toplamlarıdır.",
+            "capturedGoal": "Kaydedilen hedef",
+            "statsTitle": "İstatistikler",
+            "statsCount": "Toplam oruç",
+            "statsTotal": "Toplam süre",
+            "statsAverage": "Ortalama",
+            "statsCurrentStreak": "Mevcut seri",
+            "statsLongestStreak": "En uzun seri",
+            "statsWeekly": "Son yedi gündeki oruçlar",
+            "allTime": "Tüm geçmiş",
+            "thisYear": "Bu yıl",
+            "last30Days": "Son 30 gün"
         },
         "tabs": {
             "overview": "Genel bakış",

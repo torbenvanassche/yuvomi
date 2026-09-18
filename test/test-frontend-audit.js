@@ -291,6 +291,34 @@ test('kein HTML-Kommentar im Markup enthält ein Backtick', () => {
   );
 });
 
+test('kein __test-Export listet denselben Namen zweimal', () => {
+  // ZWEIMAL DERSELBE SCHLUESSEL IST STILL. JavaScript behaelt den spaeteren
+  // Wert, also aendert sich nichts am Verhalten, und kein Guard schlug an -
+  // gefunden hat es erst ein Review (PR #1252). Beide Faelle entstanden gleich:
+  // jemand ergaenzte den Block, ohne die Liste darueber ganz zu lesen, und beim
+  // zweiten kam die Doppelung durch einen Rebase, den git nicht als Konflikt
+  // sah. Der Preis ist Lesezeit: wer sucht, was ein Modul den Tests anbietet,
+  // findet denselben Namen zweimal und muss pruefen, ob die Eintraege
+  // auseinandergelaufen sind.
+  //
+  // Kommentare fallen VOR dem Zaehlen weg - in diesen Bloecken steht die
+  // Begruendung je Gruppe, und sie nennt die Funktionen beim Namen.
+  const doppelte = [];
+  for (const file of walkJsFiles('../public/')) {
+    const block = read(file).match(/export const __test = \{([\s\S]*?)\n\};/);
+    if (!block) continue;
+    const ohneKommentar = withoutCommentsKeepingLines(block[1]);
+    const namen = [...ohneKommentar.matchAll(/(?:^|,)\s*([A-Za-z_$][\w$]*)\s*(?=[,:}\n])/g)].map((m) => m[1]);
+    const zaehler = new Map();
+    for (const name of namen) zaehler.set(name, (zaehler.get(name) ?? 0) + 1);
+    for (const [name, anzahl] of zaehler) {
+      if (anzahl > 1) doppelte.push(`${file}: ${name} (${anzahl}x)`);
+    }
+  }
+  assert.deepEqual(doppelte, [],
+    'derselbe Name zweimal im selben __test-Objekt - der spaetere gewinnt lautlos');
+});
+
 test('static frontend translation keys exist in every locale', () => {
   const keys = new Set();
 
@@ -17956,4 +17984,95 @@ test('inVerschachtelterFunktion trennt Rueckruf von Dialogvorbereitung', () => {
   ];
   assert.equal(inVerschachtelterFunktion(imTry, 0, 2), false,
     'ein try-Block oeffnet keinen Rueckruf');
+});
+
+// PR #1200 Review Runde 3, Nice-to-have 2: keine Suite pinnte den
+// eigentlichen CSS-MECHANISMUS des reservierten Reset-Slots fest. Der
+// Reviewer hat gegengeprueft: `.btn.is-current { visibility: hidden; }` durch
+// `{ display: none; }` ersetzt, und test:calendar, test:meals, test:budget-ui,
+// test:frontend-audit und test:mobile-scroll-layout blieben ALLE gruen - das
+// waere die Rueckkehr der Runde-1-Regression ("›" ruckt um die Knopfbreite),
+// von keiner Suite bemerkt. `display: none` naehme die Box aus dem Fluss,
+// `visibility: hidden` blendet nur die Malerei aus und haelt den Slot
+// reserviert - genau das ist der Unterschied, den layout.css direkt darueber
+// selbst dokumentiert (siehe Kommentar ueber der Regel).
+test('.btn.is-current blendet per visibility aus, nicht per display (PR #1200 Review Runde 3)', () => {
+  const layout = read('../public/styles/layout.css');
+  const rule = [...eachRule(layout)].find(({ selector }) => selector.trim() === '.btn.is-current');
+  assert.ok(rule, '.btn.is-current-Regel nicht gefunden');
+  assert.match(rule.body, /visibility:\s*hidden/,
+    '.btn.is-current muss visibility:hidden setzen - der reservierte Slot haengt daran, dass die Box im Fluss bleibt');
+  assert.doesNotMatch(rule.body, /display:\s*none/,
+    '.btn.is-current darf nicht display:none setzen - das nimmt die Box aus dem Fluss und laesst "›" wieder wandern (Runde-1-Regression)');
+});
+
+// PR #1200 Review Runde 4, Nice-to-have 3a: keine Suite pinnte den
+// CSS-MECHANISMUS fest, der verhindert, dass ueberlaufender Wochen-Text unter
+// "›" hinweg gemalt wird. Der Reviewer hat gegengeprueft: `overflow: hidden;`
+// und `text-overflow: ellipsis;` aus `.week-nav__label` entfernt, und
+// test:meals, test:frontend-audit und test:mobile-scroll-layout blieben ALLE
+// gruen - das waere die Rueckkehr der Runde-3-Regression (34px Text unter dem
+// Pfeil in fr, 20px in uk, beides gemessen), von keiner Suite bemerkt. Dieser
+// Test pinnt jetzt GENAU DIESEN Mechanismus fest, nach demselben Muster wie
+// `.btn.is-current` direkt darueber: die Regel per `eachRule()` lesen, nicht
+// den Dateitext durchsuchen (eine zufaellige Erwaehnung anderswo waere sonst
+// ein falscher gruener Treffer).
+test('.week-nav__label schneidet ueberlaufenden Text per overflow/text-overflow, statt ihn unter den Pfeil zu malen (PR #1200 Review Runde 4)', () => {
+  const meals = read('../public/styles/meals.css');
+  const rule = [...eachRule(meals)].find(({ selector }) => selector.trim() === '.week-nav__label');
+  assert.ok(rule, '.week-nav__label-Regel nicht gefunden');
+  assert.match(rule.body, /overflow:\s*hidden/,
+    '.week-nav__label muss overflow:hidden setzen - sonst malt ueberlaufender Text unter "›" (Runde-3-Regression)');
+  assert.match(rule.body, /text-overflow:\s*ellipsis/,
+    '.week-nav__label muss text-overflow:ellipsis setzen - sonst wird ueberlaufender Text kommentarlos abgeschnitten statt sichtbar gekuerzt');
+});
+
+// PR #1200 Review Runde 5, Should-fix: keine Suite pinnte den CSS-Teil des
+// Mechanismus fest, der `#week-today` unter 640px schmal wie einen Pfeil
+// haelt. Dieser Test deckt NUR die CSS-Form ab (--target-base, kein
+// flex-basis:100%) - die JS-Haelfte (Icon statt Text) haelt ein eigener
+// Verhaltenstest in test-meals.js fest ("syncTodayButton() schaltet unter
+// 640px wirklich auf ein textloses Icon um und zurueck", PR #1200 Review
+// Runde 6), NICHT irgendein Stub in diesem Modul hier - die fruehere Fassung
+// dieses Kommentars behauptete das faelschlich, ohne dass je ein
+// `matchMedia`-Stub in test-meals.js den schmalen Zweig tatsaechlich betreten
+// haette (Runde 6, Blocking 1). Der Reviewer hat gegengeprueft: den
+// `@media (max-width: 639px)`-Block fuer
+// `.week-nav__today` entfernt (womit der Knopf wieder mit seinem vollen,
+// uebersetzten Text rechnet), und test:meals, test:frontend-audit und
+// test:mobile-scroll-layout blieben ALLE gruen - das waere die Rueckkehr der
+// Runde-3/4-Regression (der reservierte Slot skaliert wieder mit der
+// Uebersetzung, das Enddatum wird in fr/uk bei 320px wieder abgeschnitten),
+// von keiner Suite bemerkt. Dieser Test pinnt jetzt fest, dass der Knopf
+// unter 640px auf Pfeilbreite (--target-base) begrenzt bleibt, statt auf
+// `flex-basis: 100%` (Runde 4) zurueckzufallen.
+test('.week-nav__today bleibt unter 640px pfeilbreit (icon-only), statt eine eigene Zeile zu erzwingen (PR #1200 Review Runde 5)', () => {
+  const meals = read('../public/styles/meals.css');
+  const narrowRule = [...eachRule(meals)].find(({ selector, at }) =>
+    selector.trim() === '.week-nav__today' && at.some((query) => /max-width:\s*639px/.test(query)));
+  assert.ok(narrowRule, '.week-nav__today-Regel unter "@media (max-width: 639px)" nicht gefunden');
+  assert.match(narrowRule.body, /min-width:\s*var\(--target-base\)/,
+    '.week-nav__today muss unter 640px auf --target-base begrenzt sein - ein Icon-Knopf, kein textbreiter Knopf');
+  assert.doesNotMatch(narrowRule.body, /flex-basis:\s*100%/,
+    '.week-nav__today darf unter 640px nicht mehr flex-basis:100% setzen - das war die eigene Zeile aus Runde 4, die Runde 5 ausdruecklich zurueckbaut');
+
+  // PR #1200 Review Runde 6, Nice-to-have 3: die obige Zusicherung pinnt nur
+  // die eine Haelfte von Runde 4s alter Form fest (die Abwesenheit von
+  // `flex-basis: 100%` am KIND). Die eigene Zeile brauchte aber ZWEI Regeln -
+  // zusaetzlich `.week-nav { flex-wrap: wrap; row-gap: ...; }` am ELTERN-
+  // Flex-Container, ohne die `flex-basis: 100%` allein gar keinen Umbruch
+  // erzwingen kann. Ohne diese zweite Zusicherung waere eine Rueckkehr NUR
+  // von `.week-nav { flex-wrap: wrap }` (ohne das Kind anzufassen) hier
+  // unsichtbar geblieben.
+  const weekNavRule = [...eachRule(meals)].find(({ selector, at }) =>
+    selector.trim() === '.week-nav' && at.some((query) => /max-width:\s*639px/.test(query)));
+  if (weekNavRule) {
+    assert.doesNotMatch(weekNavRule.body, /flex-wrap:\s*wrap/,
+      '.week-nav darf unter 640px kein flex-wrap:wrap zurueckbekommen - das war die zweite Haelfte der eigenen Zeile aus Runde 4, die Runde 5 ausdruecklich zurueckbaut');
+  }
+  const weekNavBaseRule = [...eachRule(meals)].find(({ selector, at }) =>
+    selector.trim() === '.week-nav' && at.length === 0);
+  assert.ok(weekNavBaseRule, '.week-nav-Basisregel (ausserhalb jeder @media) nicht gefunden');
+  assert.doesNotMatch(weekNavBaseRule.body, /flex-wrap:\s*wrap/,
+    '.week-nav darf auch in seiner Basisregel kein flex-wrap:wrap tragen - das waere derselbe Umbruch, nur ungeschuetzt durch die Breitenschwelle');
 });

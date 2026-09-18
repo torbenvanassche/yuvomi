@@ -501,7 +501,10 @@
         "checkConflict": "A tarefa foi alterada entretanto. Abra-a novamente.",
         "doneByPick": "Quem fez “{{title}}”?",
         "doneByToast": "Feito por {{name}}.",
-        "historyTickedBy": "assinalado por {{name}}"
+        "historyTickedBy": "assinalado por {{name}}",
+        "reminderLockedNeedsDueDate": "Esta tarefa tem um lembrete que não pode alterar. Por isso precisa de uma data de vencimento.",
+        "kanbanColCollapse": "Recolher coluna",
+        "kanbanColExpand": "Expandir coluna"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} refeições",
@@ -2746,7 +2749,8 @@
         "displayRevokeDevice": "Revogar",
         "displayRevokeConfirm": "Terminar o acesso deste dispositivo?",
         "displayRevokeDetail": "O tablet deixa de mostrar seja o que for de imediato. Para voltar a usá-lo é preciso emparelhá-lo de novo.",
-        "displayDeleteDetail": "A conta e todos os dispositivos emparelhados são removidos. Isto não pode ser anulado."
+        "displayDeleteDetail": "A conta e todos os dispositivos emparelhados são removidos. Isto não pode ser anulado.",
+        "backupCliForeignKeyHint": "Um backup de outra instalação carrega a criptografia dessa instalação: defina DB_ENCRYPTION_KEY com o valor dela antes de iniciar, caso contrário o Yuvomi não iniciará mais após a troca do arquivo."
     },
     "login": {
         "tagline": "Bem-vindo de volta ao teu planeador familiar.",
@@ -3010,7 +3014,10 @@
         "customDays": "Dias",
         "customWeeks": "Semanas",
         "sectionTitlePlural": "Lembretes",
-        "sharedWithAssignees": "Quem estiver atribuído a este evento também recebe este lembrete."
+        "sharedWithAssignees": "Quem estiver atribuído a este evento também recebe este lembrete.",
+        "offsetAfterDue": "Depois do vencimento",
+        "afterDueHint": "Este lembrete é posterior à data de vencimento ({{when}}) e permanece inalterado ao salvar. Escolha uma antecedência para movê-lo.",
+        "readOnlyNotice": "Os lembretes pertencem ao Calendário. Sem permissão de escrita aí, esta definição permanece inalterada."
     },
     "onboarding": {
         "step1Title": "Bem-vindo ao {{name}}",
@@ -4007,7 +4014,22 @@
             "finishedHint": "O fim está salvo. Você pode ajustar os horários e adicionar uma avaliação ou nota.",
             "rangeError": "O fim deve ser depois do início e não pode estar no futuro.",
             "elapsed": "Tempo de jejum",
-            "sinceLast": "Desde o último jejum"
+            "sinceLast": "Desde o último jejum",
+            "noRecord": "Nenhum registro",
+            "goalCoverage": "Metas registradas para {{records}} de {{total}} jejuns",
+            "goalCoverage_one": "Meta registrada para {{records}} de {{total}} jejuns",
+            "chartLegend": "Duração real (esquerda) e meta registrada (direita); os valores são totais por data de conclusão.",
+            "capturedGoal": "Meta registrada",
+            "statsTitle": "Estatísticas",
+            "statsCount": "Total de jejuns",
+            "statsTotal": "Duração total",
+            "statsAverage": "Média",
+            "statsCurrentStreak": "Sequência atual",
+            "statsLongestStreak": "Sequência mais longa",
+            "statsWeekly": "Jejuns dos últimos sete dias",
+            "allTime": "Todo o histórico",
+            "thisYear": "Este ano",
+            "last30Days": "Últimos 30 dias"
         },
         "tabs": {
             "overview": "Visão geral",

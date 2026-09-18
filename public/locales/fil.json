@@ -513,7 +513,10 @@
         "checkConflict": "Nabago ang gawain samantala. Pakibuksan itong muli.",
         "doneByPick": "Sino ang gumawa ng “{{title}}”?",
         "doneByToast": "Ginawa ni {{name}}.",
-        "historyTickedBy": "minarkahan ni {{name}}"
+        "historyTickedBy": "minarkahan ni {{name}}",
+        "reminderLockedNeedsDueDate": "May paalala ang gawaing ito na hindi mo maaaring baguhin. Kailangan nito ng petsa ng deadline.",
+        "kanbanColCollapse": "Itago ang column",
+        "kanbanColExpand": "Ilabas ang column"
     },
     "shopping": {
         "importMealsPreviewMeals_few": "{{count}} na (mga) pagkain",
@@ -2758,7 +2761,8 @@
         "displayRevokeDevice": "Bawiin",
         "displayRevokeConfirm": "Tapusin ang access ng device na ito?",
         "displayRevokeDetail": "Agad nang hihinto ang tablet sa pagpapakita ng kahit ano. Para magamit ulit, kailangan itong ipares muli.",
-        "displayDeleteDetail": "Aalisin ang account at lahat ng naipares na device. Hindi ito maibabalik."
+        "displayDeleteDetail": "Aalisin ang account at lahat ng naipares na device. Hindi ito maibabalik.",
+        "backupCliForeignKeyHint": "Ang backup mula sa ibang instalasyon ay may dalang pag-encrypt ng instalasyong iyon: itakda ang DB_ENCRYPTION_KEY sa halaga nito bago magsimula, kung hindi ay hindi na magsisimula ang Yuvomi pagkatapos palitan ang file."
     },
     "login": {
         "tagline": "Maligayang pagbabalik sa iyong family planner.",
@@ -2907,7 +2911,10 @@
         "customDays": "Araw",
         "customWeeks": "Linggo",
         "sectionTitlePlural": "Mga Paalala",
-        "sharedWithAssignees": "Nakukuha rin ng mga nakatalaga sa kaganapang ito ang paalalang ito."
+        "sharedWithAssignees": "Nakukuha rin ng mga nakatalaga sa kaganapang ito ang paalalang ito.",
+        "offsetAfterDue": "Pagkatapos ng takdang petsa",
+        "afterDueHint": "Ang paalalang ito ay pagkatapos ng takdang petsa ({{when}}) at mananatiling hindi nagbabago kapag nag-save ka. Pumili ng lead time para ilipat ito.",
+        "readOnlyNotice": "Ang mga paalala ay nasa Kalendaryo. Kung wala kang access na magsulat doon, hindi mababago ang setting na ito."
     },
     "birthdays": {
         "inDays": "sa loob ng {{days}} araw",
@@ -4007,7 +4014,22 @@
             "finishedHint": "Nai-save ang pagtatapos. Maaari mong baguhin ang oras at magdagdag ng marka o tala.",
             "rangeError": "Dapat pagkatapos ng simula ang pagtatapos at hindi nasa hinaharap.",
             "elapsed": "Tagal ng pag-aayuno",
-            "sinceLast": "Mula sa huling pag-aayuno"
+            "sinceLast": "Mula sa huling pag-aayuno",
+            "noRecord": "Walang tala",
+            "goalCoverage": "May naitalang layunin para sa {{records}} sa {{total}} pag-aayuno",
+            "goalCoverage_one": "May naitalang layunin para sa {{records}} sa {{total}} pag-aayuno",
+            "chartLegend": "Aktuwal na tagal (kaliwa) at naitalang layunin (kanan); ang mga halaga ay kabuuan sa bawat petsa ng pagtatapos.",
+            "capturedGoal": "Naitalang layunin",
+            "statsTitle": "Mga istatistika",
+            "statsCount": "Kabuuang pag-aayuno",
+            "statsTotal": "Kabuuang tagal",
+            "statsAverage": "Karaniwan",
+            "statsCurrentStreak": "Kasalukuyang serye",
+            "statsLongestStreak": "Pinakamahabang serye",
+            "statsWeekly": "Mga pag-aayuno sa nakaraang pitong araw",
+            "allTime": "Buong kasaysayan",
+            "thisYear": "Ngayong taon",
+            "last30Days": "Huling 30 araw"
         },
         "tabs": {
             "overview": "Pangkalahatang-tanaw",
