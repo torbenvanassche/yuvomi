@@ -991,6 +991,7 @@
         "localCalendarColor": "Agendakleur",
         "localCalendarEventCount": "{{count}} afspraken",
         "localCalendarEventCount_one": "{{count}} afspraak",
+        "localCalendarEventCount_few": "{{count}} afspraken",
         "localCalendarEventCount_other": "{{count}} afspraken",
         "localCalendarCreate": "Agenda maken",
         "localCalendarEmpty": "Nog geen agenda’s.",

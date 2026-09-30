@@ -111,9 +111,9 @@ test('local calendar feeds exclude externally synchronized events', async () => 
   const localEvent = await createEvent('Local event', local.id);
   db.prepare(`
     INSERT INTO calendar_events
-      (title, start_datetime, end_datetime, external_source, external_calendar_id, created_by)
-    VALUES (?, ?, ?, 'google', ?, ?)
-  `).run('Google event', '2035-05-01T11:00:00Z', '2035-05-01T12:00:00Z', 'google-id', ADMIN.id);
+      (title, start_datetime, end_datetime, external_source, external_calendar_id, local_calendar_id, created_by)
+    VALUES (?, ?, ?, 'google', ?, ?, ?)
+  `).run('Google event', '2035-05-01T11:00:00Z', '2035-05-01T12:00:00Z', 'google-id', local.id, ADMIN.id);
   const ics = buildCalendarFeed(db, local.id, new Date('2035-05-02T00:00:00Z'), 'Europe/Brussels');
   assert.match(ics, /SUMMARY:Local event/);
   assert.doesNotMatch(ics, /SUMMARY:Google event/);

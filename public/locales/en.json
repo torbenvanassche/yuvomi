@@ -991,6 +991,7 @@
         "localCalendarColor": "Calendar color",
         "localCalendarEventCount": "{{count}} events",
         "localCalendarEventCount_one": "{{count}} event",
+        "localCalendarEventCount_few": "{{count}} events",
         "localCalendarEventCount_other": "{{count}} events",
         "localCalendarCreate": "Create calendar",
         "localCalendarEmpty": "No calendars yet.",

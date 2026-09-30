@@ -8696,21 +8696,6 @@ const MIGRATIONS = [
     `,
   },
   {
-    version: 218,
-    description: 'Reserved for documents expiry migration in PR #1255',
-    up: `SELECT 1;`,
-  },
-  {
-    version: 219,
-    description: 'Reserved for health prevention migration in PR #1256',
-    up: `SELECT 1;`,
-  },
-  {
-    version: 220,
-    description: 'Reserved for inventory service log migration in PR #1257',
-    up: `SELECT 1;`,
-  },
-  {
     version: 221,
     description: 'Calendar: first-class local calendars with per-calendar feeds',
     up(db) {
@@ -8732,8 +8717,6 @@ const MIGRATIONS = [
           );
           CREATE UNIQUE INDEX idx_local_calendars_default
             ON local_calendars(is_default) WHERE is_default = 1;
-          CREATE UNIQUE INDEX idx_local_calendars_feed_token
-            ON local_calendars(feed_token) WHERE feed_token IS NOT NULL;
           CREATE INDEX idx_local_calendars_sort ON local_calendars(sort_order, name);
           CREATE TRIGGER trg_local_calendars_updated_at
             AFTER UPDATE ON local_calendars FOR EACH ROW
@@ -8762,7 +8745,7 @@ const MIGRATIONS = [
         `).get();
         defaultId = db.prepare(`
           INSERT INTO local_calendars (name, color, is_default, sort_order, created_by)
-          VALUES ('Calendar', '#007AFF', 1, 0, ?)
+          VALUES ('Yuvomi', '#007AFF', 1, 0, ?)
         `).run(owner?.id ?? null).lastInsertRowid;
       }
 

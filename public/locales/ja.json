@@ -991,6 +991,7 @@
         "localCalendarColor": "カレンダーの色",
         "localCalendarEventCount": "{{count}}件の予定",
         "localCalendarEventCount_one": "{{count}}件の予定",
+        "localCalendarEventCount_few": "{{count}}件の予定",
         "localCalendarEventCount_other": "{{count}}件の予定",
         "localCalendarCreate": "カレンダーを作成",
         "localCalendarEmpty": "カレンダーはまだありません。",

@@ -991,6 +991,7 @@
         "localCalendarColor": "لون التقويم",
         "localCalendarEventCount": "{{count}} أحداث",
         "localCalendarEventCount_one": "{{count}} حدث",
+        "localCalendarEventCount_few": "{{count}} أحداث",
         "localCalendarEventCount_other": "{{count}} أحداث",
         "localCalendarCreate": "إنشاء تقويم",
         "localCalendarEmpty": "لا توجد تقاويم بعد.",

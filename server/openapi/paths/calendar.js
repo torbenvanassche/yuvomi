@@ -93,18 +93,78 @@ export function calendarPaths() {
       post: op({ summary: 'Regenerate personal ICS export feed token', tag: 'Calendar', stateChanging: true }),
     },
     '/api/v1/calendar/calendars': {
-      get: op({ summary: 'List local calendars', tag: 'Calendar' }),
-      post: op({ summary: 'Create local calendar', tag: 'Calendar', stateChanging: true, requestBody: jsonBody(null) }),
+      get: op({
+        summary: 'List local calendars',
+        tag: 'Calendar',
+        description: 'Feed URLs and tokens are included only for administrators.',
+      }),
+      post: op({
+        summary: 'Create local calendar',
+        tag: 'Calendar',
+        description: 'Requires write access to the calendar module.',
+        stateChanging: true,
+        responses: {
+          201: { description: 'Local calendar created' },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          500: { $ref: '#/components/responses/InternalServerError' },
+        },
+        requestBody: jsonBody({
+          type: 'object',
+          required: ['name'],
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 80 },
+            color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+          },
+        }),
+      }),
     },
     '/api/v1/calendar/calendars/{id}': {
-      put: op({ summary: 'Update local calendar', tag: 'Calendar', params: [idParam()], stateChanging: true, requestBody: jsonBody(null) }),
-      delete: op({ summary: 'Delete local calendar and reassign events to the default calendar', tag: 'Calendar', params: [idParam()], stateChanging: true }),
+      put: op({
+        summary: 'Update local calendar',
+        tag: 'Calendar',
+        description: 'Requires write access to the calendar module.',
+        params: [idParam()],
+        stateChanging: true,
+        responses: {
+          200: { description: 'Local calendar updated' },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+          500: { $ref: '#/components/responses/InternalServerError' },
+        },
+        requestBody: jsonBody({
+          type: 'object',
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 80 },
+            color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
+            sort_order: { type: 'integer', minimum: 0 },
+          },
+        }),
+      }),
+      delete: op({
+        summary: 'Delete local calendar and reassign events to the default calendar',
+        tag: 'Calendar',
+        description: 'Requires write access to the calendar module.',
+        params: [idParam()],
+        stateChanging: true,
+        responses: {
+          204: { description: 'Local calendar deleted' },
+          400: { $ref: '#/components/responses/BadRequest' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          403: { $ref: '#/components/responses/Forbidden' },
+          404: { $ref: '#/components/responses/NotFound' },
+          500: { $ref: '#/components/responses/InternalServerError' },
+        },
+      }),
     },
     '/api/v1/calendar/calendars/{id}/feed/regenerate': {
-      post: op({ summary: 'Regenerate local-calendar ICS export token', tag: 'Calendar', params: [idParam()], stateChanging: true }),
+      post: op({ summary: 'Regenerate local-calendar ICS export token', tag: 'Calendar', admin: true, params: [idParam()], stateChanging: true }),
     },
     '/api/v1/calendar/calendars/{id}/feed': {
-      delete: op({ summary: 'Disable local-calendar ICS export', tag: 'Calendar', params: [idParam()], stateChanging: true }),
+      delete: op({ summary: 'Disable local-calendar ICS export', tag: 'Calendar', admin: true, params: [idParam()], stateChanging: true }),
     },
     '/api/v1/calendar/sync-targets': {
       get: op({

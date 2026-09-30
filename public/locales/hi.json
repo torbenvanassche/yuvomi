@@ -991,6 +991,7 @@
         "localCalendarColor": "कैलेंडर का रंग",
         "localCalendarEventCount": "{{count}} इवेंट",
         "localCalendarEventCount_one": "{{count}} इवेंट",
+        "localCalendarEventCount_few": "{{count}} इवेंट",
         "localCalendarEventCount_other": "{{count}} इवेंट",
         "localCalendarCreate": "कैलेंडर बनाएं",
         "localCalendarEmpty": "अभी कोई कैलेंडर नहीं है.",

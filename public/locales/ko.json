@@ -1003,6 +1003,7 @@
         "localCalendarColor": "캘린더 색상",
         "localCalendarEventCount": "일정 {{count}}개",
         "localCalendarEventCount_one": "일정 {{count}}개",
+        "localCalendarEventCount_few": "일정 {{count}}개",
         "localCalendarEventCount_other": "일정 {{count}}개",
         "localCalendarCreate": "캘린더 만들기",
         "localCalendarEmpty": "아직 캘린더가 없습니다.",

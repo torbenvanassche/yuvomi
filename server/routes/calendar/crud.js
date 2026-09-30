@@ -403,7 +403,8 @@ router.post('/', async (req, res) => {
     const vLocalCalendar = validateCalendarId(db.get(), req.body.local_calendar_id, { fallbackDefault: true });
     const errors = collectErrors([vTitle, vDesc, vStart, vEnd, vColor, vLoc, vRrule, vCaldav, vGoogle, vOutlook, vLocalCalendar]);
     if (errors.length) return res.status(400).json({ error: errors.join(' '), code: 400 });
-    if (vLocalCalendar.value !== undefined && req.body.external_source && req.body.external_source !== 'local') {
+    if (req.body.local_calendar_id !== undefined
+        && req.body.external_source && req.body.external_source !== 'local') {
       return res.status(400).json({ error: 'Lokale Kalender können nur eigene Termine enthalten.', code: 400 });
     }
     if (!vIcon) return res.status(400).json({ error: 'icon: invalid calendar event icon.', code: 400 });

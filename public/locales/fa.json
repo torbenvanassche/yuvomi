@@ -1003,6 +1003,7 @@
         "localCalendarColor": "رنگ تقویم",
         "localCalendarEventCount": "{{count}} رویداد",
         "localCalendarEventCount_one": "{{count}} رویداد",
+        "localCalendarEventCount_few": "{{count}} رویداد",
         "localCalendarEventCount_other": "{{count}} رویداد",
         "localCalendarCreate": "ایجاد تقویم",
         "localCalendarEmpty": "هنوز تقویمی وجود ندارد.",

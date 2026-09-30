@@ -436,7 +436,7 @@ function populateCalendarImportTarget(container, calendars = []) {
   for (const calendar of calendars) {
     const option = document.createElement('option');
     option.value = String(calendar.id);
-    option.textContent = calendar.name;
+    option.textContent = calendar.is_default ? t('calendar.defaultLocalCalendar') : calendar.name;
     if (calendar.is_default) option.selected = true;
     select.appendChild(option);
   }
@@ -479,6 +479,7 @@ function bindCalendarImport(container, calendars = []) {
     }
 
     submitBtn.disabled = true;
+    let createdCalendarId = null;
     try {
       const payload = { color: colorInput.value };
       if (file) payload.ics = await file.text();
@@ -491,13 +492,16 @@ function bindCalendarImport(container, calendars = []) {
           return;
         }
         const created = await api.post('/calendar/calendars', { name, color: colorInput.value });
-        importedCalendars.push(created.data);
+        createdCalendarId = created.data.id;
         payload.local_calendar_id = created.data.id;
       } else if (calendarSelect?.value) {
         payload.local_calendar_id = Number(calendarSelect.value);
       }
 
       const res = await api.post('/calendar/import', payload);
+      if (createdCalendarId != null) {
+        importedCalendars.push({ id: createdCalendarId, name: newCalendarNameInput?.value.trim() });
+      }
       const { imported = 0, skipped = 0 } = res.data || {};
       form.reset();
       populateCalendarImportTarget(container, importedCalendars);
@@ -511,6 +515,13 @@ function bindCalendarImport(container, calendars = []) {
         showToast(t('settings.calendarImport.success', { count: imported }), 'success');
       }
     } catch (err) {
+      if (createdCalendarId != null) {
+        try {
+          await api.delete(`/calendar/calendars/${createdCalendarId}`);
+        } catch (cleanupErr) {
+          console.warn('[Calendar import] Could not remove calendar after failed import:', cleanupErr);
+        }
+      }
       errorEl.textContent = err.message || t('common.errorGeneric');
       errorEl.hidden = false;
     } finally {
