@@ -3088,7 +3088,7 @@
   white-space: nowrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 639px) {
   .cal-calendar-create,
   .cal-calendar-row {
     grid-template-columns: 1rem minmax(0, 1fr) 3rem;

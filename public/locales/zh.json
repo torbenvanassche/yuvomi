@@ -1094,6 +1094,7 @@
         "localCalendarColor": "日历颜色",
         "localCalendarEventCount": "{{count}} 个事件",
         "localCalendarEventCount_one": "{{count}} 个事件",
+        "localCalendarEventCount_few": "{{count}} 个事件",
         "localCalendarEventCount_other": "{{count}} 个事件",
         "localCalendarCreate": "创建日历",
         "localCalendarEmpty": "还没有日历。",

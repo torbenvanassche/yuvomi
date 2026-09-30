@@ -107,6 +107,7 @@ function createDatabase() {
   database.exec(MIGRATIONS_SQL[26]); // family document ACLs
   database.exec(MIGRATIONS_SQL[85]); // calendar_event_exceptions
   database.exec(MIGRATIONS_SQL[174]); // generated name-day event owner
+  database.exec('ALTER TABLE calendar_events ADD COLUMN local_calendar_id INTEGER');
   database.exec(`
     CREATE TABLE housekeeping_work_sessions (
       id INTEGER PRIMARY KEY,
@@ -349,7 +350,7 @@ test('migration 194 adds nullable metadata and the parent/start lookup index', (
 test('override fields use the closed canonical vocabulary and reject malformed metadata', () => {
   assert.deepEqual(OVERRIDE_FIELDS, [
     'title', 'description', 'start_datetime', 'end_datetime', 'all_day', 'location', 'color', 'icon',
-    'assignments', 'visibility', 'countdown', 'attachment', 'reminders',
+    'assignments', 'visibility', 'countdown', 'attachment', 'reminders', 'local_calendar_id',
   ]);
   assert.deepEqual(parseOverrideFields('["location", "title", "location"]'), ['location', 'title']);
 

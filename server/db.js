@@ -10042,8 +10042,6 @@ const MIGRATIONS = [
           );
           CREATE UNIQUE INDEX idx_local_calendars_default
             ON local_calendars(is_default) WHERE is_default = 1;
-          CREATE UNIQUE INDEX idx_local_calendars_feed_token
-            ON local_calendars(feed_token) WHERE feed_token IS NOT NULL;
           CREATE INDEX idx_local_calendars_sort ON local_calendars(sort_order, name);
           CREATE TRIGGER trg_local_calendars_updated_at
             AFTER UPDATE ON local_calendars FOR EACH ROW
@@ -10072,7 +10070,7 @@ const MIGRATIONS = [
         `).get();
         defaultId = db.prepare(`
           INSERT INTO local_calendars (name, color, is_default, sort_order, created_by)
-          VALUES ('Calendar', '#007AFF', 1, 0, ?)
+          VALUES ('Yuvomi', '#007AFF', 1, 0, ?)
         `).run(owner?.id ?? null).lastInsertRowid;
       }
 

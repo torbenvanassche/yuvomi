@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Local calendar maintenance is safer and better documented.** Calendar migration numbering no
+  longer consumes reserved no-op versions, default-calendar repair leaves externally synchronized
+  events alone, the local-calendar test suite runs in the main chain, and local-calendar API fields
+  and event grouping are documented. Managing calendars requires calendar write access; only
+  administrators can manage export links, whose assignee display no longer depends on a creator's
+  personal preference.
 - **Norwegian Bokmål as the 26th language** (#1529, translated by @nilsanmy). The app, the web
   installer and the command-line installer speak Norwegian Bokmål. A Norwegian Bokmål browser or
   `LANG=nb_NO.UTF-8` picks it on its own, and the new region "Norwegian Bokmål (Norway)" sets

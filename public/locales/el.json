@@ -1094,6 +1094,7 @@
         "localCalendarColor": "Χρώμα ημερολογίου",
         "localCalendarEventCount": "{{count}} συμβάντα",
         "localCalendarEventCount_one": "{{count}} συμβάν",
+        "localCalendarEventCount_few": "{{count}} συμβάντα",
         "localCalendarEventCount_other": "{{count}} συμβάντα",
         "localCalendarCreate": "Δημιουργία ημερολογίου",
         "localCalendarEmpty": "Δεν υπάρχουν ακόμη ημερολόγια.",

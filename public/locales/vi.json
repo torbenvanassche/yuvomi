@@ -1094,6 +1094,7 @@
         "localCalendarColor": "Màu lịch",
         "localCalendarEventCount": "{{count}} sự kiện",
         "localCalendarEventCount_one": "{{count}} sự kiện",
+        "localCalendarEventCount_few": "{{count}} sự kiện",
         "localCalendarEventCount_other": "{{count}} sự kiện",
         "localCalendarCreate": "Tạo lịch",
         "localCalendarEmpty": "Chưa có lịch nào.",

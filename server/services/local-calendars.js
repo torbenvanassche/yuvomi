@@ -1,6 +1,6 @@
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
-const DEFAULT_CALENDAR_NAME = 'Calendar';
+const DEFAULT_CALENDAR_NAME = 'Yuvomi';
 const DEFAULT_CALENDAR_COLOR = '#007AFF';
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
@@ -12,9 +12,9 @@ function firstUserId(conn) {
   `).get()?.id ?? null;
 }
 
-function serializeCalendar(req, row, feedUrl) {
+function serializeCalendar(req, row, feedUrl, { includeFeedToken = false } = {}) {
   if (!row) return null;
-  const token = row.feed_token ?? null;
+  const token = includeFeedToken ? (row.feed_token ?? null) : null;
   return {
     id: row.id,
     name: row.name,
@@ -43,7 +43,7 @@ function ensureDefaultCalendar(conn) {
   conn.prepare(`
     UPDATE calendar_events
     SET local_calendar_id = ?
-    WHERE local_calendar_id IS NULL
+    WHERE external_source = 'local' AND local_calendar_id IS NULL
   `).run(id);
   return conn.prepare('SELECT * FROM local_calendars WHERE id = ?').get(id);
 }

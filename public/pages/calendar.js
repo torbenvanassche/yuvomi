@@ -59,7 +59,7 @@ import { renderPageSearch, wirePageSearch } from '/utils/page-search.js';
 import { nowFields, todayKey, wallTimeToInstantMs, zonedDateKey, zonedTimeKey } from '/utils/timezone.js';
 import { maxUploadBytes, maxUploadMb } from '/utils/upload-limit.js';
 import { emptyStateHTML, emptyHintHTML, mountLoadError } from '/utils/empty-state.js';
-import { moduleAccess } from '/permissions.js';
+import { isPermAdmin, moduleAccess } from '/permissions.js';
 import { pathAccess } from '/utils/module-access.js';
 import {
   applyPendingCalendarDeleteOverlay,
@@ -647,6 +647,7 @@ let state = {
   cursor:        null,     // aktuell angezeigte Referenz-Datum (YYYY-MM-DD)
   events:        [],
   localCalendars: [],
+  localCalendarsError: null,
   tasks:         [],       // Aufgaben mit due_date für Kalender-Anzeige
   scheduleEntries: [],
   scheduleWarnings: [],
@@ -1340,16 +1341,15 @@ function passesSourceFilter(item) {
  *
  * Aus den geladenen Terminen, dazu jede ausgeblendete Quelle, auch ohne Termin
  * im Zeitraum - sonst liesse sich nur zurueckholen, was gerade zu sehen waere.
- * Keine eigene Route: Name und Farbe liefert der Server an jedem Termin
- * (`cal_name`, `cal_color`), und die Verwaltungsrouten der Quellen sind
- * `requireAdmin` - ein Mitglied kaeme dort nicht durch.
+ * Die lokale Kalenderquelle wird separat geladen, weil sie eigene Kalender
+ * verwaltet und nicht an eine externe Synchronisationsquelle gebunden ist.
  */
 function calendarSources() {
   const quellen = new Map();
   for (const calendar of state.localCalendars ?? []) {
     quellen.set(`local:${calendar.id}`, {
       key: `local:${calendar.id}`,
-      name: calendar.name,
+      name: localCalendarDisplayName(calendar),
       color: calendar.color,
     });
   }
@@ -1361,7 +1361,7 @@ function calendarSources() {
     // einen noch nicht hochgeladenen Termin ueber sein Ziel auf, `cal_name` und
     // `cal_color` folgen nur `calendar_ref_id` - und tragen bei Abos die Werte
     // des Abos. Fehlt beides, fuellt ein anderer Termin oder der Merker nach.
-    const name = ev.source_calendar_name || ev.cal_name || ev.local_calendar_name || '';
+    const name = ev.source_calendar_name || eventLocalCalendarDisplayName(ev);
     const color = ev.source_calendar_color || ev.cal_color || ev.local_calendar_color || null;
     if (bekannt) {
       bekannt.name ||= name;
@@ -1918,9 +1918,11 @@ async function loadLocalCalendars() {
   try {
     const res = await api.get('/calendar/calendars');
     state.localCalendars = Array.isArray(res.data) ? res.data : [];
+    state.localCalendarsError = null;
   } catch (err) {
     console.warn('[Calendar] Local calendars fetch failed:', err);
     state.localCalendars = [];
+    state.localCalendarsError = err;
   }
 }
 
@@ -5292,44 +5294,50 @@ function buildLayerRowsHtml(layers) {
 }
 
 function renderLocalCalendarsContent() {
+  if (state.localCalendarsError) {
+    return `<div class="cal-calendar-load-error" role="alert">
+      <p>${esc(t('common.errorGeneric'))} ${esc(t('common.loadErrorDescription'))}</p>
+      <button type="button" class="btn btn--secondary js-calendar-retry-load">${t('common.retry')}</button>
+    </div>`;
+  }
   const rows = state.localCalendars.map((calendar) => `
     <div class="cal-calendar-row" data-calendar-id="${calendar.id}">
       <span class="cal-calendar-row__swatch" style="background-color:${esc(calendar.color)}" aria-hidden="true"></span>
-      <input class="form-input cal-calendar-row__name" value="${esc(calendar.name)}" aria-label="${esc(t('calendar.localCalendarName'))}">
-      <input class="form-input cal-calendar-row__color" type="color" value="${esc(calendar.color)}" aria-label="${esc(t('calendar.localCalendarColor'))}">
+      ${moduleAccess('calendar') === 'write' ? `<input class="form-input cal-calendar-row__name" value="${esc(localCalendarDisplayName(calendar))}" aria-label="${esc(t('calendar.localCalendarName'))}">
+      <input class="form-input cal-calendar-row__color" type="color" value="${esc(calendar.color)}" aria-label="${esc(t('calendar.localCalendarColor'))}">` : ''}
       <span class="cal-calendar-row__count">${t('calendar.localCalendarEventCount', { count: calendar.event_count ?? 0 })}</span>
-      <button type="button" class="btn btn--icon js-calendar-save" title="${esc(t('common.save'))}" aria-label="${esc(t('common.save'))}">
+      ${moduleAccess('calendar') === 'write' ? `<button type="button" class="btn btn--icon js-calendar-save" title="${esc(t('common.save'))}" aria-label="${esc(t('common.save'))}">
         <i data-lucide="save" aria-hidden="true"></i>
-      </button>
-      ${calendar.feed_url ? `
+      </button>` : ''}
+      ${isPermAdmin() && calendar.feed_url ? `
         <button type="button" class="btn btn--icon js-calendar-copy-feed" title="${esc(t('calendar.localCalendarCopyExport'))}" aria-label="${esc(t('calendar.localCalendarCopyExport'))}">
           <i data-lucide="copy" aria-hidden="true"></i>
         </button>
         <button type="button" class="btn btn--icon js-calendar-disable-feed" title="${esc(t('calendar.localCalendarDisableExport'))}" aria-label="${esc(t('calendar.localCalendarDisableExport'))}">
           <i data-lucide="link-2-off" aria-hidden="true"></i>
         </button>
-      ` : `
+      ` : isPermAdmin() ? `
         <button type="button" class="btn btn--icon js-calendar-enable-feed" title="${esc(t('calendar.localCalendarEnableExport'))}" aria-label="${esc(t('calendar.localCalendarEnableExport'))}">
           <i data-lucide="upload" aria-hidden="true"></i>
         </button>
-      `}
-      ${calendar.is_default ? '' : `
+      ` : ''}
+      ${moduleAccess('calendar') === 'write' && !calendar.is_default ? `
         <button type="button" class="btn btn--icon btn--danger-outline js-calendar-delete" title="${esc(t('common.delete'))}" aria-label="${esc(t('common.delete'))}">
           <i data-lucide="trash-2" aria-hidden="true"></i>
         </button>
-      `}
+      ` : ''}
     </div>
   `).join('');
 
   return `
     <div class="cal-calendar-manager">
-      <form class="cal-calendar-create" id="local-calendar-create">
+      ${moduleAccess('calendar') === 'write' ? `<form class="cal-calendar-create" id="local-calendar-create">
         <input class="form-input" id="local-calendar-name" maxlength="80" placeholder="${esc(t('calendar.localCalendarName'))}" aria-label="${esc(t('calendar.localCalendarName'))}">
         <input class="form-input" id="local-calendar-color" type="color" value="#007AFF" aria-label="${esc(t('calendar.localCalendarColor'))}">
         <button class="btn btn--primary" type="submit">
           <i data-lucide="plus" class="icon-md" aria-hidden="true"></i>${t('calendar.localCalendarCreate')}
         </button>
-      </form>
+      </form>` : ''}
       <div class="cal-calendar-list">
         ${rows || emptyStateHTML({
           icon: 'calendar-days',
@@ -5350,13 +5358,15 @@ async function refreshLocalCalendarsPanel(panel) {
   await loadLocalCalendars();
   const body = panel.querySelector('.modal-panel__body');
   if (body) {
-    body.innerHTML = renderLocalCalendarsContent();
+    body.replaceChildren();
+    body.insertAdjacentHTML('beforeend', renderLocalCalendarsContent());
     window.lucide?.createIcons({ el: body });
   }
   renderView();
 }
 
 async function openLocalCalendarsModal() {
+  if (moduleAccess('calendar') !== 'write') return;
   await loadLocalCalendars();
   openSharedModal({
     title: t('calendar.manageCalendars'),
@@ -5386,6 +5396,10 @@ async function openLocalCalendarsModal() {
   });
 
   panel.addEventListener('click', async (e) => {
+    if (e.target.closest('.js-calendar-retry-load')) {
+      await refreshLocalCalendarsPanel(panel);
+      return;
+    }
     const row = e.target.closest('.cal-calendar-row');
     if (!row) return;
     const id = Number(row.dataset.calendarId);
@@ -5393,10 +5407,10 @@ async function openLocalCalendarsModal() {
     if (!calendar) return;
     try {
       if (e.target.closest('.js-calendar-save')) {
-        await api.put(`/calendar/calendars/${id}`, {
-          name: row.querySelector('.cal-calendar-row__name')?.value.trim(),
-          color: row.querySelector('.cal-calendar-row__color')?.value,
-        });
+        const name = row.querySelector('.cal-calendar-row__name')?.value.trim();
+        const changes = { color: row.querySelector('.cal-calendar-row__color')?.value };
+        if (name !== localCalendarDisplayName(calendar)) changes.name = name;
+        await api.put(`/calendar/calendars/${id}`, changes);
         window.yuvomi?.showToast(t('calendar.localCalendarSaved'), 'success');
         await refreshLocalCalendarsPanel(panel);
         refocusAfterRender();
@@ -5800,6 +5814,17 @@ function restoreHiddenSources(userId) {
   return quellen;
 }
 
+function localCalendarDisplayName(calendar) {
+  return calendar?.is_default ? t('calendar.defaultLocalCalendar') : (calendar?.name ?? '');
+}
+
+function eventLocalCalendarDisplayName(ev) {
+  const localCalendar = state.localCalendars.find((calendar) => Number(calendar.id) === Number(ev?.local_calendar_id));
+  return localCalendar
+    ? localCalendarDisplayName(localCalendar)
+    : (ev?.cal_name || ev?.local_calendar_name || '');
+}
+
 function persistHiddenSources() {
   const schluessel = hiddenSourcesKey(state.user?.id);
   if (!schluessel) return;
@@ -6194,7 +6219,7 @@ function renderAgendaEvent(ev, dayStr) {
         <div class="agenda-event__meta">
           <span class="calendar-meta-item calendar-meta-item--time">${calendarMetaIconHtml('clock')}<span>${esc(timeStr)}</span>${position ? `<span class="calendar-meta-item__day">${esc(position)}</span>` : ''}</span>
           ${ev.location ? `<span class="calendar-meta-item calendar-meta-item--place">${calendarMetaIconHtml('map-pin')}<span>${esc(fmtLocation(ev.location))}</span></span>` : ''}
-          ${(ev.cal_name || ev.local_calendar_name) ? `<span class="calendar-meta-item calendar-meta-item--cal">${calendarMetaIconHtml('calendar-days')}<span>${esc(ev.cal_name || ev.local_calendar_name)}</span></span>` : ''}
+          ${eventLocalCalendarDisplayName(ev) ? `<span class="calendar-meta-item calendar-meta-item--cal">${calendarMetaIconHtml('calendar-days')}<span>${esc(eventLocalCalendarDisplayName(ev))}</span></span>` : ''}
           ${eventVisibilityMeta(ev.visibility)}
           ${assignedUsers.length ? `<span class="agenda-event__assigned">${renderAvatarStack(assignedUsers, { size: 22, maxVisible: 3, minFont: 12 })}</span>` : ''}
         </div>
@@ -6292,7 +6317,7 @@ function attachmentNode(ev) {
  * umbrach. Hier ist er die einzige Stelle, an der der Kalendername ausdrücklich
  * steht. */
 function calendarChipNode(ev) {
-  const name = ev.cal_name || ev.local_calendar_name;
+  const name = eventLocalCalendarDisplayName(ev);
   if (!name) return null;
   const chip = document.createElement('span');
   chip.className = 'event-cal-label';
@@ -7228,13 +7253,14 @@ function populateLocalCalendarSelect(selectElement, currentEvent = null) {
   if (!selectElement) return;
   const calendars = state.localCalendars.length
     ? state.localCalendars
-    : [{ id: currentEvent?.local_calendar_id || 1, name: t('calendar.defaultLocalCalendar'), color: '#007AFF', is_default: true }];
+    : [{ id: currentEvent?.local_calendar_id || defaultLocalCalendar()?.id || null,
+      name: t('calendar.defaultLocalCalendar'), color: '#007AFF', is_default: true }];
   const selectedId = currentEvent?.local_calendar_id ?? defaultLocalCalendar()?.id ?? calendars[0]?.id;
   selectElement.replaceChildren();
   for (const calendar of calendars) {
     const option = document.createElement('option');
     option.value = String(calendar.id);
-    option.textContent = calendar.name;
+    option.textContent = localCalendarDisplayName(calendar);
     option.selected = Number(calendar.id) === Number(selectedId);
     selectElement.appendChild(option);
   }

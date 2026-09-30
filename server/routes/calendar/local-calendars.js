@@ -1,5 +1,7 @@
 import express from 'express';
 import * as db from '../../db.js';
+import { requireAdmin } from '../../middleware/require-admin.js';
+import { mayWriteModule } from '../../permissions.js';
 import {
   clearCalendarFeedToken,
   ensureDefaultCalendar,
@@ -10,7 +12,7 @@ import {
   validateCalendarName,
 } from '../../services/local-calendars.js';
 import { createLogger } from '../../logger.js';
-import { feedUrl, getUserId } from './helpers.js';
+import { feedUrl, getUserId, isAdminUser } from './helpers.js';
 
 const log = createLogger('CalendarLocalCalendars');
 const router = express.Router();
@@ -29,7 +31,7 @@ router.get('/calendars', (req, res) => {
   try {
     const rows = loadCalendars(db.get());
     res.json({ data: rows.map((row) => ({
-      ...serializeCalendar(req, row, feedUrl),
+      ...serializeCalendar(req, row, feedUrl, { includeFeedToken: isAdminUser(req) }),
       event_count: row.event_count ?? 0,
     })) });
   } catch (err) {
@@ -39,6 +41,9 @@ router.get('/calendars', (req, res) => {
 });
 
 router.post('/calendars', (req, res) => {
+  if (!mayWriteModule(req, 'calendar')) {
+    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403 });
+  }
   try {
     const vName = validateCalendarName(req.body?.name);
     const vColor = validateCalendarColor(req.body?.color ?? '#007AFF');
@@ -60,6 +65,9 @@ router.post('/calendars', (req, res) => {
 });
 
 router.put('/calendars/:id', (req, res) => {
+  if (!mayWriteModule(req, 'calendar')) {
+    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403 });
+  }
   try {
     const id = Number(req.params.id);
     const database = db.get();
@@ -98,7 +106,7 @@ router.put('/calendars/:id', (req, res) => {
         sort_order: changes.sort_order ?? null,
       });
     }
-    res.json({ data: serializeCalendar(req, localCalendarById(database, id), feedUrl) });
+    res.json({ data: serializeCalendar(req, localCalendarById(database, id), feedUrl, { includeFeedToken: isAdminUser(req) }) });
   } catch (err) {
     log.error('PUT /calendars/:id', err);
     res.status(500).json({ error: 'Interner Fehler', code: 500 });
@@ -106,6 +114,9 @@ router.put('/calendars/:id', (req, res) => {
 });
 
 router.delete('/calendars/:id', (req, res) => {
+  if (!mayWriteModule(req, 'calendar')) {
+    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403 });
+  }
   try {
     const id = Number(req.params.id);
     const database = db.get();
@@ -127,7 +138,7 @@ router.delete('/calendars/:id', (req, res) => {
   }
 });
 
-router.post('/calendars/:id/feed/regenerate', (req, res) => {
+router.post('/calendars/:id/feed/regenerate', requireAdmin, (req, res) => {
   try {
     const id = Number(req.params.id);
     const database = db.get();
@@ -141,7 +152,7 @@ router.post('/calendars/:id/feed/regenerate', (req, res) => {
   }
 });
 
-router.delete('/calendars/:id/feed', (req, res) => {
+router.delete('/calendars/:id/feed', requireAdmin, (req, res) => {
   try {
     const id = Number(req.params.id);
     const database = db.get();

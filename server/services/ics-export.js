@@ -271,11 +271,11 @@ function buildFeed(conn, userId, now = new Date(), tz = householdTimeZone(conn),
 
   // Identische Sichtbarkeitslogik wie GET /api/v1/calendar:
   // alle Events außer fremden, nicht-geteilten ICS-Abos.
-  const showAssignees = !!conn.prepare(
+  const showAssignees = options.showAssignees ?? !!conn.prepare(
     `SELECT calendar_feed_show_assignees AS v FROM users WHERE id = ?`
   ).get(userId)?.v;
 
-  // Namen nur laden, wenn der Feed-Eigentümer sie im Titel anzeigen will (#482);
+  // Namen nur laden, wenn die Feed-Option sie im Titel anzeigen will (#482);
   // im Default-Fall (aus) spart das die korrelierte Subquery je Event.
   const assigneeSelect = showAssignees ? `,
            (SELECT json_group_array(name) FROM (
@@ -402,16 +402,12 @@ function buildFeed(conn, userId, now = new Date(), tz = householdTimeZone(conn),
 function buildCalendarFeed(conn, calendarId, now = new Date(), tz = householdTimeZone(conn)) {
   const calendar = conn.prepare('SELECT * FROM local_calendars WHERE id = ?').get(calendarId);
   if (!calendar) return null;
-  const userId = calendar.created_by
-    ?? conn.prepare(`
-      SELECT id FROM users
-      ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, id
-      LIMIT 1
-    `).get()?.id
-    ?? 0;
-  return buildFeed(conn, userId, now, tz, {
+  // A household-wide calendar feed has no user identity. Do not inherit the
+  // creator's personal preference; local feeds consistently omit assignees.
+  return buildFeed(conn, 0, now, tz, {
     localCalendarId: calendar.id,
     calendarName: calendar.name,
+    showAssignees: false,
   });
 }
 

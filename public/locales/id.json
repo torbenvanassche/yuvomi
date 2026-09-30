@@ -1108,6 +1108,7 @@
         "localCalendarColor": "Warna kalender",
         "localCalendarEventCount": "{{count}} acara",
         "localCalendarEventCount_one": "{{count}} acara",
+        "localCalendarEventCount_few": "{{count}} acara",
         "localCalendarEventCount_other": "{{count}} acara",
         "localCalendarCreate": "Buat kalender",
         "localCalendarEmpty": "Belum ada kalender.",

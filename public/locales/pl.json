@@ -1246,6 +1246,7 @@
         "localCalendarColor": "Kolor kalendarza",
         "localCalendarEventCount": "{{count}} wydarzeń",
         "localCalendarEventCount_one": "{{count}} wydarzenie",
+        "localCalendarEventCount_few": "{{count}} wydarzenia",
         "localCalendarEventCount_other": "{{count}} wydarzeń",
         "localCalendarCreate": "Utwórz kalendarz",
         "localCalendarEmpty": "Nie ma jeszcze kalendarzy.",

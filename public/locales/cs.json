@@ -1163,6 +1163,7 @@
         "localCalendarColor": "Barva kalendáře",
         "localCalendarEventCount": "{{count}} událostí",
         "localCalendarEventCount_one": "{{count}} událost",
+        "localCalendarEventCount_few": "{{count}} události",
         "localCalendarEventCount_other": "{{count}} událostí",
         "localCalendarCreate": "Vytvořit kalendář",
         "localCalendarEmpty": "Zatím žádné kalendáře.",

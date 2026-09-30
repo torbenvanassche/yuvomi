@@ -1232,6 +1232,7 @@
         "localCalendarColor": "Колір календаря",
         "localCalendarEventCount": "{{count}} подій",
         "localCalendarEventCount_one": "{{count}} подія",
+        "localCalendarEventCount_few": "{{count}} події",
         "localCalendarEventCount_other": "{{count}} подій",
         "localCalendarCreate": "Створити календар",
         "localCalendarEmpty": "Календарів ще немає.",

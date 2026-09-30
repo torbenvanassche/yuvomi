@@ -1094,6 +1094,7 @@
         "localCalendarColor": "Naptár színe",
         "localCalendarEventCount": "{{count}} esemény",
         "localCalendarEventCount_one": "{{count}} esemény",
+        "localCalendarEventCount_few": "{{count}} esemény",
         "localCalendarEventCount_other": "{{count}} esemény",
         "localCalendarCreate": "Naptár létrehozása",
         "localCalendarEmpty": "Még nincs naptár.",
