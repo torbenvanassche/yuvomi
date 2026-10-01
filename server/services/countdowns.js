@@ -36,6 +36,8 @@
  * die dieses Widget je hat.
  */
 
+import { localCalendarIdSql } from './local-calendars.js';
+
 import { hasAnyOccurrence, nextOccurrenceAfter, seriesStartFor } from './recurrence.js';
 import { loadEventExceptions } from './calendar-events.js';
 import { householdDisabledModules } from './household-modules.js';
@@ -304,7 +306,7 @@ function eventCountdowns(d, userId, todayKey, graceDays) {
     LEFT JOIN users u ON u.id = e.assigned_to
     LEFT JOIN external_calendars ec ON ec.id = e.calendar_ref_id
     LEFT JOIN ics_subscriptions isub ON isub.id = e.subscription_id
-    LEFT JOIN local_calendars lc ON lc.id = e.local_calendar_id
+    LEFT JOIN local_calendars lc ON lc.id = ${localCalendarIdSql()}
     WHERE e.countdown = 1
       AND ${visibilityWhere('e', 'event_assignments', 'event_id')}
   `).all(userId, userId);

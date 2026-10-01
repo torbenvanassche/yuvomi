@@ -7,6 +7,8 @@
  *                  server/utils/http.js (node-nativer Safe-HTTP-Client)
  */
 
+import { localCalendarIdSql, defaultCalendarId } from './local-calendars.js';
+
 import { runExternalJob } from '../utils/restore-state.js';
 import dns from 'node:dns/promises';
 import { isIP } from 'node:net';
@@ -387,8 +389,9 @@ async function importToLocal(userId, { ics, url, color, localCalendarId = null }
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'local', NULL, ?, 0, ?, ?)
   `);
   const existsStmt = db.get().prepare(`
-    SELECT 1 FROM calendar_events
-    WHERE created_by = ? AND subscription_id IS NULL AND external_calendar_id = ? AND local_calendar_id IS ?
+    SELECT 1 FROM calendar_events e
+    WHERE e.created_by = ? AND e.subscription_id IS NULL AND e.external_calendar_id = ?
+      AND ${localCalendarIdSql()} = ?
     LIMIT 1
   `);
   // EXDATE-Ausnahmen der importierten Serie (#513): dieselbe Tabelle wie
@@ -404,7 +407,7 @@ async function importToLocal(userId, { ics, url, color, localCalendarId = null }
   db.get().transaction(() => {
     for (const ev of rawEvents) {
       if (!ev.dtstart) { skipped++; continue; }
-      if (ev.uid && existsStmt.get(userId, ev.uid, localCalendarId)) { skipped++; continue; }
+      if (ev.uid && existsStmt.get(userId, ev.uid, localCalendarId ?? defaultCalendarId(db.get()))) { skipped++; continue; }
       try {
         const localRule = toLocalRRule(ev.rrule);
         const info = insert.run(

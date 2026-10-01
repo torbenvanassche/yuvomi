@@ -34,7 +34,6 @@ export const OVERRIDE_FIELDS = Object.freeze([
   'countdown',
   'attachment',
   'reminders',
-  'local_calendar_id',
 ]);
 
 const OVERRIDE_FIELD_SET = new Set(OVERRIDE_FIELDS);
@@ -620,7 +619,7 @@ export function isEligibleLocalSeries(database, row, actorId) {
 
 const SCALAR_OVERRIDE_FIELDS = Object.freeze([
   'title', 'description', 'start_datetime', 'end_datetime', 'all_day', 'location',
-  'color', 'icon', 'visibility', 'countdown', 'local_calendar_id',
+  'color', 'icon', 'visibility', 'countdown',
 ]);
 
 let fallbackTransactionId = 0;
@@ -1215,7 +1214,7 @@ export function upsertOccurrenceOverride(database, {
         master.id,
         recurrenceId,
         overriddenFields,
-        materialized.local_calendar_id ?? master.local_calendar_id ?? null,
+        master.local_calendar_id ?? null,
         existing.id,
       );
       childId = existing.id;
@@ -1249,7 +1248,7 @@ export function upsertOccurrenceOverride(database, {
         master.id,
         recurrenceId,
         overriddenFields,
-        materialized.local_calendar_id ?? master.local_calendar_id ?? null,
+        master.local_calendar_id ?? null,
       ).lastInsertRowid;
     }
 
@@ -1509,6 +1508,7 @@ function scalarDifferencesFromBase(values, base, limitedTo = SCALAR_OVERRIDE_FIE
 }
 
 function refreshReparentedChild(database, child, oldResolved, successor, successorAssignments, tz, mayWidenAttachment = () => false) {
+  database.prepare('UPDATE calendar_events SET local_calendar_id = ? WHERE id = ?').run(successor.local_calendar_id ?? null, child.id);
   let newBase;
   try {
     newBase = baseOccurrenceFor(successor, child.recurrence_id);
@@ -1663,6 +1663,7 @@ export function splitSeries(database, {
       if (Object.hasOwn(changes, field)) successorValues[field] = normalizeScalar(field, changes[field]);
     }
     for (const field of [
+      'local_calendar_id',
       'target_google_calendar_id',
       'target_caldav_account_id',
       'target_caldav_calendar_url',
@@ -1862,6 +1863,7 @@ export function splitSeries(database, {
 
 const SERIES_UPDATE_FIELDS = Object.freeze([
   ...SCALAR_OVERRIDE_FIELDS,
+  'local_calendar_id',
   'recurrence_rule',
   'target_google_calendar_id',
   'target_caldav_account_id',
@@ -2267,6 +2269,10 @@ export function updateSeriesWithOverrides(database, {
     }
     if (typeof applyUpdate === 'function') applyUpdate(database, current);
     else applySeriesChanges(database, master.id, changes);
+    if (Object.hasOwn(changes, 'local_calendar_id')) {
+      database.prepare('UPDATE calendar_events SET local_calendar_id = ? WHERE recurrence_parent_id = ?')
+        .run(changes.local_calendar_id ?? null, master.id);
+    }
     const updatedAnchor = database.prepare(
       'SELECT start_datetime FROM calendar_events WHERE id = ?'
     ).get(master.id).start_datetime;

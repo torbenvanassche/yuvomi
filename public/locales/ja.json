@@ -1093,8 +1093,6 @@
         "localCalendarName": "カレンダー名",
         "localCalendarColor": "カレンダーの色",
         "localCalendarEventCount": "{{count}}件の予定",
-        "localCalendarEventCount_one": "{{count}}件の予定",
-        "localCalendarEventCount_few": "{{count}}件の予定",
         "localCalendarEventCount_other": "{{count}}件の予定",
         "localCalendarCreate": "カレンダーを作成",
         "localCalendarEmpty": "カレンダーはまだありません。",
@@ -1106,7 +1104,8 @@
         "localCalendarDisableExport": "書き出しを無効化",
         "localCalendarExportCopied": "書き出しリンクをコピーしました",
         "localCalendarDeleteConfirm": "「{{name}}」を削除しますか？",
-        "localCalendarDeleteDetail": "このカレンダーの予定は既定のカレンダーへ移動し、エクスポートリンクは使えなくなります。"
+        "localCalendarDeleteDetail": "このカレンダーの予定は既定のカレンダーへ移動し、エクスポートリンクは使えなくなります。",
+        "localCalendarEventCount_one": "{{count}}件の予定"
     },
     "noteCategories": {
         "categories": "カテゴリー",

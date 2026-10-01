@@ -96,15 +96,7 @@ export function calendarPaths() {
         summary: 'Import events from an ICS file or shared calendar feed as editable local events',
         tag: 'Calendar',
         stateChanging: true,
-        requestBody: jsonBody({
-          type: 'object',
-          properties: {
-            ics: { type: 'string', description: 'Raw ICS file text. Required when url is omitted.' },
-            url: { type: 'string', format: 'uri', description: 'Shared calendar URL. Required when ics is omitted.' },
-            color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$', description: 'Fallback event color for imported events without their own color.' },
-            local_calendar_id: { type: 'integer', minimum: 1, description: 'Target local calendar. Defaults to the default calendar.' },
-          },
-        }),
+requestBody: jsonBody('#/components/schemas/CalendarImportInput'),
       }),
     },
     '/api/v1/calendar/feed': {
@@ -133,14 +125,7 @@ export function calendarPaths() {
           403: { $ref: '#/components/responses/Forbidden' },
           500: { $ref: '#/components/responses/InternalServerError' },
         },
-        requestBody: jsonBody({
-          type: 'object',
-          required: ['name'],
-          properties: {
-            name: { type: 'string', minLength: 1, maxLength: 80 },
-            color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
-          },
-        }),
+requestBody: jsonBody('#/components/schemas/LocalCalendarCreateInput'),
       }),
     },
     '/api/v1/calendar/calendars/{id}': {
@@ -155,22 +140,15 @@ export function calendarPaths() {
           400: { $ref: '#/components/responses/BadRequest' },
           401: { $ref: '#/components/responses/Unauthorized' },
           403: { $ref: '#/components/responses/Forbidden' },
-          404: { $ref: '#/components/responses/NotFound' },
+          404: apiError('Local calendar not found.'),
           500: { $ref: '#/components/responses/InternalServerError' },
         },
-        requestBody: jsonBody({
-          type: 'object',
-          properties: {
-            name: { type: 'string', minLength: 1, maxLength: 80 },
-            color: { type: 'string', pattern: '^#[0-9A-Fa-f]{6}$' },
-            sort_order: { type: 'integer', minimum: 0 },
-          },
-        }),
+requestBody: jsonBody('#/components/schemas/LocalCalendarUpdateInput'),
       }),
       delete: op({
         summary: 'Delete local calendar and reassign events to the default calendar',
         tag: 'Calendar',
-        description: 'Requires write access to the calendar module.',
+        description: 'Requires calendar write access. An active feed link also requires admin access.',
         params: [idParam()],
         stateChanging: true,
         responses: {
@@ -178,7 +156,7 @@ export function calendarPaths() {
           400: { $ref: '#/components/responses/BadRequest' },
           401: { $ref: '#/components/responses/Unauthorized' },
           403: { $ref: '#/components/responses/Forbidden' },
-          404: { $ref: '#/components/responses/NotFound' },
+          404: apiError('Local calendar not found.'),
           500: { $ref: '#/components/responses/InternalServerError' },
         },
       }),

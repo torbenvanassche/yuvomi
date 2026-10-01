@@ -5,6 +5,9 @@
  * Abhängigkeiten: keine externen.
  */
 
+import { localCalendarIdSql } from './local-calendars.js';
+import { visibilityWhere } from './visibility.js';
+
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 import {
   householdTimeZone, isValidTimeZone, localToUTC, shiftDateKey, utcToWall,
@@ -264,7 +267,7 @@ function buildFeed(conn, userId, now = new Date(), tz = householdTimeZone(conn),
     .toISOString().slice(0, 10);
   const feedZone = resolveFeedZone(tz);
   const calendarFilterSql = options.localCalendarId
-    ? 'AND e.external_source = \'local\' AND e.local_calendar_id = ?'
+    ? `AND ${localCalendarIdSql()} = ? AND ${visibilityWhere('e', 'event_assignments', 'event_id', 'NULL')}`
     : '';
   const calendarFilterParams = options.localCalendarId ? [options.localCalendarId] : [];
   const calendarName = options.calendarName || 'Yuvomi';

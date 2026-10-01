@@ -1,3 +1,4 @@
+import { visibilityWhere } from '../../services/visibility.js';
 import express from 'express';
 import * as db from '../../db.js';
 import { requireAdmin } from '../../middleware/require-admin.js';
@@ -6,6 +7,7 @@ import {
   clearCalendarFeedToken,
   ensureDefaultCalendar,
   localCalendarById,
+  localCalendarIdSql,
   regenerateCalendarFeedToken,
   serializeCalendar,
   validateCalendarColor,
@@ -17,19 +19,19 @@ import { feedUrl, getUserId, isAdminUser } from './helpers.js';
 const log = createLogger('CalendarLocalCalendars');
 const router = express.Router();
 
-function loadCalendars(database) {
+function loadCalendars(database, viewerId) {
   ensureDefaultCalendar(database);
   return database.prepare(`
     SELECT lc.*,
-           (SELECT COUNT(*) FROM calendar_events e WHERE e.local_calendar_id = lc.id) AS event_count
+           (SELECT COUNT(*) FROM calendar_events e WHERE ${localCalendarIdSql()} = lc.id AND ${visibilityWhere('e', 'event_assignments', 'event_id', '@viewerId')}) AS event_count
     FROM local_calendars lc
     ORDER BY lc.sort_order ASC, lc.name COLLATE NOCASE ASC, lc.id ASC
-  `).all();
+  `).all({ viewerId });
 }
 
 router.get('/calendars', (req, res) => {
   try {
-    const rows = loadCalendars(db.get());
+    const rows = loadCalendars(db.get(), getUserId(req));
     res.json({ data: rows.map((row) => ({
       ...serializeCalendar(req, row, feedUrl, { includeFeedToken: isAdminUser(req) }),
       event_count: row.event_count ?? 0,
@@ -125,12 +127,10 @@ router.delete('/calendars/:id', (req, res) => {
     if (row.is_default) {
       return res.status(400).json({ error: 'Der Standardkalender kann nicht gelöscht werden.', code: 400 });
     }
-    const fallback = ensureDefaultCalendar(database);
-    database.transaction(() => {
-      database.prepare('UPDATE calendar_events SET local_calendar_id = ? WHERE local_calendar_id = ?')
-        .run(fallback.id, id);
-      database.prepare('DELETE FROM local_calendars WHERE id = ?').run(id);
-    })();
+    if (row.feed_token && !isAdminUser(req)) {
+      return res.status(403).json({ error: 'Admin access is required to delete a calendar with an active feed.', code: 403 });
+    }
+    database.prepare('DELETE FROM local_calendars WHERE id = ?').run(id);
     res.status(204).end();
   } catch (err) {
     log.error('DELETE /calendars/:id', err);

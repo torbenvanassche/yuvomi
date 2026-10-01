@@ -469,8 +469,9 @@ npm run test:installer-a11y  # Zielgrößen, Kontrast und Fokus des Web-Installe
 
 ## Focused linked occurrence suite
 
-`npm run test:calendar` also covers default-calendar creation, local-calendar
-assignment, per-calendar ICS feeds, external-event exclusion, and reassignment on deletion.
+`npm run test:calendar-local-calendars` covers default-calendar repair without event rewrites,
+resolved membership, per-calendar ICS feeds, visibility, member permissions, sync exclusion,
+and fallback on deletion. It runs independently in the main test chain.
 
 Run `npm run test:calendar-occurrence-overrides`
 for migration 194, original-slot identity, inheritance and owner resolution,

@@ -1233,7 +1233,6 @@
         "localCalendarEventCount": "{{count}} событий",
         "localCalendarEventCount_one": "{{count}} событие",
         "localCalendarEventCount_few": "{{count}} события",
-        "localCalendarEventCount_other": "{{count}} событий",
         "localCalendarCreate": "Создать календарь",
         "localCalendarEmpty": "Календарей пока нет.",
         "localCalendarCreated": "Календарь создан",
@@ -1244,7 +1243,9 @@
         "localCalendarDisableExport": "Отключить экспорт",
         "localCalendarExportCopied": "Ссылка экспорта скопирована",
         "localCalendarDeleteConfirm": "Удалить «{{name}}»?",
-        "localCalendarDeleteDetail": "События этого календаря будут перенесены в календарь по умолчанию, а его ссылка экспорта перестанет работать."
+        "localCalendarDeleteDetail": "События этого календаря будут перенесены в календарь по умолчанию, а его ссылка экспорта перестанет работать.",
+        "localCalendarEventCount_many": "{{count}} событий",
+        "localCalendarEventCount_other": "{{count}} событий"
     },
     "noteCategories": {
         "categories": "Категории",

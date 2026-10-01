@@ -1094,7 +1094,6 @@
         "localCalendarColor": "Kalenderfärg",
         "localCalendarEventCount": "{{count}} händelser",
         "localCalendarEventCount_one": "{{count}} händelse",
-        "localCalendarEventCount_few": "{{count}} händelser",
         "localCalendarEventCount_other": "{{count}} händelser",
         "localCalendarCreate": "Skapa kalender",
         "localCalendarEmpty": "Inga kalendrar ännu.",

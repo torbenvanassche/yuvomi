@@ -419,7 +419,7 @@ function populateCalendarImportTarget(container, calendars = []) {
   for (const calendar of calendars) {
     const option = document.createElement('option');
     option.value = String(calendar.id);
-    option.textContent = calendar.is_default ? t('calendar.defaultLocalCalendar') : calendar.name;
+    option.textContent = calendar.name;
     if (calendar.is_default) option.selected = true;
     select.appendChild(option);
   }

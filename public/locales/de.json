@@ -1108,7 +1108,6 @@
         "localCalendarColor": "Kalenderfarbe",
         "localCalendarEventCount": "{{count}} Termine",
         "localCalendarEventCount_one": "{{count}} Termin",
-        "localCalendarEventCount_few": "{{count}} Termine",
         "localCalendarEventCount_other": "{{count}} Termine",
         "localCalendarCreate": "Kalender erstellen",
         "localCalendarEmpty": "Noch keine Kalender.",

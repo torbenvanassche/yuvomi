@@ -1093,8 +1093,6 @@
         "localCalendarName": "日历名称",
         "localCalendarColor": "日历颜色",
         "localCalendarEventCount": "{{count}} 个事件",
-        "localCalendarEventCount_one": "{{count}} 个事件",
-        "localCalendarEventCount_few": "{{count}} 个事件",
         "localCalendarEventCount_other": "{{count}} 个事件",
         "localCalendarCreate": "创建日历",
         "localCalendarEmpty": "还没有日历。",
@@ -1106,7 +1104,8 @@
         "localCalendarDisableExport": "停用导出",
         "localCalendarExportCopied": "导出链接已复制",
         "localCalendarDeleteConfirm": "删除“{{name}}”？",
-        "localCalendarDeleteDetail": "此日历中的事件将移至默认日历，其导出链接也将停止工作。"
+        "localCalendarDeleteDetail": "此日历中的事件将移至默认日历，其导出链接也将停止工作。",
+        "localCalendarEventCount_one": "{{count}} 个事件"
     },
     "noteCategories": {
         "categories": "分类",

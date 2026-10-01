@@ -1313,7 +1313,10 @@
         "localCalendarDisableExport": "إيقاف التصدير",
         "localCalendarExportCopied": "تم نسخ رابط التصدير",
         "localCalendarDeleteConfirm": "حذف \"{{name}}\"؟",
-        "localCalendarDeleteDetail": "ستنقل أحداث هذا التقويم إلى التقويم الافتراضي، وسيتوقف رابط التصدير الخاص به عن العمل."
+        "localCalendarDeleteDetail": "ستنقل أحداث هذا التقويم إلى التقويم الافتراضي، وسيتوقف رابط التصدير الخاص به عن العمل.",
+        "localCalendarEventCount_zero": "{{count}} أحداث",
+        "localCalendarEventCount_two": "حدثان",
+        "localCalendarEventCount_many": "{{count}} حدثًا"
     },
     "noteCategories": {
         "categories": "الفئات",

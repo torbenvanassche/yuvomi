@@ -841,13 +841,6 @@ them with 400 (see the Reminders section), because the run would recreate them w
 | visibility | TEXT | NOT NULL DEFAULT `all` — `all` \| `assignees` \| `private`; who may see the event (migration v78, same rule as Tasks) |
 | countdown | INTEGER | NOT NULL DEFAULT 0 (migration v150, #647) — 1 puts the event on the Countdown widget. A Yuvomi-only display setting in the same group as `icon` and `visibility`: it is not in `MIRRORED_FIELDS`, so setting it pushes nothing to Google or CalDAV, and the inbound path writes a fixed column list, so it survives every sync run. For a recurring series the widget counts to the **next** occurrence, skipping any date excluded via [Calendar Event Exceptions](#calendar-event-exceptions) |
 
-### Local calendars
-
-`local_calendars` stores household-defined groupings for authored local events. An event belongs to
-one local calendar through `calendar_events.local_calendar_id`; this grouping is Yuvomi-only and is
-independent of the outbound CalDAV, Google, or Outlook target columns. Externally synchronized events
-must not be claimed by a local calendar.
-
 The concrete last-day preview is deliberately limited to the recurrence subset the form itself can
 write. Imported rules carrying extra filters (for example `BYDAY`) retain their generic explanation:
 duplicating the server recurrence engine in the browser would make a plausible but potentially false
@@ -874,6 +867,27 @@ The widget is not offered at all while nothing is flagged, in the same way the F
 **A disabled module drops out server-side**, before the sort, the cut to five and `countdownTotal` — unlike every other tile, whose module filter can safely sit in the browser because the tile itself belongs to that module and disappears with it. This one belongs to two, and its mere availability is derived from the filtered set: with the calendar disabled and the five nearest countdowns being events, a browser-side-only filter discarded all five and took the tile out of the grid *and* the Customize tray, while the flagged task behind them had never been sent. The browser filter stays as a second instance, for a module toggled without a reload. **A module withheld from the member** (`access_permissions`, #467) is filtered in the same place and by the same cut: household-wide disabling and per-member rights are two axes of one question here — may this viewer see this row — so `getCountdowns()` merges both into one hidden-module set rather than applying two filters in sequence, which would give the cut and `countdownTotal` different ideas of the set. The two sources stay independent of each other: a member without calendar access keeps the task countdowns.
 
 **Visibility (migration v78):** the same `all` / `assignees` / `private` model and server-side, no-admin-bypass enforcement described under [Tasks](#tasks) applies to calendar events, on every read path (list, detail, upcoming, search, MCP). **The write paths use the same clause (v2.64.1, GHSA-fmrw-mmjw-5v9c):** `PUT` and `DELETE /api/v1/calendar/:id` load the event through `loadVisibleEvent()` (`server/routes/calendar/crud.js`) and answer `404` for an event the caller cannot see, as the tasks routes do - before that they loaded by id alone, so a member could overwrite, un-hide or delete another member's private appointment. It is an **in-app** control — the ICS calendar export feed is deliberately not filtered by it. Set via the visibility selector in the event dialog.
+
+### Local calendars
+
+`local_calendars` are household-wide collections of authored events. `created_by` records who
+created a calendar and grants no rights; the default calendar has no creator. The resolver in
+`server/services/local-calendars.js` supplies the default for an authored event whose
+`local_calendar_id` is NULL. Migration 230 creates the table and default row without rewriting
+existing events. Deleting a calendar uses `ON DELETE SET NULL`, so those events resolve to the
+default on their next read. Birthday, name-day and housekeeping events are identified through
+their source links and have no local-calendar membership. MCP-created events are authored.
+
+A Google or CalDAV target (including Apple through CalDAV) and a local calendar are mutually
+exclusive. Successful sync clears local membership; database triggers reject overlap. Outlook
+continues to mirror events. Moving between local calendars never pushes outward.
+
+Membership belongs to the series: a single-occurrence edit cannot change it, a following edit
+can put its new series in another calendar, and whole-series moves include linked replacements.
+Calendar create, rename, reorder and delete require calendar write access. Creating/revoking
+feed links and deleting calendars with an active link also require admin access. Counts follow
+the caller's event visibility. Each calendar feed uses `visibilityWhere()` without a viewer,
+so only household-visible events leave through it. Personal feed behavior remains unchanged.
 
 ### Event Assignments
 Join table for multi-person calendar event assignment (migration v32). Existing `assigned_to` values were migrated automatically.

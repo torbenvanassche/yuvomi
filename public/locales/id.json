@@ -1107,8 +1107,6 @@
         "localCalendarName": "Nama kalender",
         "localCalendarColor": "Warna kalender",
         "localCalendarEventCount": "{{count}} acara",
-        "localCalendarEventCount_one": "{{count}} acara",
-        "localCalendarEventCount_few": "{{count}} acara",
         "localCalendarEventCount_other": "{{count}} acara",
         "localCalendarCreate": "Buat kalender",
         "localCalendarEmpty": "Belum ada kalender.",
@@ -1120,7 +1118,8 @@
         "localCalendarDisableExport": "Nonaktifkan ekspor",
         "localCalendarExportCopied": "Tautan ekspor disalin",
         "localCalendarDeleteConfirm": "Hapus \"{{name}}\"?",
-        "localCalendarDeleteDetail": "Acara dari kalender ini dipindahkan ke kalender default, dan tautan ekspornya akan berhenti berfungsi."
+        "localCalendarDeleteDetail": "Acara dari kalender ini dipindahkan ke kalender default, dan tautan ekspornya akan berhenti berfungsi.",
+        "localCalendarEventCount_one": "{{count}} acara"
     },
     "noteCategories": {
         "categories": "Kategori",

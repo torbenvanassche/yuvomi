@@ -4,14 +4,6 @@ const DEFAULT_CALENDAR_NAME = 'Yuvomi';
 const DEFAULT_CALENDAR_COLOR = '#007AFF';
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 
-function firstUserId(conn) {
-  return conn.prepare(`
-    SELECT id FROM users
-    ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END, id
-    LIMIT 1
-  `).get()?.id ?? null;
-}
-
 function serializeCalendar(req, row, feedUrl, { includeFeedToken = false } = {}) {
   if (!row) return null;
   const token = includeFeedToken ? (row.feed_token ?? null) : null;
@@ -35,16 +27,10 @@ function ensureDefaultCalendar(conn) {
   `).get();
   if (row) return row;
 
-  const ownerId = firstUserId(conn);
   const id = conn.prepare(`
     INSERT INTO local_calendars (name, color, is_default, sort_order, created_by)
     VALUES (?, ?, 1, 0, ?)
-  `).run(DEFAULT_CALENDAR_NAME, DEFAULT_CALENDAR_COLOR, ownerId).lastInsertRowid;
-  conn.prepare(`
-    UPDATE calendar_events
-    SET local_calendar_id = ?
-    WHERE external_source = 'local' AND local_calendar_id IS NULL
-  `).run(id);
+  `).run(DEFAULT_CALENDAR_NAME, DEFAULT_CALENDAR_COLOR, null).lastInsertRowid;
   return conn.prepare('SELECT * FROM local_calendars WHERE id = ?').get(id);
 }
 
@@ -58,9 +44,8 @@ function localCalendarById(conn, id) {
   return conn.prepare('SELECT * FROM local_calendars WHERE id = ?').get(numeric) ?? null;
 }
 
-function validateCalendarId(conn, raw, { required = false, fallbackDefault = false } = {}) {
+function validateCalendarId(conn, raw, { required = false } = {}) {
   if (raw === undefined || raw === null || raw === '') {
-    if (fallbackDefault) return { value: defaultCalendarId(conn), error: null };
     return { value: required ? null : undefined, error: required ? 'Kalender: Wähle einen gültigen Kalender aus.' : null };
   }
   const id = Number(raw);
@@ -124,3 +109,30 @@ export {
   regenerateCalendarFeedToken,
   clearCalendarFeedToken,
 };
+
+/** The single membership resolver: authored events only, default applied on read.
+ * SQL form lets feeds, counts and event projections use the exact same rule.
+ */
+export function localCalendarIdSql(alias = 'e') {
+  return `(CASE WHEN ${alias}.external_source = 'local'
+    AND ${alias}.target_google_calendar_id IS NULL
+    AND ${alias}.target_caldav_account_id IS NULL
+    AND NOT EXISTS (SELECT 1 FROM birthdays b
+      WHERE b.calendar_event_id = ${alias}.id OR b.name_day_calendar_event_id = ${alias}.id)
+    AND NOT EXISTS (SELECT 1 FROM housekeeping_work_sessions h WHERE h.calendar_event_id = ${alias}.id)
+    THEN COALESCE(${alias}.local_calendar_id,
+      (SELECT id FROM local_calendars WHERE is_default = 1)) END)`;
+}
+
+export function resolveLocalCalendarId(conn, eventId) {
+  return conn.prepare(`SELECT ${localCalendarIdSql()} AS id FROM calendar_events e WHERE e.id = ?`)
+    .get(eventId)?.id ?? null;
+}
+
+export function localCalendarProjection(conn, eventId) {
+  return conn.prepare(`
+    SELECT lc.id AS local_calendar_id, lc.name AS local_calendar_name, lc.color AS local_calendar_color
+    FROM calendar_events e LEFT JOIN local_calendars lc ON lc.id = ${localCalendarIdSql()}
+    WHERE e.id = ?
+  `).get(eventId);
+}

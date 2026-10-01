@@ -1247,7 +1247,6 @@
         "localCalendarEventCount": "{{count}} wydarzeń",
         "localCalendarEventCount_one": "{{count}} wydarzenie",
         "localCalendarEventCount_few": "{{count}} wydarzenia",
-        "localCalendarEventCount_other": "{{count}} wydarzeń",
         "localCalendarCreate": "Utwórz kalendarz",
         "localCalendarEmpty": "Nie ma jeszcze kalendarzy.",
         "localCalendarCreated": "Kalendarz utworzony",
@@ -1258,7 +1257,9 @@
         "localCalendarDisableExport": "Wyłącz eksport",
         "localCalendarExportCopied": "Link eksportu skopiowany",
         "localCalendarDeleteConfirm": "Usunąć „{{name}}”?",
-        "localCalendarDeleteDetail": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a jego link eksportu przestanie działać."
+        "localCalendarDeleteDetail": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a jego link eksportu przestanie działać.",
+        "localCalendarEventCount_many": "{{count}} wydarzeń",
+        "localCalendarEventCount_other": "{{count}} wydarzeń"
     },
     "noteCategories": {
         "categories": "Kategorie",

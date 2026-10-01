@@ -1326,7 +1326,7 @@ function eventSourceKey(ev) {
   if (ev?.subscription_id) return `sub:${ev.subscription_id}`;
   const ref = ev?.source_calendar_ref_id ?? ev?.calendar_ref_id;
   if (ref) return `cal:${ref}`;
-  if (ev?.external_source === 'local' && ev?.local_calendar_id) return `local:${ev.local_calendar_id}`;
+  if (ev?.local_calendar_id) return `local:${ev.local_calendar_id}`;
   return null;
 }
 
@@ -2307,6 +2307,10 @@ function toolbarHtml({ filterCount = 0, scheduleWarningHtml = '' } = {}) {
           FAB beim Neubau des Kopfs wieder ein. */ ''}
     <div class="page-toolbar__actions">
       ${scheduleWarningHtml}
+      ${moduleAccess('calendar') === 'write' ? `<button class="btn btn--icon cal-toolbar__calendars-btn" id="cal-calendars"
+        aria-label="${t('calendar.manageCalendars')}" title="${t('calendar.manageCalendars')}" aria-haspopup="dialog">
+        <i data-lucide="calendar-days" aria-hidden="true"></i>
+      </button>` : ''}
     </div>
     <!-- Bar-Zeile des Kopfs (Werkzeugzeilen-Regel, layout.css): das Ansichts-
          Segment hatte im Actions-Slot bei 1280px 212px fuer 245px Inhalt -
@@ -3644,7 +3648,7 @@ function monthBandsHtml({ bands }, inMonth = []) {
   const outside = (col) => inMonth[col] === false;
   return `<div class="month-bands" aria-hidden="true">${bands.map((band) => {
     const { ev, first, last, lane, continuesBefore, continuesAfter } = band;
-    const title = [ev.title, bandSpokenWhen(ev), ev.cal_name].filter(Boolean).map((part) => esc(part)).join(' · ')
+    const title = [ev.title, bandSpokenWhen(ev), eventLocalCalendarDisplayName(ev)].filter(Boolean).map((part) => esc(part)).join(' · ')
       + chipAssigneeTitleSuffix(ev);
     const span = last - first + 1;
     let outStart = 0;
@@ -3705,7 +3709,7 @@ function renderMonthDay(date, inMonth, { selected = false, selWeek = false, spli
     <div class="month-day__event"
          data-id="${ev.id}"
          style="${eventSurfaceStyle(ev)}"
-         title="${esc(ev.title)}${ev.cal_name ? ' · ' + esc(ev.cal_name) : ''}${chipAssigneeTitleSuffix(ev)}"
+         title="${esc(ev.title)}${eventLocalCalendarDisplayName(ev) ? ' · ' + esc(eventLocalCalendarDisplayName(ev)) : ''}${chipAssigneeTitleSuffix(ev)}"
     >${eventGlyphsHtml(ev)}<span>${esc(ev.title)}</span></div>
   `).join('');
 
@@ -4549,7 +4553,7 @@ function allDayChipTimeText(ev, dayStr, { suffix = false } = {}) {
  * zugaenglicher Name kommen aus diesem Attribut und dem Inhalt (#1350).
  */
 function allDayChipTitle(ev, timeText) {
-  return [ev.title, timeText, ev.cal_name].filter(Boolean).map((part) => esc(part)).join(' · ')
+  return [ev.title, timeText, eventLocalCalendarDisplayName(ev)].filter(Boolean).map((part) => esc(part)).join(' · ')
     + chipAssigneeTitleSuffix(ev);
 }
 
@@ -4622,7 +4626,7 @@ function renderWeekBand(band) {
   return `
     <div class="${bandClasses('allday-event', band)}" data-id="${ev.id}" data-start="${esc(startKey)}" data-end="${esc(endKey)}"
          style="grid-column:${first + 2} / span ${last - first + 1};grid-row:${lane + 1};${eventSurfaceStyle(ev)}"${eventBlockAttrs(ev, spoken)}
-         title="${[ev.title, bandSpokenWhen(ev), ev.cal_name].filter(Boolean).map((part) => esc(part)).join(' · ')}${chipAssigneeTitleSuffix(ev)}">${continuesBefore ? bandContinuationHtml('before') : ''}${eventGlyphsHtml(ev)}<span class="allday-event__line"><span class="allday-event__label"><span>${esc(ev.title)}</span>${allDayChipTimeHtml(from)}</span>${until ? `<small class="allday-event__time cal-band__until">${esc(until)}</small>` : ''}${chipAssigneeStack(ev, { size: 14, maxVisible: 2 })}</span>${continuesAfter ? bandContinuationHtml('after') : ''}</div>`;
+         title="${[ev.title, bandSpokenWhen(ev), eventLocalCalendarDisplayName(ev)].filter(Boolean).map((part) => esc(part)).join(' · ')}${chipAssigneeTitleSuffix(ev)}">${continuesBefore ? bandContinuationHtml('before') : ''}${eventGlyphsHtml(ev)}<span class="allday-event__line"><span class="allday-event__label"><span>${esc(ev.title)}</span>${allDayChipTimeHtml(from)}</span>${until ? `<small class="allday-event__time cal-band__until">${esc(until)}</small>` : ''}${chipAssigneeStack(ev, { size: 14, maxVisible: 2 })}</span>${continuesAfter ? bandContinuationHtml('after') : ''}</div>`;
 }
 
 function renderWeekEvent(ev, layout = null, dayStr = null) {
@@ -5815,7 +5819,7 @@ function restoreHiddenSources(userId) {
 }
 
 function localCalendarDisplayName(calendar) {
-  return calendar?.is_default ? t('calendar.defaultLocalCalendar') : (calendar?.name ?? '');
+  return calendar?.name ?? '';
 }
 
 function eventLocalCalendarDisplayName(ev) {
@@ -6235,7 +6239,7 @@ function agendaEventAriaLabel(ev, timeStr, dayText = '') {
     timeStr,
     dayText,
     ev.location ? fmtLocation(ev.location) : '',
-    ev.cal_name || ev.local_calendar_name,
+    eventLocalCalendarDisplayName(ev),
     chipAssigneeLabel(ev),
   ].filter(Boolean).join(', ');
 }
@@ -7532,6 +7536,11 @@ function wireEventForm(panel, { mode, event = null, reminder = null }) {
     const outlookHint = panel.querySelector('#event-sync-target-outlook-hint');
     const syncOutlookHint = () => {
       if (outlookHint) outlookHint.hidden = !syncTargetSelect.value.startsWith('outlook:');
+      const localSelect = panel.querySelector('#event-local-calendar');
+      if (localSelect) {
+        localSelect.disabled = /^(google|caldav):/.test(syncTargetSelect.value);
+        localSelect.closest('.form-group').hidden = localSelect.disabled;
+      }
     };
 
     // DAS ZIEL FOLGT DER ZUWEISUNG (#1060) - nur beim Anlegen, und nur bis jemand
@@ -8000,10 +8009,10 @@ function buildEventModalContent({ mode, event, date, reminder = null, time = nul
              placeholder="${t('calendar.titlePlaceholder')}" value="${esc(isEdit ? event.title : '')}">
     </div>
 
-    <div class="form-group">
+    ${!isEdit || event.local_calendar_id ? `<div class="form-group">
       <label class="form-label" for="event-local-calendar">${t('calendar.localCalendarLabel')}</label>
       <select class="form-input" id="event-local-calendar"></select>
-    </div>
+    </div>` : ''}
 
     <div class="form-group">
       <label class="toggle">
@@ -8203,7 +8212,10 @@ async function saveEvent(overlay, mode, event, existingReminder = null, attachme
       closeModal({ force: true });
       return;
     }
-    const choice = await askOverModal(() => recurringScopeChoice({ action: 'save', event }));
+    const localSelect = overlay.querySelector('#event-local-calendar');
+    const calendarChanged = localSelect && !localSelect.disabled
+      && Number(localSelect.value) !== Number(event.local_calendar_id);
+    const choice = await askOverModal(() => recurringScopeChoice({ action: 'save', event, allowOccurrence: !calendarChanged }));
     if (!choice) return;
     occurrenceScope = choice;
   }
@@ -8259,7 +8271,8 @@ async function saveEvent(overlay, mode, event, existingReminder = null, attachme
       title, description, start_datetime, end_datetime,
       all_day: !!allday,
       location, color, icon, assigned_to,
-      local_calendar_id: Number(overlay.querySelector('#event-local-calendar')?.value) || undefined,
+      local_calendar_id: (target_google_calendar_id || target_caldav_account_id) ? undefined
+        : Number(overlay.querySelector('#event-local-calendar')?.value) || undefined,
       visibility: overlay.querySelector('#modal-visibility')?.value || 'all',
       countdown: !!overlay.querySelector('#modal-countdown')?.checked,
       recurrence_rule: rrule.recurrence_rule,
@@ -8315,6 +8328,7 @@ async function saveEvent(overlay, mode, event, existingReminder = null, attachme
       const localRecurring = isLocalRecurringSeries(event);
       const canOverrideOccurrence = canOverrideCalendarOccurrence(event);
       let scope = occurrenceScope;
+      if (scope === 'this') delete body.local_calendar_id;
       if (!canOverrideOccurrence && scope === 'following' && followingMeansWholeSeries(event)) scope = 'series';
       if (localRecurring && canEditCalendarOccurrence(event) && (scope === 'this' || scope === 'following')) {
         const target = calendarOccurrenceMutationTarget(event, scope);
@@ -8496,9 +8510,9 @@ const RECURRING_SCOPES = [
  * Vorkommen als `recurrence_id`, und genau das tragen die Endpunkte der Wahl -
  * bei einer lokalen Serie (zonenlose Wanduhrzeit) sind beide derselbe Tag.
  */
-function renderRecurringScopeChoices(action, event) {
+function renderRecurringScopeChoices(action, event, allowOccurrence = true) {
   const tone = action === 'delete' ? 'btn--danger-outline' : 'btn--secondary';
-  const choices = RECURRING_SCOPES.map(([scope, key]) => `
+  const choices = RECURRING_SCOPES.filter(([scope]) => allowOccurrence || scope !== 'this').map(([scope, key]) => `
         <button type="button" class="btn ${tone}" data-scope="${scope}">${esc(t(key))}</button>`).join('');
   const occurrence = esc(t('calendar.recurringScopeOccurrence', {
     title: event?.title ?? '',
@@ -8536,7 +8550,7 @@ function renderRecurringScopeChoices(action, event) {
  *
  * Loest zu 'this' | 'following' | 'series' | null.
  */
-function recurringScopeChoice({ action, event }) {
+function recurringScopeChoice({ action, event, allowOccurrence = true }) {
   return new Promise((resolve) => {
     let resolved = false;
     const finish = (value) => {
@@ -8549,7 +8563,7 @@ function recurringScopeChoice({ action, event }) {
       pointerDeadTime: true,
       title: action === 'delete' ? t('calendar.deleteRecurringTitle') : t('calendar.saveRecurringTitle'),
       size: 'sm',
-      content: renderRecurringScopeChoices(action, event),
+      content: renderRecurringScopeChoices(action, event, allowOccurrence),
       onClose: () => finish(null),
       onSave(panel) {
         for (const button of panel.querySelectorAll('[data-scope]')) {

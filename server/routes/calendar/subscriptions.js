@@ -179,7 +179,7 @@ router.post('/import', async (req, res) => {
       if (vColor.error) return res.status(400).json({ error: vColor.error, code: 400 });
       vColorValue = vColor.value;
     }
-    const vLocalCalendar = validateCalendarId(db.get(), req.body.local_calendar_id, { fallbackDefault: true });
+    const vLocalCalendar = validateCalendarId(db.get(), req.body.local_calendar_id);
     if (vLocalCalendar.error) return res.status(400).json({ error: vLocalCalendar.error, code: 400 });
 
     const result = await icsSubscription.importToLocal(userId, {
