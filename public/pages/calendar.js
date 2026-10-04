@@ -5307,7 +5307,7 @@ function renderLocalCalendarsContent() {
   const rows = state.localCalendars.map((calendar) => `
     <div class="cal-calendar-row" data-calendar-id="${calendar.id}">
       <span class="cal-calendar-row__swatch" style="background-color:${esc(calendar.color)}" aria-hidden="true"></span>
-      ${moduleAccess('calendar') === 'write' ? `<input class="form-input cal-calendar-row__name" value="${esc(localCalendarDisplayName(calendar))}" aria-label="${esc(t('calendar.localCalendarName'))}">
+      ${moduleAccess('calendar') === 'write' ? `<input class="form-input cal-calendar-row__name" value="${esc(calendar.name)}" aria-label="${esc(t('calendar.localCalendarName'))}">
       <input class="form-input cal-calendar-row__color" type="color" value="${esc(calendar.color)}" aria-label="${esc(t('calendar.localCalendarColor'))}">` : ''}
       <span class="cal-calendar-row__count">${t('calendar.localCalendarEventCount', { count: calendar.event_count ?? 0 })}</span>
       ${moduleAccess('calendar') === 'write' ? `<button type="button" class="btn btn--icon js-calendar-save" title="${esc(t('common.save'))}" aria-label="${esc(t('common.save'))}">
@@ -5413,7 +5413,7 @@ async function openLocalCalendarsModal() {
       if (e.target.closest('.js-calendar-save')) {
         const name = row.querySelector('.cal-calendar-row__name')?.value.trim();
         const changes = { color: row.querySelector('.cal-calendar-row__color')?.value };
-        if (name !== localCalendarDisplayName(calendar)) changes.name = name;
+        if (name !== calendar.name) changes.name = name;
         await api.put(`/calendar/calendars/${id}`, changes);
         window.yuvomi?.showToast(t('calendar.localCalendarSaved'), 'success');
         await refreshLocalCalendarsPanel(panel);
@@ -5819,7 +5819,7 @@ function restoreHiddenSources(userId) {
 }
 
 function localCalendarDisplayName(calendar) {
-  return calendar?.name ?? '';
+  return calendar?.is_default ? t('calendar.defaultLocalCalendar') : (calendar?.name ?? '');
 }
 
 function eventLocalCalendarDisplayName(ev) {
@@ -6095,6 +6095,7 @@ export const __test = {
   calendarSources,
   restorePeopleFilter,
   restoreHiddenSources,
+  localCalendarDisplayName,
   persistHiddenSources,
   activeFilterCount,
   UNASSIGNED,
