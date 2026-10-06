@@ -4165,6 +4165,7 @@
         "intervalLabel": "Tuwing",
         "nextPaymentLabel": "Susunod na bayad",
         "reminderDaysLabel": "Mga araw ng paalala",
+        "reminderEnabledLabel": "Paalala sa pagbabayad",
         "categoryLabel": "Kategorya",
         "paymentMethodLabel": "Paraan ng pagbabayad",
         "websiteLabel": "Website",

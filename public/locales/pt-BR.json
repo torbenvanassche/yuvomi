@@ -4165,6 +4165,7 @@
         "intervalLabel": "A cada",
         "nextPaymentLabel": "Próximo pagamento",
         "reminderDaysLabel": "Dias de lembrete",
+        "reminderEnabledLabel": "Lembrete de pagamento",
         "categoryLabel": "Categoria",
         "paymentMethodLabel": "Método de pagamento",
         "websiteLabel": "Site",

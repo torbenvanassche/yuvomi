@@ -4165,6 +4165,7 @@
         "intervalLabel": "Varje",
         "nextPaymentLabel": "Nästa betalning",
         "reminderDaysLabel": "Påminnelsedagar",
+        "reminderEnabledLabel": "Betalningspåminnelse",
         "categoryLabel": "Kategori",
         "paymentMethodLabel": "Betalningsmetod",
         "websiteLabel": "Webbplats",

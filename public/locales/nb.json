@@ -4165,6 +4165,7 @@
         "intervalLabel": "Hver",
         "nextPaymentLabel": "Neste betaling",
         "reminderDaysLabel": "Påminningsdager",
+        "reminderEnabledLabel": "Betalingspåminnelse",
         "categoryLabel": "Kategori",
         "paymentMethodLabel": "Betalingsmetode",
         "websiteLabel": "Nettside",

@@ -4165,6 +4165,7 @@
         "intervalLabel": "هر",
         "nextPaymentLabel": "پرداخت بعدی",
         "reminderDaysLabel": "روزهای یادآوری",
+        "reminderEnabledLabel": "یادآوری پرداخت",
         "categoryLabel": "دسته",
         "paymentMethodLabel": "روش پرداخت",
         "websiteLabel": "وب‌سایت",

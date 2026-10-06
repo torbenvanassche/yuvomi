@@ -4281,6 +4281,7 @@
         "intervalLabel": "Každých",
         "nextPaymentLabel": "Další platba",
         "reminderDaysLabel": "Dny připomenutí",
+        "reminderEnabledLabel": "Připomenutí platby",
         "categoryLabel": "Kategorie",
         "paymentMethodLabel": "Platební metoda",
         "websiteLabel": "Web",

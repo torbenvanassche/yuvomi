@@ -10115,6 +10115,14 @@ const MIGRATIONS = [
       ALTER TABLE users ADD COLUMN deactivated_at TEXT;
     `,
   },
+  {
+    version: 232,
+    description: 'Subscriptions: optional payment reminder (#1226)',
+    up: `
+      ALTER TABLE budget_subscriptions ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 1
+        CHECK(reminder_enabled IN (0,1));
+    `,
+  },
 ];
 
 /**

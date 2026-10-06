@@ -4395,6 +4395,7 @@
         "intervalLabel": "Каждые",
         "nextPaymentLabel": "Следующий платеж",
         "reminderDaysLabel": "Дни напоминания",
+        "reminderEnabledLabel": "Напоминание об оплате",
         "categoryLabel": "Категория",
         "paymentMethodLabel": "Способ оплаты",
         "websiteLabel": "Веб-сайт",

@@ -1614,3 +1614,22 @@ test('Plan: kein zweites „+ Budget festlegen" im Koerper - der Budget-FAB ruft
 });
 
 test.after(() => miniDomAbraeumen());
+
+
+test('Abo: the payment reminder switch defaults on and displays a saved off choice', () => {
+  for (const reminderEnabled of [undefined, true, false]) {
+    const subscription = abo({ reminder_enabled: reminderEnabled });
+    const editor = withAccess({ budget: 'write' }, () => modalOptionen(() => abos.openSubscriptionModal(subscription)));
+    const toggle = editor.content.match(/<input[^>]*id="subscription-reminder-enabled"[^>]*>/)?.[0];
+    assert.ok(toggle, 'the dialog includes the reminder switch');
+    assert.match(toggle, /role="switch"/);
+    assert.equal(/\bchecked\b/.test(toggle), reminderEnabled !== false);
+    const days = editor.content.match(/<input[^>]*id="subscription-reminder"[^>]*>/)[0];
+    assert.equal(/\bdisabled\b/.test(days), reminderEnabled === false);
+    const detail = zeilen(abos.subscriptionReadSections(subscription));
+    assert.equal(detail['subscriptions.reminderDaysLabel'], reminderEnabled === false
+      ? 'subscriptions.disabled' : 'subscriptions.reminderMeta{"count":3}');
+    const card = withAccess({ budget: 'read' }, () => abos.renderCard(subscription));
+    assert.equal(card.includes('subscriptions.reminderMeta'), reminderEnabled !== false);
+  }
+});

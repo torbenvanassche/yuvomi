@@ -4165,6 +4165,7 @@
         "intervalLabel": "Alle",
         "nextPaymentLabel": "Nächste Zahlung",
         "reminderDaysLabel": "Erinnerungstage",
+        "reminderEnabledLabel": "Zahlungserinnerung",
         "categoryLabel": "Kategorie",
         "paymentMethodLabel": "Zahlungsart",
         "websiteLabel": "Website",

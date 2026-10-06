@@ -4165,6 +4165,7 @@
         "intervalLabel": "Tous les",
         "nextPaymentLabel": "Prochain paiement",
         "reminderDaysLabel": "Jours de rappel",
+        "reminderEnabledLabel": "Rappel de paiement",
         "categoryLabel": "Catégorie",
         "paymentMethodLabel": "Moyen de paiement",
         "websiteLabel": "Site web",

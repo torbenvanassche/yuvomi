@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- **Payment reminders can be turned off for each subscription** (D#1226). Turn off the reminder
+  in the subscription dialog while keeping the subscription active and its cost in the budget.
+  Editing or renewing it keeps the reminder off. Existing subscriptions keep reminders enabled.
+
 ### Added
 
 - **Revoked and expired API tokens can be removed from the list** (D#1672, asked by @torbenvanassche). Under
