@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The Singapore dollar is a currency a household can pick, and Singapore is a region** (#1697,
+  from D#982). SGD was missing from the list the household setting, subscriptions and shared
+  expenses all read, and the server checks a saved currency against that same list - so a
+  household in Singapore could not record its money in its own currency at all. Choosing
+  **English (Singapore)** as the region now sets the dollar together with the local date and time
+  format in one step (06/10/2026, twelve-hour clock), and amounts are grouped the way they are
+  written there.
+
 - **Payment reminders can be turned off for each subscription** (#1708, from D#1226). Turn off the reminder
   in the subscription dialog while keeping the subscription active and its cost in the budget.
   Editing or renewing it keeps the reminder off. Existing subscriptions keep reminders enabled.
