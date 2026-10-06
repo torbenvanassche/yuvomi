@@ -1700,7 +1700,8 @@ test('module-specific settings leaves preserve their required controls and behav
     assert.match(calendar, controlIdPattern(id));
   }
   assert.match(calendar, /api\.get\('\/preferences\/holidays\/countries'\)/);
-  assert.match(calendar, /api\.get\(`\/preferences\/holidays\/subdivisions\/\$\{countryCode\}`\)/);
+  // Mit der UI-Sprache fuer die Regionsnamen (#1723).
+  assert.match(calendar, /api\.get\(`\/preferences\/holidays\/subdivisions\/\$\{countryCode\}\?lang=\$\{encodeURIComponent\(getLocale\(\)\)\}`\)/);
   assert.match(calendar, /api\.post\('\/preferences\/holidays\/sync', \{\}\)/);
   // Die per-user-Vorgaben sind nach personal-calendar gezogen; hier bleibt nur
   // Haushaltweites plus der Verweis dorthin (Critique 2026-07-27).
@@ -15828,6 +15829,31 @@ test('der Vorab-Wand-Modus in theme-init.js driftet nicht von utils/wall-mode.js
   assert.ok(init.includes("location.pathname !== '/'"), 'theme-init.js kennt dieselbe Route');
 });
 
+test('the early screensaver delay in theme-init.js does not drift from utils/screensaver-idle.js (#885)', () => {
+  // Same seam as wall mode above: theme-init.js runs as a classic <script>
+  // before any module and carries the key and the steps as literals. The
+  // source of truth is utils/screensaver-idle.js.
+  const init = read('../public/theme-init.js');
+  const mod = read('../public/utils/screensaver-idle.js');
+
+  const modKey = mod.match(/export const SCREENSAVER_IDLE_KEY = '([^']+)'/)?.[1];
+  assert.equal(modKey, 'yuvomi-screensaver-idle', 'the key lives in screensaver-idle.js');
+  assert.ok(init.includes(`'${modKey}'`), `theme-init.js reads the same key (${modKey})`);
+
+  const modSteps = mod.match(/export const SCREENSAVER_IDLE_STEPS = \[([^\]]+)\]/)?.[1];
+  assert.ok(modSteps, 'the steps live in screensaver-idle.js');
+  const initSteps = init.match(/\[([\d,\s]+)\]\.indexOf\(Number\(idle\)\)/)?.[1];
+  assert.ok(initSteps, 'theme-init.js checks the stored value against a list of steps');
+  const list = (s) => s.split(',').map((n) => Number(n.trim()));
+  assert.deepEqual(list(initSteps), list(modSteps), 'the same steps as screensaver-idle.js');
+
+  // And the attribute: the one the component reads.
+  assert.ok(init.includes("'data-screensaver-idle'"), 'theme-init.js sets the attribute');
+  assert.match(mod, /'data-screensaver-idle'/, 'screensaver-idle.js sets the same attribute');
+  assert.match(read('../public/components/photo-screensaver.js'), /dataset\.screensaverIdle/,
+    'and the component reads it');
+});
+
 /**
  * EIN FELD TRAEGT EINE KLASSE, DIE ES GIBT.
  *
@@ -19591,7 +19617,13 @@ test('R16: die Abschnittstitel der Haushaltshilfe stehen auf der Buehne, ueber d
   const page = withoutHtmlComments(read('../public/pages/housekeeping.js'));
   assert.doesNotMatch(page, /<section class="housekeeping-card/, 'kein Abschnitt ist selbst die Karte');
   const koepfe = page.match(/<section class="housekeeping-section[^"]*">\s*<div class="housekeeping-section-heading">[\s\S]*?<h2 class="u-section-title">[\s\S]*?<div class="housekeeping-card">/g) ?? [];
-  assert.equal(koepfe.length, 4, 'Letzte Besuche, Zahlungen, Haushaltshilfen, Protokoll: Titel VOR der Flaeche');
+  // Drei, nicht mehr vier (#1723): der Reiter heisst seither wie die Liste
+  // darunter ("Haushaltshilfen"), und eine sichtbare Ueberschrift, die den
+  // Reiter wiederholt, verbietet test-typography.js. Sie bleibt als `.sr-only`
+  // in der Gliederung - vor der Flaeche wie die anderen.
+  assert.equal(koepfe.length, 3, 'Letzte Besuche, Zahlungen, Protokoll: Titel VOR der Flaeche');
+  const liste = page.match(/<section class="housekeeping-section">\s*<h2 class="sr-only">\$\{esc\(t\('housekeeping\.staffTitle'\)\)\}<\/h2>\s*<div class="housekeeping-card">/g) ?? [];
+  assert.equal(liste.length, 1, 'die Liste der Haushaltshilfen traegt ihre Ueberschrift unsichtbar, vor der Flaeche');
   for (const kopf of koepfe) {
     assert.ok(kopf.indexOf('u-section-title') < kopf.indexOf('class="housekeeping-card"'));
   }

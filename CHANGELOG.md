@@ -13,6 +13,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the subscription dialog while keeping the subscription active and its cost in the budget.
   Editing or renewing it keeps the reminder off. Existing subscriptions keep reminders enabled.
 
+- **A meal can name the member who cooks it, and the week plan and the overview show who that
+  is** (#1679, from D#1661, asked by @matejhermanek for a shared flat that plans who cooks which
+  meal). A planned meal carried a date, a type, a title, notes and a recipe, and the only person on it was whoever
+  entered it. The meal dialog now offers the household members in the same person picker the task
+  dialog uses, limited to one person; the cook's avatar then stands on the meal in the week plan
+  and on today's meal on the overview. A meal without a cook looks as it did. A repeating meal
+  keeps its cook: every meal the series creates starts with it, changing the cook of one meal
+  leaves the series alone, and changing it for the whole series reaches all its meals. The cook
+  is a responsibility, not ownership - the plan stays the household's, and who sees or edits a
+  meal still depends on the meal plan right alone; with read access the cook is shown and cannot
+  be chosen. Only household members can be picked, so housekeeping staff, guests of shared
+  expenses and wall tablets are not offered, while a meal that already carries such a cook still
+  saves. An account that cooks a meal is deactivated rather than deleted when it is removed, like
+  an account a task is assigned to, and the meal keeps the name. One cook per meal; meals in the
+  calendar, a reminder for the cook and a view per person are not part of this. For API clients:
+  `cook_user_id` on `POST /api/v1/meals`, `PUT /api/v1/meals/{id}` (with `?scope=series` for the
+  series) and on each assignment of `POST /api/v1/meals/apply-plan`; meals come back with
+  `cook_user_id`, `cook_name`, `cook_color` and `cook_avatar`, also in `todayMeals` of the
+  overview (migration 235).
+
 - **A household can put its members in an order of its own, and every list of people follows it**
   (#1644, from D#1605, asked by @ChaCha500). Until now members were listed alphabetically
   everywhere, so "parents first" or "oldest first" was not possible. Under Settings, Family, an
@@ -31,6 +51,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   accounts have no place in the order. For API clients: `PATCH /api/v1/family/members/reorder`
   with `{ order }`, administrators only; `sort_order` on `GET /api/v1/family/members` and
   `GET /api/v1/auth/users`, and `is_household_member` on every user object (migration 232).
+
+- **Each device chooses how long it waits before the photo screensaver starts** (#885). Settings →
+  Appearance, next to wall mode, offers 1, 2, 5, 10 or 15 minutes; five stays the default, so
+  nothing changes on a device that never touches it. The choice is stored in the browser like wall
+  mode, because the devices in one household want different delays: a photo frame on the wall
+  wants its pictures back after a minute, a kitchen tablet people work on should wait longer, and a
+  household value would also reach every phone. The value is applied before the page renders, so
+  the first idle period already uses it, and a change takes effect at once without a reload, in
+  other open tabs too. The settings search finds it under "screensaver", and the Immich page no
+  longer promises five minutes.
 
 - **Revoked and expired API tokens can be removed from the list** (D#1672, asked by @torbenvanassche). Under
   Settings, API access, a revoked token stayed in the list for good, with a greyed-out button
@@ -303,6 +333,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the tiles to their new position, and "+N more today" unfolds in place.
 - **Shopping on a phone: the add field unfolds** instead of pushing the list down in one step.
 
+- **Inventory on a phone: Edit sits at the bottom of the detail sheet** (#1463). The sheet had
+  Delete at the bottom, where the thumb rests, and Edit at the top, out of reach - the
+  riskiest action was the easiest one to hit. Edit is now the main button at the end of the
+  footer and Delete stands back at its start, as in the calendar. Deleting still asks first,
+  and without write access neither button is shown.
+
 - **Deleting a shared expense now leaves a trace instead of rewriting the books.** Until now
   deleting an expense removed its bookings, so the balances changed and nothing showed why. The
   expense now stays in the ledger and a counter-entry cancels it, so balances end up exactly where
@@ -314,6 +350,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   before this change keep their balances; only their trace is missing. (#1382)
 
 ### Fixed
+
+- **Holiday countries and regions are named in your language, and the delete button of the task
+  selection is no longer announced as a question** (#1723). Under Settings, Calendar, the list of
+  countries for public holidays showed English names in every language, in English order. The
+  names now follow the language of the app and the list is sorted in it; a country the browser
+  cannot name keeps the name it had. The regions below a country (federal states, cantons) come
+  from the holiday service, which carries them in several languages: the app now asks for yours
+  and falls back to English where the service has none. The three nations of the United Kingdom
+  stay in English. In Tasks, with several tasks selected, a screen reader read the delete button
+  as "Delete 3 tasks?" where the screen says "Delete" - the question belongs to the confirmation
+  step that follows. The button is now called "Delete 3 tasks". That name is new in all 26
+  languages; in Vietnamese, Hindi, Arabic, Persian, Korean, Japanese, Chinese and Filipino it was
+  not written by a native speaker. For API clients:
+  `GET /api/v1/preferences/holidays/subdivisions/{countryCode}` takes an optional `lang`; without
+  it the answer is in English, as before.
+- **A monthly shared expense on the 29th, 30th or 31st no longer skips a month** (#1721). A
+  recurring shared expense only knew its next date, not the day it was meant for. After a
+  booking on 31 January the next date overflowed to 3 March: February got no booking at all,
+  nothing said so, and the series stayed on the 3rd from then on (on the 2nd or 1st when it
+  started on the 30th or 29th, or after a 30-day month). A series now remembers its day. In a
+  shorter month it books on the last day and returns to its day afterwards: 31 January,
+  28 February (29 in a leap year), 31 March. A yearly series from 29 February books on
+  28 February and on 29 February again in a leap year, instead of moving to 1 March for good.
+  Resuming a paused series counts the same way. Weekly series were not affected.
+  **Existing series that demonstrably drifted off the 29th-31st return to their day; the month
+  that was skipped is not booked afterwards.** The evidence is the first expense the series
+  booked: if it lies on the 29th, 30th or 31st and the next date sits on the 1st, 2nd or 3rd
+  where the overflow left it, the next date moves to that day (or the last day) of the same
+  month. If the skipped month is still ahead at the time of the update - the series booked on
+  31 October and waits for 1 December, and it is 10 November - the date moves into that month
+  instead (30 November), so it is not left empty; that is a date in the future, not a booking
+  made up afterwards. A series that was really created on the 1st to 3rd stays there. So does
+  one whose first expense has been deleted or was ever edited, because then nothing shows
+  reliably where the series started: an edit can have changed the date, and the app does not
+  record what an edit changed, so an edit of the title alone counts as well. Two more cases
+  keep the date where it is. If the series already has an expense in that month, the series
+  returns with the following booking. And no date is ever moved into the past, where the next
+  run would book it at once: a paused series whose date already lies behind returns when it is
+  resumed. A yearly series that stands on 1 March and cannot be moved back for one of these
+  reasons stays on 1 March. If a month is missing in your group, add that expense by hand.
+  Shared expenses only: subscriptions and tasks keep their own rules. For API clients:
+  recurring expenses carry `anchor_day` (migration 234).
+
+- **Meal plan and recipes with read-only access: no more buttons that end in an error message**
+  (#1265). A member who may only read the Kitchen still saw every control on both tabs: the plus
+  buttons and the empty slots, the edit dialog with Save and Delete, the bin on a meal, the drag
+  handle, "Fill plan at random", the recipe column, and on a recipe Edit, Duplicate, Delete and
+  "Add to meal plan". Each of them ended in "no permission"; a dragged meal jumped back, and a
+  deleted one came back after the undo window. Those controls are now gone for such a member.
+  What the plan and the list show stays, and is readable in full: tapping a meal opens a
+  read-only view with everything the form shows - date, meal, ingredients with their shopping
+  category, the saved recipe, notes, the recipe link and whether it repeats. A recipe opens its
+  details as before, which now also name the meals it is meant for and the category of each
+  ingredient. An empty week or an empty recipe list only says so, instead of inviting you to add
+  something. "Add to shopping list" on a recipe keeps following the right it needs: it stays
+  for a member who may read the Kitchen and edit Shopping. Assigning a recipe ingredient to a
+  pantry row needs write access to both the Kitchen and the Pantry, as the server requires; with
+  only the Pantry right the button used to be offered and the save was refused.
 
 - **The PDFs in the demo data are real PDFs** (#1511). The demo documents carried a line of
   placeholder text under a `.pdf` name, so the built-in preview could not open them and
@@ -335,6 +429,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hint above the module order under Settings, Navigation listed groups that no longer exist
   ("Overview, Plan, Home") and now simply says the modules are sorted within their group. In
   German, the empty waste page read "Papier -, um".
+
+- **Wording: one word for the housekeeper, a pink that is called pink, "Square (2×2)", and a
+  real sentence when weather coordinates are missing** (#1723). In Housekeeping the person had
+  four names: the tab said "Staff", its heading "Housekeeping staff", the add button
+  "Housekeeper", and in German the short add label just "Person". It is "Housekeeper"
+  ("Haushaltshilfe") everywhere now; the tab and its heading read "Housekeepers", and a
+  housekeeper's account under Settings, Family carries that word as its role instead of
+  "Staff". The module keeps its name. In the waste type dialog the swatch called "Magenta" is a
+  pink and is now called that - only the name a screen reader announces changes, saved waste
+  types keep their colour. On the overview, the largest of the four tile sizes was called
+  "Standard (2×2)" although no tile starts in it; it is "Square (2×2)", saved layouts are
+  untouched. And in the weather settings, saving without valid coordinates showed the two
+  field names, "Latitude / Longitude", as the error; it now says "Enter valid coordinates."
+  The new wording is in all 26 languages; in Vietnamese, Hindi, Arabic, Persian, Korean,
+  Japanese, Chinese and Filipino it was not written by a native speaker.
 
 - **Resuming a paused recurring shared expense no longer books every date it missed** (#1647).
   A recurring expense that was paused for six months and then resumed got six expenses within
@@ -544,6 +653,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chart now measures its amounts and leaves them the room they need, whatever the currency
   and region; a chart with short amounts looks exactly as before.
 
+- **Inventory and Documents with read-only access: no more buttons that end in an error message**
+  (#1265). A member who may only read the Inventory still saw Add, Edit and Delete, "Done" on a
+  due deadline, and the menu that manages locations and categories; a member who may only read
+  Documents still saw Upload, the folder buttons, the menu on every document and "Select
+  multiple". Each of them ended in "no permission". Those controls are now gone for such a
+  member. What the pages show stays and is readable in full: an inventory item opens its
+  details, which now also name a deadline's reminder lead time and its repeat interval, and a
+  document opens in the viewer with preview, download and share, which now also shows its
+  description, who may see it, the reminder lead time and whether it is archived. An empty
+  page only says that it is empty instead of inviting you to add something.
+
+- **Documents: Edit, Move, Archive and Delete are only offered on documents you may change**
+  (#1265). A document can be changed by the person who uploaded it and by an admin. The page
+  did not know that rule: every document that was shared with you carried the full menu, and
+  saving, archiving or deleting somebody else's document ended in "Not authorized" - a deleted
+  one disappeared first and came back a few seconds later. Now the menu, the pencil in the
+  viewer and the selection circle of "Select multiple" appear only on your own documents (on
+  all of them for an admin). Viewing, downloading and sharing stay available on every document
+  you can see, and on a narrow phone a document without a menu keeps its view button.
+
 - **With read-only access, a screen reader now says that a row opens its details** (#1682).
   In the pantry and under Birthdays, a row announced only its content when you may read
   but not change: with write access it ends on "Edit", and with read access that word was
@@ -553,6 +682,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   plus and minus buttons. A read-only row has no such buttons, so the date stays visible
   there. Behind the scenes the three read views (birthdays, shopping, pantry) now draw their
   rows with one shared building block instead of three copies.
+
+- **Every chart leaves its axis values the room they need, not only the Budget trend**
+  (#1722). The Health charts (vitals, lab values, activity, and the cycle trends) and the
+  odometer chart of an inventory item kept a fixed margin sized for short numbers. The
+  severity trend of a cycle symptom writes words on that axis, and their length depends on
+  the language: in Polish, "Umiarkowane" started to the left of its chart and ended up one
+  pixel from the edge of its card on a phone; Filipino and Russian stuck out as well. Each
+  of these charts is now measured the moment it appears, the same way the Budget trend
+  already was, so a long word or a seven-digit odometer reading stays inside its chart. A
+  chart with short values looks exactly as before.
 
 ## [2.73.0] - 2026-10-04
 

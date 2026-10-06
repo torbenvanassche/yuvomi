@@ -182,7 +182,13 @@ const STUBS = {
     export const askOverModal = async (ask) => (
       typeof globalThis.__askOverModal === 'function' ? globalThis.__askOverModal(ask) : ask()
     );
-    export const selectModal = async () => null;
+    // Ohne Stub bricht die Auswahl ab (null) - dann sendet KEIN Aufrufer etwas,
+    // auch mit Schreibrecht nicht. Wer den Weg hinter der Auswahl messen will
+    // (Ordner oder Dokumente verschieben), setzt globalThis.__selectModal und
+    // bekommt Titel und Optionen - dasselbe Muster wie __promptModal.
+    export const selectModal = async (...args) => (
+      typeof globalThis.__selectModal === 'function' ? globalThis.__selectModal(...args) : null
+    );
     // Wer wissen will, OB ein Abschnitt aufgeklappt aufgeht, setzt
     // globalThis.__advancedSection und bekommt Inhalt UND Optionen - die
     // Entscheidung trifft der Aufrufer, und hier kaeme sie sonst nie an.
@@ -341,8 +347,12 @@ const STUBS = {
     // Suiten, die einen Formular-Handler mit gewaehlten Personen FAHREN, setzen
     // globalThis.__getSelectedUserIds; ohne das bleibt es bei niemandem.
     export const getSelectedUserIds = (...args) => globalThis.__getSelectedUserIds?.(...args) ?? [];
-    export const bindUserMultiSelect = () => {};
-    export const renderAvatarStack = () => '';
+    // Wie die beiden Haken darueber: Suiten, die das Avatar-Markup pruefen oder
+    // die Auswahl-Logik fahren (der Koch einer Mahlzeit, #1679), setzen
+    // globalThis.__renderAvatarStack bzw. globalThis.__bindUserMultiSelect auf
+    // die echte Komponente. Ohne das bleibt es beim leeren Markup wie bisher.
+    export const bindUserMultiSelect = (...args) => globalThis.__bindUserMultiSelect?.(...args);
+    export const renderAvatarStack = (...args) => globalThis.__renderAvatarStack?.(...args) ?? '';
   `,
   '/utils/shopping-categories.js': `
     export const DEFAULT_CATEGORY_NAME = 'Sonstiges';

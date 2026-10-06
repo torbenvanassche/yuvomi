@@ -581,6 +581,15 @@
   text-align: left;
 }
 
+/* Wer kocht (#1679): der Avatar steht in der Meta-Zeile vor der Zutatenzahl,
+ * nicht im Titel - der Titel ist an jeder Breite der knappste Platz der Karte.
+ * `flex: none`, damit die Scheibe neben einer langen Zutatenzahl rund bleibt. */
+.meal-card__cook {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+
 .meal-card__ingredients-count {
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
@@ -1136,6 +1145,25 @@
   font-size: var(--text-sm);
 }
 
+/* Der Rezept-Link in der Leseansicht einer Mahlzeit (`meals: read`, #1265).
+ * Ihn zu oeffnen ist Lesen, also bleibt er ein Link - in der Akzentfarbe wie
+ * `.item-details__link` im Einkauf. Den Umbruch einer langen Adresse traegt
+ * die Zeile selbst (`.detail-row__value`, overflow-wrap: anywhere). */
+.meal-read__link {
+  color: var(--module-accent, var(--color-accent));
+  text-decoration: none;
+}
+
+.meal-read__link:hover { text-decoration: underline; }
+
+/* Der Koch in der Leseansicht (#1679): Avatar und Name in einer Zeile. */
+.meal-read__cook {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 /* Leere Slots tragen keinen „Kein Essen geplant"-Text mehr (Rauschen auf dem
  * Planer-Raster) — nur noch Typ-Label + Plus-Affordanz. */
 
@@ -1516,8 +1544,11 @@
     background-color: transparent;
   }
 
-  .week-grid .meal-slot--empty:hover,
-  .week-grid .meal-slot--empty:focus-within {
+  /* `:not(.meal-slot--static)`: bei `meals: read` (#1265) ist der leere Platz
+   * nur noch Zustand - er traegt kein Plus und nimmt kein Rezept auf. Die
+   * Kante unter dem Zeiger verspraeche beides. */
+  .week-grid .meal-slot--empty:not(.meal-slot--static):hover,
+  .week-grid .meal-slot--empty:not(.meal-slot--static):focus-within {
     border-color: var(--color-border);
   }
 
