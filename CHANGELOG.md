@@ -13,6 +13,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A household can put its members in an order of its own, and every list of people follows it**
+  (#1644, from D#1605, asked by @ChaCha500). Until now members were listed alphabetically
+  everywhere, so "parents first" or "oldest first" was not possible. Under Settings, Family, an
+  administrator now drags the members into the wanted order - or focuses a handle and presses
+  the arrow keys. There is one order per household, the same for everyone who looks: the
+  calendar's person filter, the timetable, the assignee pickers in tasks, budget and shared
+  expenses, rewards, the family card and the wall display all use it. A member who has not been
+  placed (a new one, and everyone in a household that never touches the setting) comes after
+  the placed ones, sorted by name, so a household that leaves it alone sees the order it had.
+  Not by age, as first suggested: birth dates are optional, and "parents first, then the
+  children" cannot be read from a date. Two things changed for everyone, placed or not. Lists
+  that sorted names by the language of the device now sort them the way the server does, so
+  two devices of one household agree; and a few lists that put a lower-case name after all
+  capitalised ones (the account list, the task filter and the overview among them) now ignore
+  letter case like the others. Housekeeping staff, guests of shared expenses, wall tablets and deactivated
+  accounts have no place in the order. For API clients: `PATCH /api/v1/family/members/reorder`
+  with `{ order }`, administrators only; `sort_order` on `GET /api/v1/family/members` and
+  `GET /api/v1/auth/users`, and `is_household_member` on every user object (migration 232).
+
 - **Revoked and expired API tokens can be removed from the list** (D#1672, asked by @torbenvanassche). Under
   Settings, API access, a revoked token stayed in the list for good, with a greyed-out button
   next to it. The list now has two parts: the tokens that work, each with "Revoke", and below
@@ -39,7 +58,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   means 5. "Set as household default" now shows the result at once when a tile option changed
   what the overview asks for; until now the tile kept its old list until the next refresh.
 
+- **A loan can carry a due day, and "Mark paid" dates the installment on it** (#1631, D#1481, asked
+  by @iHatim1). A loan knew the month an installment is due but no day, so "Mark paid" dated the
+  entry on the day you tapped it: with a debit on the 27th, marking it on the 25th put it two days
+  early, and marking it on 2 November put October's installment into November's budget. The loan
+  dialog now has an optional "Due day" field, 1 to 31. With it set, the installment is dated on that
+  day in the month it is due, whether you mark it early or late, and a month that is shorter takes
+  its last day (the 31st becomes 30 April, or 28 or 29 February). The confirmation names the date
+  that was used, because the entry is booked without a dialog, and the loan card shows the full
+  date of the next installment instead of only the month. "Installments already paid" on a new
+  loan use the day as well. Nothing changes for a loan without a due day, and nothing that is
+  already booked is moved: setting or changing the day later leaves existing installments and
+  their budget entries where they are. Marking early books an entry dated a few days ahead; it
+  counts in that month's totals at once and in the account's current balance from its date on. For
+  API clients: loans accept and return `due_day`, and return `next_due_date` next to
+  `next_due_month` (`null` without a due day). `POST /api/v1/budget/loans/{id}/payments` is
+  unchanged, `paid_date` stays required and is stored as sent.
+
 ### Changed
+
+- **Overlapping events in the day and week view are placed by person, not by start time**
+  (D#1605, #1633). Events at the same time used to be packed by the clock alone: whoever
+  started first stood on the left, so the same person could be left at nine and right at
+  eleven, and two events with the same start and end could swap places from one load to the
+  next. Now every person in a group of overlapping events gets a column of their own, in the
+  order in which the household's members are listed - the order of the people filter. An event with several people stands where the first of them in
+  that order stands; events of people who are not household members follow after the members,
+  and an event with nobody assigned comes last. Two events of the same person at the same
+  time stand next to each other. Nothing is reserved: an event that overlaps nothing keeps
+  the full width, and a person who is not part of a group takes no room in it. The price is
+  width in a chain: with 9:00-10:00, 9:30-11:00 and 10:30-12:00 for three people, the third
+  used to take the place the first had left and the group was two columns wide; now it is
+  three, because the third may not stand in the first one's column, and a longer chain of
+  different people grows by a column per person. Schedule blocks, the all-day row, the month
+  and the agenda are unchanged.
 
 - **Two people with the same initials no longer look the same** (#1464). Linda Johnson and Leo
   Johnson both showed "LJ" on their avatars, in the people picker, in avatar stacks and on the
@@ -270,6 +322,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in the preview and in the browser's own viewer. The three demo images are still placeholders.
   Only a database filled by `scripts/seed-demo.js` is affected.
 
+- **The reminder-list settings have one name: "Reminder sync"** (#1524). The section under
+  Settings, Tasks was headed "Show/hide reminder lists", while the settings search and the link
+  from the task defaults called it "Reminder sync" - whoever searched for the one found the
+  other. The heading now carries the name the search and the links use. It is also the name
+  that says what the section does: its switches decide which CalDAV lists the household syncs
+  and whether a list feeds Tasks or Shopping, nothing in it merely hides a list.
+
+- **Wording: waste colours are named after what they show, and two stale sentences are gone**
+  (#1507). In the waste type dialog the swatch called "Violet" was fuchsia and the one called
+  "Teal" was emerald; both now carry those names, which is what a screen reader announces. The
+  hint above the module order under Settings, Navigation listed groups that no longer exist
+  ("Overview, Plan, Home") and now simply says the modules are sorted within their group. In
+  German, the empty waste page read "Papier -, um".
+
+- **Resuming a paused recurring shared expense no longer books every date it missed** (#1647).
+  A recurring expense that was paused for six months and then resumed got six expenses within
+  six hours, one per hourly run, each with its original date. Resuming now skips the missed
+  dates: the series continues at its next date that is not in the past, in its own rhythm, and
+  nothing is booked for the time it was paused. A date that falls on today is still booked.
+  The app has no control for this yet, so it concerns API clients: this changes what
+  `POST /api/v1/split-expenses/recurring/{id}/pause` does by default when it resumes. To get
+  the previous behaviour, send `{ "missed": "book" }`; `"skip"` is the default, and any other
+  value answers 400 with `reason: "invalid_missed"`.
+
 - **An avatar never shows more than one character per name part** (#1464). A name starting
   with "ß" put three letters on the disc ("ßeta Schmidt" showed "SSS"), because writing a
   letter in capitals can turn it into two; the same went for the ligatures "ﬁ" and "ﬂ". The
@@ -455,6 +531,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   key, so a client that compared the `error` text should switch to it. Where a sentence lists
   the allowed category keys, the keys of the built-in income categories are still German
   words - they are stored keys, not wording. Other modules are unchanged (#1668).
+
+- **Three layout points from a Korean household: a long title stays on its card, hints wrap
+  at word boundaries, and the chart's amounts are no longer cut off** (#1607, reported by
+  @soonJ817). On the task board, a title without spaces - a web address, one very long
+  word - ran out of its card and across the neighbouring columns; it now wraps inside the
+  card. In the Korean interface, hints and descriptions broke between any two syllables and
+  left a single one on the next line ("선택합니 / 다."); Korean now wraps between words, as
+  it is written, and the other languages wrap as before. In the Budget statistics, the
+  amounts along the left edge of the chart lost their beginning once they got long -
+  "₩6,000,000" was cut off at its currency sign, on a phone and on a desktop alike. The
+  chart now measures its amounts and leaves them the room they need, whatever the currency
+  and region; a chart with short amounts looks exactly as before.
+
+- **With read-only access, a screen reader now says that a row opens its details** (#1682).
+  In the pantry and under Birthdays, a row announced only its content when you may read
+  but not change: with write access it ends on "Edit", and with read access that word was
+  removed and nothing took its place. The row now ends on "Show details". The info button of
+  a shopping item says the same, followed by the item's name. Along with it, in the pantry on
+  a narrow phone: a row with a cart button hid its best-before date to make room for the
+  plus and minus buttons. A read-only row has no such buttons, so the date stays visible
+  there. Behind the scenes the three read views (birthdays, shopping, pantry) now draw their
+  rows with one shared building block instead of three copies.
 
 ## [2.73.0] - 2026-10-04
 

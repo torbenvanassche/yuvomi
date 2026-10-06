@@ -10117,6 +10117,60 @@ const MIGRATIONS = [
   },
   {
     version: 232,
+    description: 'Users: one household member order (#1644)',
+    // EINE REIHENFOLGE DER MITGLIEDER JE HAUSHALT (#1644, aus #1605). Nicht je
+    // Person, nicht je Modul: wer hinsieht, sieht dieselbe. Gesetzt wird sie
+    // per Ziehen in den Familien-Einstellungen, nur von Administratoren
+    // (PATCH /api/v1/family/members/reorder).
+    //
+    // NULL = NICHT PLATZIERT, UND KEIN BACKFILL. Ein Haushalt, der die
+    // Einstellung nie anfasst, hat lauter NULL und sieht die Reihenfolge von
+    // vorher: Unplatzierte stehen nach den Platzierten, nach Anzeigename. Ein
+    // Backfill haette aus "nie entschieden" eine Entscheidung gemacht - und
+    // jedes neue Mitglied stuende danach hinter Z statt im Alphabet.
+    //
+    // GELESEN WIRD DIE SPALTE AN EINER STELLE: `memberOrderSql()` in
+    // server/services/household-members.js (und ihr Zwilling im Browser,
+    // public/utils/member-order.js). Dort gilt die Position nur fuer ein
+    // Haushaltsmitglied - Hauspersonal, Gaeste, Wandtabletts und ehemalige
+    // Konten haben keine, auch wenn hier noch eine Zahl stuende.
+    //
+    // Kein Index: sortiert wird eine Tabelle mit so vielen Zeilen, wie der
+    // Haushalt Menschen hat. Ein kuenftiger Rebuild von users muss die Spalte
+    // mitnehmen.
+    up: `
+      ALTER TABLE users ADD COLUMN sort_order INTEGER;
+    `,
+  },
+  {
+    version: 233,
+    description: 'Budget loans: an optional due day of the month (#1631)',
+    // EIN DARLEHEN KENNT DEN MONAT SEINER RATE, ABER KEINEN TAG (#1631). "Als
+    // bezahlt markieren" datierte die Rate deshalb auf den Tag des Tippens: bei
+    // einem Einzug am 27. landete sie am 25. oder am 2. des Folgemonats, im
+    // zweiten Fall im falschen Budgetmonat. `due_day` ist der Tag im Monat,
+    // 1 bis 31; in kuerzeren Monaten gilt der letzte Tag - das Klemmen steht
+    // einmal, in `dueDateInMonth()` (server/routes/budget/helpers.js).
+    //
+    // NULL = kein Faelligkeitstag, also das Verhalten bis hierher. KEIN
+    // BACKFILL: kein Bestandsdarlehen hat je einen Tag genannt, und
+    // `budget_loan_payments` bleibt, wie es ist - gebuchte Raten behalten ihr
+    // Datum, auch wenn der Tag spaeter gesetzt oder geaendert wird.
+    //
+    // Der CHECK geht mit ADD COLUMN, weil die Spalte NULL als Default hat und
+    // der Ausdruck NULL zulaesst (SQLite prueft ihn beim Hinzufuegen gegen den
+    // Bestand). `typeof` steht dabei, weil INTEGER-Affinitaet 1.5 als REAL
+    // stehen laesst und BETWEEN es durchliesse.
+    //
+    // Ein kuenftiger Rebuild von budget_loans muss die Spalte samt CHECK
+    // mitnehmen.
+    up: `
+      ALTER TABLE budget_loans ADD COLUMN due_day INTEGER
+        CHECK (due_day IS NULL OR (typeof(due_day) = 'integer' AND due_day BETWEEN 1 AND 31));
+    `,
+  },
+  {
+    version: 234,
     description: 'Subscriptions: optional payment reminder (#1226)',
     up: `
       ALTER TABLE budget_subscriptions ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 1

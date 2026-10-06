@@ -26,7 +26,7 @@
 // Grundschema (Migration v1, plus einzelne später ergänzte Spalten - siehe oben).
 // Änderungen in db.js MIGRATIONS müssen hier synchron gehalten werden.
 const MIGRATIONS_SQL = {
-  232: `
+  234: `
     ALTER TABLE budget_subscriptions ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 1
       CHECK(reminder_enabled IN (0,1));
   `,
@@ -1444,6 +1444,12 @@ const MIGRATIONS_SQL = {
   // `householdMemberSql()` gegen ein handgebautes Schema faehrt.
   231: `
     ALTER TABLE users ADD COLUMN deactivated_at TEXT;
+  `,
+  // v232 (#1644): die eine Haushaltsreihenfolge der Mitglieder. NULL = nicht
+  // platziert; `memberOrderSql()` liest die Spalte, also braucht sie jede
+  // Suite, die eine Mitgliederliste gegen dieses Schema sortiert.
+  232: `
+    ALTER TABLE users ADD COLUMN sort_order INTEGER;
   `,
 };
 
