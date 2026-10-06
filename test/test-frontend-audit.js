@@ -6,6 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { SETTINGS_DOMAINS, SETTINGS_LEAVES } from '../public/settings/registry.js';
 import { eachRule } from './css-rules.js';
 import { keySetDiff } from './i18n-plural-keys.js';
@@ -1245,7 +1246,7 @@ test('jede JS-Datei unter public/ ist syntaktisch gueltiges ESM', () => {
     try {
       // `node --check` liest den Modultyp aus package.json ("type": "module"),
       // parst also als ESM - `import`/`export` auf oberster Ebene sind erlaubt.
-      execFileSync(process.execPath, ['--check', new URL(file, import.meta.url).pathname], { stdio: 'pipe' });
+      execFileSync(process.execPath, ['--check', fileURLToPath(new URL(file, import.meta.url))], { stdio: 'pipe' });
     } catch (err) {
       const detail = String(err.stderr || err.message).split('\n').find((l) => /SyntaxError/.test(l)) || String(err.message).slice(0, 120);
       offenders.push(`${file.replace('../public/', '')}: ${detail.trim()}`);
@@ -5654,8 +5655,8 @@ test('die Bedienzone der Vorratszeile traegt keinen Text', () => {
     'das Trennzeichen gehoert IN den Knoten - sonst bleibt beim Weglassen ein einsames Mittelpunkt-Zeichen stehen');
   assert.match(
     pantryCss,
-    /@container list-rows \(max-width:[^)]+\)\s*\{\s*\.pantry-row:has\(\.pantry-row__cart\) \.pantry-row__expiry\s*\{\s*display:\s*none/,
-    'das MHD faellt auf der schmalen Zeile MIT Warenkorb weg - an der Traegerbreite, nicht am Viewport',
+    /@container list-rows \(max-width:[^)]+\)\s*\{\s*\.pantry-row:has\(\.pantry-row__cart\):has\(\.pantry-stepper\) \.pantry-row__expiry\s*\{\s*display:\s*none/,
+    'das MHD faellt auf der schmalen Zeile MIT Warenkorb UND Stepper weg - an der Traegerbreite, nicht am Viewport; ohne Stepper (Lesezeile) ist Platz (#1682)',
   );
 
   // Eine Variable, zwei Zeigerklassen: die Knopfgroesse wechselt mit der

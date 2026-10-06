@@ -18,9 +18,12 @@ import { sendDocumentDeletionConflict } from '../services/document-deletion-lock
 import {
   buildSplits, decorateMoney, groupBalanceRows, insertExpenseLedger, membershipRefusal, minorToDecimal, parseMoneyToMinor, simplifyDebts, splitSnapshot,
 } from '../services/split-expenses.js';
+import { nextRunNotBefore } from '../services/split-expenses-scheduler.js';
 import { CURRENCY_CODES } from '../../public/utils/currency-codes.js';
 import { syncBirthdayArtifacts } from '../services/birthdays.js';
-import { activeAccountSql, householdMemberSql, newNonMembers, staffMessage } from '../services/household-members.js';
+import {
+  activeAccountSql, householdMemberSql, memberOrderOverColumnsSql, memberOrderSql, memberPositionSql, newNonMembers, staffMessage,
+} from '../services/household-members.js';
 import { EMAIL_IN_USE_MESSAGE, emailsTakenByOtherAccounts } from '../services/contact-identity.js';
 import { todayKey } from '../utils/timezone.js';
 import { mayReadModule, mayWriteModule } from '../permissions.js';
@@ -383,7 +386,7 @@ function serializeExpense(expense, prefetched, viewer) {
         FROM expense_splits s
         LEFT JOIN users u ON u.id = s.user_id
         WHERE s.expense_id = ?
-        ORDER BY u.display_name COLLATE NOCASE ASC
+        ORDER BY ${memberOrderSql('u')}
       `).all(expense.id).map((row) => ({ ...row, amount: minorToDecimal(row.amount_minor, row.currency) }));
   // Belege laufen über die Sichtbarkeit des Dokumente-Moduls (#583): ein privat
   // abgelegter Beleg bleibt privat, auch wenn die Ausgabe der ganzen Gruppe
@@ -414,7 +417,7 @@ function serializeExpenseList(expenses, viewer) {
     FROM expense_splits s
     LEFT JOIN users u ON u.id = s.user_id
     WHERE s.expense_id IN (${placeholders})
-    ORDER BY u.display_name COLLATE NOCASE ASC
+    ORDER BY ${memberOrderSql('u')}
   `).all(...ids)) {
     const { expense_id, ...rest } = row;
     if (!splits.has(expense_id)) splits.set(expense_id, []);
@@ -709,7 +712,7 @@ router.get('/groups/:id/members', (req, res) => {
       FROM expense_group_members gm
       JOIN users u ON u.id = gm.user_id
       WHERE gm.group_id = ?
-      ORDER BY CASE gm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, u.display_name COLLATE NOCASE ASC
+      ORDER BY CASE gm.role WHEN 'owner' THEN 0 WHEN 'admin' THEN 1 ELSE 2 END, ${memberOrderSql('u')}
     `).all(groupId);
     res.json({ data: rows });
   } catch (err) {
@@ -727,11 +730,17 @@ router.get('/groups/:id/member-candidates', (req, res) => {
     // existiert fuer geteilte Ausgaben: er gehoert zu der Gruppe, fuer die er
     // angelegt wurde, und zu jeder, in der er schon Mitglied ist. Gaeste
     // anderer Gruppen bietet die Auswahl nicht an.
+    // DAS UNION STEHT IN EINER UNTERABFRAGE, damit die Haushaltsreihenfolge
+    // (#1644) darueber sortieren kann: direkt hinter einem UNION nimmt SQLite
+    // nur Ergebnisspalten als Sortierbegriff, keinen Ausdruck wie
+    // "sort_order IS NULL".
     const people = db.get().prepare(`
+      SELECT * FROM (
       SELECT 'user' AS source, u.id AS user_id, NULL AS contact_id, u.display_name, u.username,
              u.avatar_color, u.family_role, c.phone, c.email, b.birth_date,
              CASE WHEN gm.user_id IS NULL THEN 0 ELSE 1 END AS in_group,
-             gm.role AS group_role
+             gm.role AS group_role,
+             ${memberPositionSql('u')} AS sort_order
       FROM users u
       LEFT JOIN contacts c ON c.family_user_id = u.id
       LEFT JOIN birthdays b ON b.family_user_id = u.id
@@ -741,7 +750,8 @@ router.get('/groups/:id/member-candidates', (req, res) => {
       SELECT 'user' AS source, u.id AS user_id, NULL AS contact_id, u.display_name, u.username,
              u.avatar_color, u.family_role, c.phone, c.email, b.birth_date,
              CASE WHEN gm.user_id IS NULL THEN 0 ELSE 1 END AS in_group,
-             gm.role AS group_role
+             gm.role AS group_role,
+             ${memberPositionSql('u')} AS sort_order
       FROM split_expense_guest_users g
       JOIN users u ON u.id = g.user_id
       LEFT JOIN contacts c ON c.family_user_id = u.id
@@ -756,7 +766,8 @@ router.get('/groups/:id/member-candidates', (req, res) => {
       SELECT 'user' AS source, u.id AS user_id, NULL AS contact_id, u.display_name, u.username,
              u.avatar_color, u.family_role, c.phone, c.email, b.birth_date,
              1 AS in_group,
-             gm.role AS group_role
+             gm.role AS group_role,
+             ${memberPositionSql('u')} AS sort_order
       FROM expense_group_members gm
       JOIN users u ON u.id = gm.user_id
       LEFT JOIN contacts c ON c.family_user_id = u.id
@@ -764,7 +775,8 @@ router.get('/groups/:id/member-candidates', (req, res) => {
       WHERE gm.group_id = @groupId
         AND NOT (${householdMemberSql('u')})
         AND NOT EXISTS (SELECT 1 FROM split_expense_guest_users sg WHERE sg.user_id = u.id)
-      ORDER BY display_name COLLATE NOCASE ASC
+      )
+      ORDER BY ${memberOrderOverColumnsSql({ position: 'sort_order', name: 'display_name', id: 'user_id' })}
     `).all({ groupId });
     // DIE FELDER FOLGEN DEM RECHT IHRER QUELLE. Der Pfad gehoert `budget`,
     // Telefon und E-Mail kommen aber aus `contacts`, das Geburtsdatum eines
@@ -1171,7 +1183,7 @@ router.get('/groups/:id/balances', (req, res) => {
     if (!requireGroupAccess(groupId, req)) return res.status(404).json({ error: 'Group not found.', code: 404 });
     // Dieselbe Saldenquelle wie die Kennzahl auf dem Dashboard
     // (openBalancesForUser) - ein Fix an den Salden heilt beide.
-    const rows = groupBalanceRows(db.get(), groupId);
+    const rows = groupBalanceRows(db.get(), groupId, memberOrderSql('u'));
     res.json({
       data: {
         balances: rows.map((row) => ({ ...row, net: minorToDecimal(row.net_minor, row.currency) })),
@@ -1483,15 +1495,47 @@ router.post('/groups/:id/recurring', (req, res) => {
   }
 });
 
+// Was beim Fortsetzen mit den Terminen geschieht, die waehrend der Pause
+// faellig gewesen waeren. `skip` ist die Vorgabe.
+const MISSED_MODES = ['skip', 'book'];
+
 router.post('/recurring/:id/pause', (req, res) => {
   try {
     const id = Number(req.params.id);
     const row = db.get().prepare('SELECT * FROM recurring_expenses WHERE id = ?').get(id);
     if (!row || !requireGroupAccess(row.group_id, req)) return res.status(404).json({ error: 'Recurring expense not found.', code: 404 });
     if (!canManageGroup(row.group_id, req) && row.created_by !== userId(req)) return res.status(403).json({ error: 'Not authorized.', code: 403 });
-    db.get().prepare("UPDATE recurring_expenses SET paused_at = CASE WHEN paused_at IS NULL THEN strftime('%Y-%m-%dT%H:%M:%SZ', 'now') ELSE NULL END WHERE id = ?").run(id);
-    activity(row.group_id, userId(req), row.paused_at ? 'recurring_resumed' : 'recurring_paused', 'recurring_expense', id);
-    res.json({ data: decorateMoney(db.get().prepare('SELECT * FROM recurring_expenses WHERE id = ?').get(id)) });
+    const missed = req.body?.missed ?? 'skip';
+    if (!MISSED_MODES.includes(missed)) {
+      return res.status(400).json({ error: 'missed must be "skip" or "book".', code: 400, reason: 'invalid_missed' });
+    }
+    // Lesen und Schreiben in EINER Transaktion: ob pausiert oder fortgesetzt
+    // wird und von welchem Termin aus gezaehlt wird, entscheidet die Zeile, die
+    // hier gelesen wird, nicht die von vor der Rechtepruefung.
+    const database = db.get();
+    const updated = database.transaction(() => {
+      const current = database.prepare('SELECT * FROM recurring_expenses WHERE id = ?').get(id);
+      if (!current) return null;
+      if (!current.paused_at) {
+        database.prepare("UPDATE recurring_expenses SET paused_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?").run(id);
+        activity(current.group_id, userId(req), 'recurring_paused', 'recurring_expense', id);
+      } else {
+        // Fortsetzen ueberspringt, was waehrend der Pause faellig gewesen
+        // waere (#1647). Bliebe `next_run_date` stehen, buchte der stuendliche
+        // Lauf je Lauf einen versaeumten Termin mit Originaldatum nach: sechs
+        // Monate Pause wurden sechs Ausgaben in sechs Stunden. `missed: "book"`
+        // behaelt genau das. "Heute" ist der Tag des Haushalts, derselbe, an
+        // dem der Lauf Faelligkeit misst.
+        const next = missed === 'book'
+          ? { date: current.next_run_date, skipped: 0 }
+          : nextRunNotBefore(current.next_run_date, current.frequency, todayKey(database));
+        database.prepare('UPDATE recurring_expenses SET paused_at = NULL, next_run_date = ? WHERE id = ?').run(next.date, id);
+        activity(current.group_id, userId(req), 'recurring_resumed', 'recurring_expense', id, next.skipped ? { skipped: next.skipped } : {});
+      }
+      return database.prepare('SELECT * FROM recurring_expenses WHERE id = ?').get(id);
+    })();
+    if (!updated) return res.status(404).json({ error: 'Recurring expense not found.', code: 404 });
+    res.json({ data: decorateMoney(updated) });
   } catch (err) {
     log.error('POST /recurring/:id/pause error:', err);
     res.status(500).json({ error: 'Internal server error.', code: 500 });
@@ -1531,7 +1575,7 @@ router.get('/search', (req, res) => {
         AND (@isGuest = 0 OR gm.group_id = @restrictedGroupId)
         -- Ehemalige bleiben in Buchungen und Salden stehen, die Suche bietet sie nicht an (#1381).
         AND ${activeAccountSql('u')}
-      ORDER BY u.display_name COLLATE NOCASE ASC LIMIT 10
+      ORDER BY ${memberOrderSql('u')} LIMIT 10
     `).all({ uid, q, restrictedGroupId, isGuest });
     res.json({ data: { groups, expenses: expensesSerialized, people } });
   } catch (err) {
