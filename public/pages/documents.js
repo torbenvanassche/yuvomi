@@ -222,7 +222,7 @@ export async function render(container, context = {}) {
            "Zum Inhalt springen" der Shell (router.js): `.sr-only`, sichtbar
            nur bei Tastaturfokus (layout.css, .sr-only:focus-visible). */ ''}
       <a class="sr-only documents-skip" href="#documents-list" data-documents-skip>${t('documents.skipToDocuments')}</a>
-      <div class="page-toolbar page-toolbar--wrap documents-toolbar">
+      <div class="page-toolbar page-toolbar--wrap page-toolbar--title-tools documents-toolbar">
         <h1 class="page-toolbar__title">${t('documents.title')}</h1>
         ${renderPageSearch({ id: 'documents-search', label: t('documents.searchPlaceholder'), placeholder: t('documents.searchPlaceholder'), value: state.query, clearLabel: t('common.searchClear'), className: 'documents-toolbar__search page-toolbar__center' })}
         <div class="page-toolbar__actions">
@@ -525,6 +525,23 @@ function documentsToolsMenuHtml() {
       <i data-lucide="arrow-up-down" class="icon-md" aria-hidden="true"></i>
     </button>
     <div class="popover-menu documents-tools-menu" id="documents-tools-menu" popover role="menu" aria-label="${esc(label)}">
+      ${/* ANSICHT IM MENUE, NUR UNTER 768px (R16, Kopfregel mobil 1a). Der
+           Ansichts-Umschalter ist ein Segment und hielt damit eine eigene
+           Werkzeugzeile; als Einfachauswahl im Menue (wie die Ansichtswahl
+           des Kalenders) bleiben Lupe und Menue uebrig, und die stehen in
+           der Titelzeile. documents.css blendet je Breite EINEN der beiden
+           Wege aus. */ ''}
+      <div class="popover-menu__group documents-tools-menu__view" role="group" aria-labelledby="documents-tools-view-label">
+        <div class="popover-menu__label" id="documents-tools-view-label">${esc(t('documents.viewToggle'))}</div>
+        ${[['grid', t('documents.gridView'), 'layout-grid'], ['list', t('documents.listView'), 'list']].map(([view, text, icon]) => {
+          const on = state.view === view;
+          return `
+        <button type="button" role="menuitemradio" aria-checked="${on}" class="popover-menu__item" data-view-choice="${view}">
+          ${check(on)}<span>${esc(text)}</span><i data-lucide="${icon}" class="icon-md popover-menu__item-trail" aria-hidden="true"></i>
+        </button>`;
+        }).join('')}
+      </div>
+      <div class="popover-menu__separator documents-tools-menu__view" role="separator"></div>
       <div class="popover-menu__group" role="group" aria-labelledby="documents-tools-sort-label">
         <div class="popover-menu__label" id="documents-tools-sort-label">${esc(t('documents.sortLabel'))}</div>
         ${SORTS.map((sort) => {
@@ -569,6 +586,7 @@ function syncToolsMenu() {
     item.setAttribute('aria-checked', String(on));
     item.querySelector('.popover-menu__item-check')?.classList.toggle('popover-menu__item-check--hidden', !on);
   };
+  menu.querySelectorAll('[data-view-choice]').forEach((item) => paint(item, item.dataset.viewChoice === state.view));
   menu.querySelectorAll('[data-sort]').forEach((item) => paint(item, item.dataset.sort === state.sort));
   menu.querySelectorAll('[data-sort-direction]').forEach((item) => paint(item, item.dataset.sortDirection === state.sortDirection));
   const select = menu.querySelector('[data-action="enter-select"]');
@@ -608,7 +626,14 @@ function bindToolsMenu() {
   menu?.addEventListener('click', (e) => {
     const item = e.target.closest('.popover-menu__item');
     if (!item || item.disabled) return;
-    if (item.dataset.sort) {
+    if (item.dataset.viewChoice) {
+      // Derselbe Weg wie der Umschalter im Kopf: sein Klick-Handler haelt
+      // Zustand, Speicher und Zeichnung an EINER Stelle.
+      if (item.dataset.viewChoice !== state.view) {
+        _container.querySelector(`.documents-view-toggle [data-view="${item.dataset.viewChoice}"]`)?.click();
+      }
+      syncToolsMenu();
+    } else if (item.dataset.sort) {
       // Ein neuer Schluessel beginnt in seiner natuerlichen Richtung.
       if (item.dataset.sort !== state.sort) setSort(item.dataset.sort);
     } else if (item.dataset.sortDirection) {
@@ -706,6 +731,7 @@ function bindPageEvents() {
       el.classList.toggle('documents-view-toggle__btn--active', active);
       el.setAttribute('aria-pressed', String(active));
     });
+    syncToolsMenu();
     renderDocuments();
   });
   _container.querySelector('#documents-list')?.addEventListener('click', handleDocumentAction);
@@ -3392,6 +3418,8 @@ function openDocumentViewer(doc) {
 
   // pdf.js-Viewer hält Worker + Dokument im Speicher; beim Schließen freigeben.
   let pdfTeardown = null;
+  // Der Fokus-Waechter des eingebauten PDF-Betrachters (keepFocusOutOfUnclickedPdf).
+  let releasePdfFocus = null;
 
   // Teilen über das Teilen-Menü des Geräts (D#1014). Ob es geht, steht beim
   // Öffnen fest - utils/web-share.js beantwortet Typ und Browser in einer
@@ -3409,6 +3437,11 @@ function openDocumentViewer(doc) {
   let shareFile = null;
   // Der Ausloeser des Betrachters - fuer den Wechsel nach "Bearbeiten" (unten).
   const opener = document.activeElement;
+  // Per Tastatur geoeffnet? Der Browser weiss es: er zeigt den Fokusring am
+  // Ausloeser nur dann. Ein alter Browser ohne den Selektor wirft - dann gilt
+  // "nein", und der Fokus-Waechter des PDFs nimmt nichts zurueck.
+  let openedByKeyboard = false;
+  try { openedByKeyboard = opener?.matches?.(':focus-visible') === true; } catch { /* Selektor unbekannt */ }
 
   openSharedModal({
     title: doc.name,
@@ -3446,12 +3479,14 @@ function openDocumentViewer(doc) {
     `,
     onClose() {
       if (typeof pdfTeardown === 'function') pdfTeardown();
+      releasePdfFocus?.();
       shareAbort.abort();
       shareFile = null;
     },
     onSave(panel) {
       if (window.lucide) window.lucide.createIcons({ el: panel });
       if (shareSupport === 'ok') prepareShare(panel);
+      releasePdfFocus = keepFocusOutOfUnclickedPdf(panel, { keyboard: openedByKeyboard });
       // BEARBEITEN AUS DEM BETRACHTER (Re-Critique 2026-09-25, Alex). Kein
       // eigenes closeModal(): openModal() ersetzt den offenen Dialog selbst -
       // derselbe Weg wie jeder Modal-zu-Modal-Wechsel, und er haelt EINEN
@@ -3589,6 +3624,90 @@ function renderViewerFallback(doc, { hint, icon = 'file-x', alert = false } = {}
 
 function renderViewerUnsupported(doc) {
   return renderViewerFallback(doc, { hint: t('documents.viewerDownloadHint') });
+}
+
+/**
+ * DER FOKUS BLEIBT IM DIALOG, SOLANGE NIEMAND INS PDF GEKLICKT HAT (#1511).
+ *
+ * WAS NICHT GEHT, zuerst: liegt der Fokus IM eingebauten PDF-Betrachter, kommt
+ * kein Tastendruck mehr hier an - Esc schliesst dann nicht. Der Betrachter ist
+ * ein eigener Prozess des Browsers (in Chromium eine interne Erweiterung im
+ * iframe); gemessen erreicht `keydown` weder dieses Dokument noch das Fenster
+ * des iframes, obwohl dessen Huelle same-origin ist. Das laesst sich von hier
+ * nicht abfangen, ohne den eingebauten Betrachter aufzugeben oder dem PDF den
+ * Fokus wieder wegzunehmen, den jemand ihm per Klick gegeben hat (dann gingen
+ * Markieren und Kopieren im PDF nicht mehr). Fuer diesen Fall bleibt der Weg
+ * hinaus: das X im Kopf und jeder Klick in den Dialog bringen Esc zurueck, und
+ * der Fokus kehrt beim Schliessen zum Ausloeser zurueck (beides gemessen).
+ *
+ * WAS GEHT: der Fokus muss dort gar nicht erst landen, wenn ihn niemand
+ * hingelegt hat. Gemessen nahm ihn sich der Betrachter SELBST, sobald die
+ * Vorschau scheiterte (eine Datei, die sich als PDF ausgibt und keines ist) -
+ * per Tastatur geoeffnet stand der Fokus danach im iframe, und Esc war tot,
+ * ohne dass man das PDF je beruehrt hatte. Dasselbe nach Tab von einer
+ * angeklickten leeren Stelle aus.
+ *
+ * Das Fenster meldet `blur`, wenn der Fokus in den iframe wechselt; ein Klick
+ * IM iframe ist von hier aus nicht zu sehen. Entschieden wird deshalb daran,
+ * womit der Nutzer gerade bedient - dieselbe Frage, die der Browser fuer
+ * `:focus-visible` stellt: wer zuletzt eine Taste gedrueckt hat, hat nicht ins
+ * PDF geklickt, und der Fokus geht zurueck an das Element, das ihn im Dialog
+ * zuletzt hatte (sonst an "Schliessen"). Wer zuletzt den Zeiger bewegt oder
+ * gedrueckt hat, behaelt den Fokus im PDF, ebenso wer mit dem Zeiger ueber
+ * dem iframe steht. Ein Klick wird damit nie zurueckgenommen; dafuer bleibt
+ * der Fall offen, dass sich der Betrachter den Fokus unter der Maus nimmt.
+ *
+ * `pointermove` zaehlt nur mit echter Bewegung: nach einem Layoutwechsel
+ * schickt der Browser eines fuer den ruhenden Zeiger nach, und das waere fuer
+ * jeden, dessen Maus irgendwo ueber der Seite liegt, "zuletzt der Zeiger".
+ *
+ * @param {HTMLElement} panel
+ * @param {object} [opts]
+ * @param {boolean} [opts.keyboard] - wurde der Betrachter per Tastatur geoeffnet
+ * @returns {() => void} haengt die Listener wieder ab
+ */
+function keepFocusOutOfUnclickedPdf(panel, { keyboard = false } = {}) {
+  const frame = panel?.querySelector?.('.document-viewer__pdf');
+  if (!frame || typeof window === 'undefined' || typeof window.addEventListener !== 'function') return () => {};
+
+  let onKeyboard = keyboard;
+  let lastInside = null;
+  let lastPoint = null;
+  // Nimmt sich der Betrachter den Fokus immer wieder, ist nach drei Runden
+  // Schluss - bis zur naechsten Eingabe des Nutzers.
+  let returned = 0;
+  const onFocusIn = (e) => { if (e.target !== frame) lastInside = e.target; };
+  const onKeyDown = () => { onKeyboard = true; returned = 0; };
+  const onPointerDown = () => { onKeyboard = false; returned = 0; };
+  const onPointerMove = (e) => {
+    const moved = lastPoint && (lastPoint.x !== e.screenX || lastPoint.y !== e.screenY);
+    lastPoint = { x: e.screenX, y: e.screenY };
+    if (moved) onKeyboard = false;
+  };
+  const onWindowBlur = () => {
+    if (document.activeElement !== frame) return;
+    if (!onKeyboard || frame.matches?.(':hover')) return;
+    if (returned >= 3) return;
+    returned += 1;
+    // Nicht im blur selbst: der Fokuswechsel ist dann noch nicht abgeschlossen.
+    setTimeout(() => {
+      if (document.activeElement !== frame || !frame.isConnected) return;
+      const target = lastInside?.isConnected ? lastInside : panel.querySelector('.modal-panel__close');
+      target?.focus?.();
+    }, 0);
+  };
+  panel.addEventListener('focusin', onFocusIn);
+  document.addEventListener('keydown', onKeyDown, true);
+  document.addEventListener('pointerdown', onPointerDown, true);
+  document.addEventListener('pointermove', onPointerMove, true);
+  window.addEventListener('blur', onWindowBlur);
+  return () => {
+    panel.removeEventListener('focusin', onFocusIn);
+    document.removeEventListener('keydown', onKeyDown, true);
+    document.removeEventListener('pointerdown', onPointerDown, true);
+    document.removeEventListener('pointermove', onPointerMove, true);
+    window.removeEventListener('blur', onWindowBlur);
+  };
 }
 
 // navigator.pdfViewerEnabled === true bedeutet, dass der Browser einen eingebauten

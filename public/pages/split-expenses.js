@@ -13,7 +13,7 @@ import { installPopoverMenus } from '/utils/popover-menu.js';
 import { renderPageSearch, wirePageSearch } from '/utils/page-search.js';
 import { stagger } from '/utils/ux.js';
 import { renderSkeletonList } from '/utils/skeleton.js';
-import { formatMoney, amountPlaceholder, toDecimalString, amountIsSavable, smallestUnitLabel } from '/utils/money.js';
+import { formatMoney, amountPlaceholder, toDecimalString, smallestUnitLabel, amountInputProblem, amountExample, amountToInput, toStoredNumber } from '/utils/money.js';
 import { todayKey } from '/utils/date.js';
 import { zonedDateKey } from '/utils/timezone.js';
 import { wireTablist } from '/utils/tablist.js';
@@ -52,7 +52,7 @@ let _container = null;
 // Eingebettet (siehe render) sinkt die ganze Gliederung um eine Stufe: der Tab-Titel
 // ist <h2>, also Gruppenname <h3> und Karten <h4> - Budget > Split-Ausgaben > Gruppe
 // > Abschnitt (Nachtrag aus dem Review von #1148). Die Optik haengt an Klassen
-// (.split-group-name, .split-card-title), nicht am Tag.
+// (.split-group-name, .u-section-title), nicht am Tag.
 let _embedded = false;
 
 /* UEBERGABE AUS DEM BUDGET (#1057).
@@ -76,6 +76,12 @@ let _statusTablist = null;   // wireTablist-Handle des Statusfilters (sync ohne 
 // Eingebettet meldet die Seite dem Budget-Kopf, wenn sich aendert, ob eine neue
 // Ausgabe gerade moeglich ist (Archiv an/aus) - der Kopfknopf gehoert budget.js.
 let _onAddableChange = null;
+
+// Die Gruppenwahl ist schmal EINE Zeile (R16): die aktive Gruppe als Kopf,
+// die Liste samt Suche, „+" und Aktiv/Archiviert klappt darunter auf. Der
+// Merker gilt nur fuer die schmale Bauart (split-expenses.css); breit steht
+// die Liste immer.
+let _groupPickerOpen = false;
 
 /**
  * Darf dieser Nutzer hier schreiben? (#467, #1265 P7)
@@ -169,6 +175,14 @@ export async function render(container, { user, embedded = false, onAddableChang
       <section class="metric-grid budget-glance-details" id="split-summary"></section>
       <div class="split-layout">
         <aside class="split-groups-panel">
+          <!-- SCHMAL IST DIE GRUPPENWAHL EINE ZEILE (R16, Critique 2026-10-05):
+               Kopf der Liste, Segment und alle Gruppen standen mobil als 284px
+               Verwaltung vor der ersten Ausgabe (y=975). Der Knopf nennt die
+               aktive Gruppe und klappt die Liste auf; breit ist er
+               ausgeblendet und die Liste steht immer (split-expenses.css). -->
+          <button type="button" class="split-group-switch" id="split-group-switch"
+                  aria-expanded="false" aria-controls="split-groups-body"></button>
+          <div class="split-groups-body" id="split-groups-body">
           <!-- Das geteilte Suchfeld (gefuellte Kapsel) statt eines eigenen mit
                sichtbarem Label darueber, das nur den Platzhalter wiederholte
                (Komponenten-Kanon, Critique 2026-09-26 P1). Es steht IM Kopf
@@ -176,7 +190,7 @@ export async function render(container, { user, embedded = false, onAddableChang
                R14 P1): mobil in seiner Icon-Form statt einer eigenen 48px-Zeile
                vor der ersten Gruppe. -->
           <div class="split-panel-head section-toolbar">
-            <div class="split-panel-title">${t('splitExpenses.groups')}<span class="list-group__count split-panel-count" id="split-group-count"></span></div>
+            <${embedded ? 'h3' : 'h2'} class="split-panel-title u-section-title">${t('splitExpenses.groups')}<span class="list-group__count split-panel-count" id="split-group-count"></span></${embedded ? 'h3' : 'h2'}>
             ${renderPageSearch({
     id: 'split-group-search',
     label: t('splitExpenses.searchGroups'),
@@ -202,6 +216,7 @@ export async function render(container, { user, embedded = false, onAddableChang
             }).join('')}
           </div>
           <div class="split-groups" id="split-groups"></div>
+          </div>
         </aside>
         <main class="split-main" id="split-main" aria-busy="true">${renderSkeletonList({ rows: 5, lines: 2 })}</main>
       </div>${fab}
@@ -420,10 +435,16 @@ function bindShell() {
   // Gleitende Auswahl-Kapsel wie jede Segmentleiste (Kanon, Runde 7 D8).
   const statusBar = _container.querySelector('#split-status-filter');
   if (statusBar) attachSegmentIndicator(statusBar);
+  _container.querySelector('#split-group-switch')?.addEventListener('click', () => {
+    _groupPickerOpen = !_groupPickerOpen;
+    syncGroupSwitch();
+  });
   _container.querySelector('#split-groups')?.addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-group-id]');
     if (!btn) return;
     state.activeGroupId = Number(btn.dataset.groupId);
+    // Gewaehlt ist gewaehlt: die Zeile klappt wieder zu, die Ausgaben stehen.
+    _groupPickerOpen = false;
     await loadGroupData();
     renderAll();
   });
@@ -501,12 +522,16 @@ function renderSummary() {
     }));
     wireMetricGlance(glance, 'split-glance-more');
   }
+  // DER TON GILT DEM BETRAG, NICHT DER KARTE (Critique 2026-10-05, R16): „Du
+  // bekommst 0,00 €" stand in Erfolgsgruen, „Du schuldest 0,00 €" in Rot. Null
+  // ist weder Gewinn noch Schuld - die Kurzzeile darueber hielt das schon so
+  // (`tone` nur mit Betrag), die Karten jetzt auch.
   setHtml(summary, `
-    <div class="metric-card metric-card--positive">
+    <div class="metric-card${owed.length ? ' metric-card--positive' : ''}">
       <div class="metric-card__label">${t('splitExpenses.youAreOwed')}</div>
       <div class="metric-card__value">${owedText}</div>
     </div>
-    <div class="metric-card metric-card--negative">
+    <div class="metric-card${owing.length ? ' metric-card--negative' : ''}">
       <div class="metric-card__label">${t('splitExpenses.youOwe')}</div>
       <div class="metric-card__value">${owingText}</div>
     </div>
@@ -517,7 +542,35 @@ function renderSummary() {
   `);
 }
 
+/**
+ * Die eine Zeile der Gruppenwahl (schmal): aktive Gruppe mit Typ und
+ * Mitgliederzahl, dahinter der Aufklapp-Pfeil. Ohne aktive Gruppe (leere
+ * Liste, leeres Archiv, Suche ohne Treffer) steht die Liste offen - sonst
+ * laegen Leerzustand, Suche und „+" hinter einem Knopf ohne Namen.
+ */
+function syncGroupSwitch() {
+  const panel = _container.querySelector('.split-groups-panel');
+  const btn = _container.querySelector('#split-group-switch');
+  // `classList` mitgeprueft, wie beim Aufklapper der Kennzahlen: ein Aufrufer
+  // ohne gebaute Seite (Storno aus dem Verlauf im Test) hat hier nichts zu tun.
+  if (!panel?.classList || !btn) return;
+  const group = state.groups.find((g) => g.id === state.activeGroupId);
+  const open = _groupPickerOpen || !group;
+  panel.classList.toggle('split-groups-panel--open', open);
+  btn.setAttribute('aria-expanded', String(open));
+  setHtml(btn, `
+    <span class="split-group__avatar"><i data-lucide="${group ? groupIcon(group.type) : 'users-round'}" aria-hidden="true"></i></span>
+    <span class="split-group__body">
+      <span class="sr-only">${t('splitExpenses.groups')}: </span>
+      <span class="split-group__name">${group ? esc(group.name) : t('splitExpenses.groups')}</span>
+      ${group ? `<span class="split-group__meta">${t(`splitExpenses.groupType.${group.type}`)} · ${group.member_count} ${t('splitExpenses.members')}${isArchivedView() ? ` · ${t('splitExpenses.statusArchived')}` : ''}</span>` : ''}
+    </span>
+    <i data-lucide="chevron-down" class="icon-md split-group-switch__chevron" aria-hidden="true"></i>`);
+  if (window.lucide) lucide.createIcons({ el: btn });
+}
+
 function renderGroups() {
+  syncGroupSwitch();
   const el = _container.querySelector('#split-groups');
   if (!state.groups.length) {
     setHtml(el, isArchivedView()
@@ -607,11 +660,11 @@ function renderMain() {
   const SectionTag = _embedded ? 'h4' : 'h3';
   setHtml(main, `
     <section class="split-group-header">
-      <div>
+      <div class="split-group-header__text">
         <${GroupTag} class="split-group-name">${esc(group.name)}</${GroupTag}>
         <p class="split-group-type">${t(`splitExpenses.groupType.${group.type}`)}</p>
         ${archived ? `<p class="split-archived-badge"><i data-lucide="archive" class="icon-md" aria-hidden="true"></i>${t('splitExpenses.statusArchived')}</p>` : ''}
-        <p>${esc(group.description || t('splitExpenses.groupDefaultDescription'))}</p>
+        <p class="split-group-desc">${esc(group.description || t('splitExpenses.groupDefaultDescription'))}</p>
         ${ro ? groupMetaHtml(group) : ''}
       </div>
       ${/* Bei `budget: read` faellt die ganze Leiste: Bearbeiten, Archivieren,
@@ -630,23 +683,31 @@ function renderMain() {
         ${groupToolsMenuHtml()}`}
       </div>`}
     </section>
+    ${/* ABSCHNITTSTITEL AUF DER BUEHNE, ZEILEN IM TRAEGER (R16 Schritt 2b,
+        * Reiter-Skelett des Budgets). Hier standen drei Karten mit dem Titel
+        * als 17px-Kartentitel IN der Flaeche und den Zeilen in deren Polster -
+        * die vierte Titel- und fuenfte Listenform des Moduls. Jetzt wie
+        * "Transaktionen" in der Uebersicht: `.u-section-title` ueber einem
+        * `.row-carrier`. Die Stufe (h4 eingebettet) bleibt die der Gliederung
+        * Budget > Aufteilung > Gruppe > Abschnitt; die Rolle kommt von der
+        * Klasse. Ein leerer Abschnitt traegt keine Flaeche. */ ''}
     <div class="split-content-grid">
-      <section class="split-card split-card--balances">
-        <div class="split-card-head">
-          <${SectionTag} class="split-card-title">${t('splitExpenses.balances')}</${SectionTag}>
+      <section class="split-section split-section--balances">
+        <div class="split-section-head">
+          <${SectionTag} class="split-section-title u-section-title">${t('splitExpenses.balances')}</${SectionTag}>
           <span>${t('splitExpenses.simplified')}</span>
         </div>
         <div id="split-balances">${renderBalances()}</div>
       </section>
-      <section class="split-card">
-        <div class="split-card-head">
-          <${SectionTag} class="split-card-title">${t('splitExpenses.recentExpenses')}</${SectionTag}>
+      <section class="split-section">
+        <div class="split-section-head">
+          <${SectionTag} class="split-section-title u-section-title">${t('splitExpenses.recentExpenses')}</${SectionTag}>
         </div>
         <div id="split-expense-list">${renderExpenses(archived || ro)}</div>
       </section>
-      <section class="split-card">
-        <div class="split-card-head">
-          <${SectionTag} class="split-card-title">${t('splitExpenses.activity')}</${SectionTag}>
+      <section class="split-section">
+        <div class="split-section-head">
+          <${SectionTag} class="split-section-title u-section-title">${t('splitExpenses.activity')}</${SectionTag}>
         </div>
         <div class="split-activity">${renderActivity()}</div>
       </section>
@@ -725,12 +786,12 @@ function groupMetaHtml(group) {
 function renderBalances() {
   const debts = state.balances.simplified_debts || [];
   if (!debts.length) return `<div class="split-muted">${t('splitExpenses.noBalances')}</div>`;
-  return debts.map((debt) => `
+  return `<div class="row-carrier">${debts.map((debt) => `
     <div class="split-debt">
       <span>${esc(debt.from_name)} ${t('splitExpenses.owes')} ${esc(debt.to_name)}</span>
       <strong>${money(debt.amount, debt.currency)}</strong>
     </div>
-  `).join('');
+  `).join('')}</div>`;
 }
 
 // Regel 6 aus utils/module-access.js: der Parameter hiess `readOnly` und meinte
@@ -738,7 +799,7 @@ function renderBalances() {
 // Aufrufer odert Archiv und Modulrecht hinein (renderMain).
 function renderExpenses(asList = false) {
   if (!state.expenses.length) return `<div class="split-muted">${t('splitExpenses.noExpenses')}</div>`;
-  return state.expenses.map((expense) => {
+  return `<div class="row-carrier">${state.expenses.map((expense) => {
     // Beleg-Marke (#583): dass ein Nachweis vorliegt, ist die Information -
     // wie viele es sind, beantwortet keine Frage vor dem Öffnen.
     const receiptCount = expense.attachments?.length ?? 0;
@@ -768,7 +829,7 @@ function renderExpenses(asList = false) {
         ${body}
       </button>
     `;
-  }).join('');
+  }).join('')}</div>`;
 }
 
 /** Die Werte, die Zeile, Knopf und Rueckfrage einer Zahlung nennen (#1309). */
@@ -801,7 +862,7 @@ function renderActivity() {
   const more = state.activityCursor
     ? `<button type="button" class="btn btn--secondary split-activity-more" data-activity-more${busy ? ' aria-disabled="true" aria-busy="true"' : ''}>${esc(t('splitExpenses.loadMoreActivity'))}</button>`
     : '';
-  return `<div class="split-activity-list" tabindex="-1">${items}</div>${more}`;
+  return `<div class="split-activity-list row-carrier" tabindex="-1">${items}</div>${more}`;
 }
 
 /**
@@ -824,23 +885,31 @@ function restoredDetail(item) {
 /**
  * WELCHE AUSGABE (Re-Critique 2026-09-27, A5 P2-8 / R10 L11). Der Verlauf las
  * fuenfmal „Ausgabe erstellt - Alex Johnson - 23.09.2026", ohne zu sagen,
- * welche - daneben nannte „Letzte Ausgaben" das Objekt. Den Titel legt der
- * Server beim Schreiben in die Metadaten (expense_*, recurring_created); den
- * Betrag kennt die geladene Ausgabenliste der Gruppe. Eine geloeschte Ausgabe
- * steht dort nicht mehr - dann bleibt der Titel allein, ein Betrag waere
- * geraten. Ein Kommentar traegt keinen Titel; er nennt die Ausgabe, an der er
- * haengt, sofern sie geladen ist.
+ * welche - daneben nannte „Letzte Ausgaben" das Objekt.
+ *
+ * Titel UND Betrag kommen aus den Metadaten, die der Server beim Schreiben
+ * festhaelt (#1607): der Verlauf ist Geschichte. Aus der geladenen Ausgabe
+ * gelesen, zeigte jeder fruehere Eintrag den HEUTIGEN Betrag - eine
+ * Bearbeitung schrieb „erstellt ueber 50" nachtraeglich auf 10 um. Ein Eintrag
+ * von vor dem Snapshot traegt keinen Betrag; dann bleibt der Titel allein, der
+ * heutige Betrag waere fuer damals geraten. Die Dezimalform `amount` rechnet
+ * der Server (ISO 4217 kennt er, der Browser nicht).
+ *
+ * Nur der Titel eines Kommentars darf noch aus der geladenen Ausgabe kommen:
+ * aeltere Kommentar-Eintraege tragen keine Metadaten, und der Titel benennt
+ * die Ausgabe, er behauptet keinen Stand von damals.
  */
-const EXPENSE_ACTIVITY = new Set(['expense_created', 'expense_edited', 'expense_deleted', 'comment_added', 'recurring_created']);
+const EXPENSE_ACTIVITY = new Set(['expense_created', 'expense_edited', 'expense_deleted', 'comment_added', 'recurring_created', 'recurring_generated', 'recurring_auto_paused']);
 
 function expenseDetail(item) {
   if (!EXPENSE_ACTIVITY.has(item.type)) return '';
-  const expense = item.entity_type === 'expense' && item.entity_id != null
+  const { title: snapshotTitle, amount, currency } = item.metadata || {};
+  const loaded = !snapshotTitle && item.type === 'comment_added' && item.entity_type === 'expense' && item.entity_id != null
     ? state.expenses.find((e) => e.id === Number(item.entity_id))
     : null;
-  const title = item.metadata?.title || expense?.title;
+  const title = snapshotTitle || loaded?.title;
   if (!title) return '';
-  const sum = expense ? ` · ${money(expense.amount, expense.currency)}` : '';
+  const sum = amount != null && currency ? ` · ${money(amount, currency)}` : '';
   return `<span class="split-activity-payment">${esc(`${title}${sum}`)}</span>`;
 }
 
@@ -856,17 +925,27 @@ function expenseDetail(item) {
 function activityItemHtml(item, actionable) {
   const settlement = item.settlement;
   const params = settlement ? paymentParams(settlement) : null;
+  // Eine geloeschte Ausgabe (#1382) bleibt im Verlauf lesbar: der Eintrag, der
+  // sie angelegt hat, traegt „Geloescht" als Zeichen und ist durchgestrichen -
+  // wie eine stornierte Zahlung. Der Loesch-Eintrag selbst nennt nur, was
+  // geloescht wurde; sein Typ sagt den Rest. Titel und Betrag kommen wie bei
+  // jedem Ausgaben-Eintrag aus den Metadaten (`expenseDetail`), `item.expense`
+  // sagt nur, ob es die Ausgabe noch gibt.
+  const expenseGone = Boolean(item.expense?.deleted_at) && item.type !== 'expense_deleted';
   const detail = settlement
     ? `<span class="split-activity-payment">${esc(t('splitExpenses.paymentDetail', params))}</span>`
     : restoredDetail(item) || expenseDetail(item);
-  const reversed = settlement?.reversed_at
-    ? `<span class="split-activity-reversed">${esc(t('splitExpenses.paymentReversed'))}</span>`
-    : '';
+  let reversed = '';
+  if (settlement?.reversed_at) {
+    reversed = `<span class="split-activity-reversed">${esc(t('splitExpenses.paymentReversed'))}</span>`;
+  } else if (expenseGone) {
+    reversed = `<span class="split-activity-reversed">${esc(t('splitExpenses.expenseDeleted'))}</span>`;
+  }
   const action = settlement?.can_reverse && !settlement.reversed_at && actionable
     ? `<button type="button" class="btn btn--secondary split-reverse-payment" data-reverse-settlement="${settlement.id}" aria-label="${esc(t('splitExpenses.reversePaymentLabel', params))}">${esc(t('splitExpenses.reversePayment'))}</button>`
     : '';
   return `
-    <div class="split-activity-item${settlement?.reversed_at ? ' split-activity-item--reversed' : ''}">
+    <div class="split-activity-item${settlement?.reversed_at || expenseGone ? ' split-activity-item--reversed' : ''}">
       <span class="split-activity-dot"></span>
       <div>
         <strong>${esc(t(`splitExpenses.activityType.${item.type}`))}</strong>
@@ -1042,23 +1121,28 @@ function groupMemberCheckboxes(selectedIds = null, splitValues = {}) {
  * - percentage: Prozentanteile, Restbetrag auf letzten Teilnehmer (Summe = 100)
  * - shares: ganzzahlige Anteile über den ggT der Minor-Beträge
  * - equal: keine Werte nötig
+ *
+ * Die Werte landen in Eingabefeldern und stehen deshalb in der Schreibweise der
+ * Region (amountToInput / toStoredNumber aus utils/money.js): gelesen werden sie
+ * von toDecimalString, und ein Feld, das "12.50" vorbelegt und "0,00" als
+ * Platzhalter zeigt, widerspricht sich selbst.
  */
 function deriveSplitValues(expense) {
   const method = expense.split_method;
   const splits = expense.splits || [];
   const values = {};
   if (method === 'exact') {
-    for (const split of splits) values[split.user_id] = String(split.amount);
+    for (const split of splits) values[split.user_id] = amountToInput(split.amount, split.currency || expense.currency);
   } else if (method === 'percentage') {
     const totalMinor = splits.reduce((sum, split) => sum + Math.abs(Number(split.amount_minor || 0)), 0) || 1;
     let acc = 0;
     splits.forEach((split, index) => {
       if (index === splits.length - 1) {
-        values[split.user_id] = String(Number((100 - acc).toFixed(2)));
+        values[split.user_id] = toStoredNumber(Number((100 - acc).toFixed(2)));
       } else {
         const pct = Number(((Math.abs(Number(split.amount_minor || 0)) / totalMinor) * 100).toFixed(2));
         acc += pct;
-        values[split.user_id] = String(pct);
+        values[split.user_id] = toStoredNumber(pct);
       }
     });
   } else if (method === 'shares') {
@@ -1139,25 +1223,76 @@ function updateSplitInputs(panel) {
 const decimalString = toDecimalString;
 
 /**
- * Weist einen Betrag zurück, der mehr Nachkommastellen hat als die Währung
- * kennt. Die Felder hier sind Textfelder, es gibt also kein `step`, das der
+ * Der Text zu einem Grund aus amountInputProblem() (utils/money.js).
+ */
+function amountProblemText(problem, currency) {
+  if (problem === 'grouped') return t('common.amountGrouped', { example: amountExample(currency) });
+  if (problem === 'invalid') return t('common.amountInvalid', { example: amountExample(currency) });
+  if (problem === 'notPositive') return t('common.amountNotPositive');
+  return t('common.amountPrecisionRequired', { currency, step: smallestUnitLabel(currency) });
+}
+
+/**
+ * Weist einen Betrag zurück, den der Server nicht annähme, und nennt den Grund
+ * am Feld. Die Felder hier sind Textfelder, es gibt also kein `step`, das der
  * Browser prüfen könnte - und der Platzhalter zeigt bei HUF, IDR oder IRR
  * bereits ganze Einheiten an.
  *
- * Ohne diese Prüfung landet die Ablehnung beim Server (parseMoneyToMinor wirft
- * bei zu vielen Stellen), und die Meldung erscheint als ortloser Fehler statt
- * am Feld, das sie meint.
+ * Ohne diese Prüfung landet die Ablehnung beim Server (parseMoneyToMinor wirft),
+ * und die Meldung erscheint englisch und ortlos statt am Feld, das sie meint.
+ *
+ * Gelesen wird der TEXT des Feldes, nicht eine Zahl daraus: "10.000" ist unter
+ * ko-KR die Zahl 10 und passte so ins Raster von KRW, gesendet wurde aber der
+ * Text mit seinen drei Stellen (#1607).
+ *
+ * `required` setzt jeder Speicherweg: ein leeres Feld zählt dann wie eine 0.
+ * Die Genau-Beträge einer Aufteilung haben kein Pflichtfeld des Browsers, und
+ * wo es eines gibt, nimmt es ein Feld aus Leerzeichen an - beides ginge als
+ * leerer Text an den Server.
+ *
+ * `original` und `originalCurrency` tragen den Bestandsschutz (siehe
+ * amountInputProblem): er endet, sobald die Währung gewechselt wurde.
  *
  * @returns {boolean} true, wenn abgewiesen wurde (der Aufrufer bricht dann ab)
  */
-function rejectOffGridSplitAmount(input, value, currency, original = null) {
-  if (input == null || value === '' || value == null) return false;
-  if (amountIsSavable(value, currency, { original })) return false;
-  reportFieldError(input, t('common.amountPrecisionRequired', {
-    currency,
-    step: smallestUnitLabel(currency),
-  }));
+function rejectSplitAmount(input, currency, { original = null, originalCurrency = null, required = false } = {}) {
+  if (input == null) return false;
+  const problem = amountInputProblem(input.value, currency, { original, originalCurrency, required });
+  if (!problem) return false;
+  reportFieldError(input, amountProblemText(problem, currency));
   return true;
+}
+
+/**
+ * Der Grund unter dem Betrag der Ausgabe, solange die Eingabe das Speichern
+ * sperrt (#1607): 0, negativ, gruppiert oder keine Zahl. Vorher ging nur der
+ * Speichern-Knopf aus.
+ *
+ * `reveal` kommt vom Verlassen des Feldes. Beim Tippen bleibt ein noch nicht
+ * gezeigter Grund still - "0" ist der Anfang von "0,50" und "12," der von
+ * "12,50". Steht er einmal da, folgt er der Eingabe und geht mit dem Fehler.
+ *
+ * Zu viele Nachkommastellen stehen NICHT hier: die meldet der Speicherweg am
+ * Feld, weil er den Bestandswert kennt (rejectSplitAmount).
+ *
+ * @returns {boolean} true, wenn der Betrag das Speichern sperrt
+ */
+function syncAmountReason(panel, currency, { reveal = false } = {}) {
+  const input = panel.querySelector('[name="amount"]');
+  const problem = amountInputProblem(input?.value, currency);
+  const blocking = Boolean(problem) && problem !== 'precision';
+  const reason = panel.querySelector('#split-amount-reason');
+  if (!input || !reason) return blocking;
+  if (!blocking) {
+    if (!reason.hidden) input.setAttribute('aria-invalid', 'false');
+    reason.hidden = true;
+    reason.textContent = '';
+  } else if (reveal || !reason.hidden) {
+    reason.textContent = amountProblemText(problem, currency);
+    reason.hidden = false;
+    input.setAttribute('aria-invalid', 'true');
+  }
+  return blocking;
 }
 
 function numberValue(value) {
@@ -1166,20 +1301,27 @@ function numberValue(value) {
   return Number(normalized);
 }
 
-function validateSplitForm(panel) {
+/** Eine laufende Prozentsumme im Zahlformat der Region: "33,5 %", "100%". */
+function percentTotal(total) {
+  return getNumberFormat({ style: 'percent', maximumFractionDigits: 2 }).format(total / 100);
+}
+
+function validateSplitForm(panel, { reveal = false } = {}) {
   const method = panel.querySelector('[name="split_method"]')?.value || 'equal';
+  const currency = panel.querySelector('[name="currency"]')?.value || state.meta?.default_currency || 'EUR';
   const amount = numberValue(panel.querySelector('[name="amount"]')?.value);
+  const amountBlocked = syncAmountReason(panel, currency, { reveal });
   const selected = [...panel.querySelectorAll('input[name="participants"]:checked')];
-  let valid = selected.length > 0 && Number.isFinite(amount) && amount > 0;
+  let valid = selected.length > 0 && Number.isFinite(amount) && amount > 0 && !amountBlocked;
   let message = t(`splitExpenses.splitHint.${method}`);
   if (valid && method === 'percentage') {
     const total = selected.reduce((sum, input) => sum + (numberValue(panel.querySelector(`[name="split_value_${input.value}"]`)?.value) || 0), 0);
     valid = Math.abs(total - 100) < 0.01;
-    message = `${message} ${t('splitExpenses.splitCurrentTotal', { total: total.toFixed(2) })}`;
+    message = `${message} ${t('splitExpenses.splitCurrentTotal', { total: percentTotal(total) })}`;
   } else if (valid && method === 'exact') {
     const total = selected.reduce((sum, input) => sum + (numberValue(panel.querySelector(`[name="split_value_${input.value}"]`)?.value) || 0), 0);
     valid = Math.abs(total - amount) < 0.01;
-    message = `${message} ${t('splitExpenses.splitCurrentTotal', { total: total.toFixed(2) })}`;
+    message = `${message} ${t('splitExpenses.splitCurrentTotal', { total: formatMoney(total, currency) })}`;
   } else if (valid && method === 'shares') {
     valid = selected.every((input) => {
       const value = numberValue(panel.querySelector(`[name="split_value_${input.value}"]`)?.value);
@@ -1249,7 +1391,7 @@ function updateGroupDefaults(panel) {
   if (method === 'percentage' && filled.length) {
     const total = rows.reduce((sum, input) => sum + (numberValue(input.value) || 0), 0);
     valid = Math.abs(total - 100) < 0.01;
-    message = t('splitExpenses.splitCurrentTotal', { total: total.toFixed(2) });
+    message = t('splitExpenses.splitCurrentTotal', { total: percentTotal(total) });
   } else if (method === 'shares' && filled.length) {
     valid = filled.every((input) => {
       const value = numberValue(input.value);
@@ -1485,9 +1627,10 @@ function openExpenseModal(expense = null, prefill = null) {
       <form id="split-expense-form" class="split-form">
         <label>${t('splitExpenses.titleLabel')}<input class="input" name="title" required maxlength="200" value="${esc(expense?.title || '')}"></label>
         <div class="split-form-row">
-          <label>${t('splitExpenses.amount')}<input class="input" name="amount" inputmode="decimal" placeholder="${amountPlaceholder(isEdit ? expense.currency : group.default_currency)}" required value="${esc(expense?.amount || '')}"></label>
+          <label>${t('splitExpenses.amount')}<input class="input" name="amount" inputmode="decimal" placeholder="${amountPlaceholder(isEdit ? expense.currency : group.default_currency)}" required aria-describedby="split-amount-reason" value="${esc(amountToInput(expense?.amount || '', expense?.currency || group.default_currency))}"></label>
           <label>${t('splitExpenses.paidBy')}<select class="input" name="payer_id">${memberOptions(isEdit ? expense.payer_id : state.user?.id)}</select></label>
         </div>
+        <p class="form-hint form-hint--danger" id="split-amount-reason" role="status" hidden></p>
         <div class="split-form-row">
           <label>${t('splitExpenses.currency')}<select class="input" name="currency">${state.meta.currencies.map((c) => `<option value="${c}" ${c === (expense?.currency || group.default_currency) ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
           <label>${t('splitExpenses.date')}<yuvomi-datepicker name="expense_date" type="date" value="${esc(expense?.expense_date || today)}"></yuvomi-datepicker></label>
@@ -1534,6 +1677,9 @@ function openExpenseModal(expense = null, prefill = null) {
       panel.querySelector('[name="split_method"]')?.addEventListener('change', () => updateSplitInputs(panel));
       panel.querySelector('[name="currency"]')?.addEventListener('change', () => updateSplitInputs(panel));
       panel.querySelector('#split-expense-form')?.addEventListener('input', () => validateSplitForm(panel));
+      // Der Grund fuer einen gesperrten Betrag erscheint beim Verlassen des
+      // Feldes, nicht bei jedem Tastendruck (syncAmountReason).
+      panel.querySelector('[name="amount"]')?.addEventListener('change', () => validateSplitForm(panel, { reveal: true }));
       panel.querySelectorAll('input[name="participants"]').forEach((input) => {
         const row = input.closest('.split-participant-row');
         const valueInput = row?.querySelector('.split-split-value');
@@ -1569,13 +1715,17 @@ function openExpenseModal(expense = null, prefill = null) {
         const data = Object.fromEntries(new FormData(form));
         data.amount = decimalString(data.amount);
         const expenseCurrency = form.querySelector('[name="currency"]')?.value || group.default_currency;
-        if (rejectOffGridSplitAmount(form.querySelector('[name="amount"]'), numberValue(data.amount),
-          expenseCurrency, isEdit ? expense.amount : null)) return;
-        // Auch die Genau-Beträge: sie sind Geld in derselben Währung.
+        if (rejectSplitAmount(form.querySelector('[name="amount"]'), expenseCurrency,
+          { original: isEdit ? expense.amount : null, originalCurrency: isEdit ? expense.currency : null, required: true })) return;
+        // Auch die Genau-Beträge: sie sind Geld in derselben Währung. Jeder
+        // Anteil eines angehakten Mitglieds muss groesser als 0 sein, auch wenn
+        // die Summe stimmt ("-5 und 15"): der Server lehnt 0 und negative
+        // Anteile ab (parseMoneyToMinor), und die Antwort kaeme englisch und
+        // ortlos zurueck. Wer nichts traegt, wird abgehakt.
         if (form.querySelector('[name="split_method"]')?.value === 'exact') {
           for (const field of form.querySelectorAll('.split-split-value')) {
-            if (field.hidden || !field.value) continue;
-            if (rejectOffGridSplitAmount(field, numberValue(field.value), expenseCurrency)) return;
+            if (field.hidden || field.disabled) continue;
+            if (rejectSplitAmount(field, expenseCurrency, { required: true })) return;
           }
         }
         const { participants, splits } = collectSplitPayload(form);
@@ -1612,7 +1762,7 @@ function openSettlementModal() {
         </div>
         <p class="form-hint field-hint--warn" id="split-settlement-same" role="status" hidden><i data-lucide="alert-triangle" aria-hidden="true"></i><span>${t('splitExpenses.settlementSamePerson')}</span></p>
         <div class="split-form-row">
-          <label>${t('splitExpenses.amount')}<input class="input" name="amount" inputmode="decimal" placeholder="${amountPlaceholder(debt?.currency || group.default_currency)}" required value="${debt ? esc(String(debt.amount)) : ''}"></label>
+          <label>${t('splitExpenses.amount')}<input class="input" name="amount" inputmode="decimal" placeholder="${amountPlaceholder(debt?.currency || group.default_currency)}" required value="${debt ? esc(amountToInput(debt.amount, debt.currency)) : ''}"></label>
           <label>${t('splitExpenses.currency')}<select class="input" name="currency">${state.meta.currencies.map((c) => `<option value="${c}" ${c === (debt?.currency || group.default_currency) ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
         </div>
         <label>${t('splitExpenses.notes')}<textarea class="input" name="notes" rows="3" maxlength="5000"></textarea></label>
@@ -1654,8 +1804,8 @@ function openSettlementModal() {
         if (match) {
           payeeSel.value = String(match.to_user_id);
           const amountInput = form.querySelector('[name="amount"]');
-          if (!amountInput.value || (debt && amountInput.value === String(debt.amount))) {
-            amountInput.value = String(match.amount);
+          if (!amountInput.value || (debt && amountInput.value === amountToInput(debt.amount, debt.currency))) {
+            amountInput.value = amountToInput(match.amount, match.currency);
           }
         }
         syncSameHint();
@@ -1675,9 +1825,9 @@ function openSettlementModal() {
         if (samePerson()) { syncSameHint(); payeeSel.focus(); return; }
         const data = Object.fromEntries(new FormData(form));
         data.amount = decimalString(data.amount);
-        if (rejectOffGridSplitAmount(form.querySelector('[name="amount"]'), numberValue(data.amount),
+        if (rejectSplitAmount(form.querySelector('[name="amount"]'),
           form.querySelector('[name="currency"]')?.value || group.default_currency,
-          debt?.amount ?? null)) return;
+          { original: debt?.amount ?? null, originalCurrency: debt?.currency ?? null, required: true })) return;
         const proofIds = proof ? await proof.commit() : [];
         if (proofIds.length) data.proof_document_id = proofIds[0];
         await api.post(`/split-expenses/groups/${state.activeGroupId}/settlements`, data);
@@ -1790,6 +1940,9 @@ function openGuestModal() {
 export const __test = {
   readOnly, canAddSplitExpense, groupToolsMenuHtml, renderExpenses, state, expenseReadSections, openExpenseModal, groupMetaHtml, openGroupModal,
   renderActivity, onActivityClick, loadGroupData, loadMoreActivity, groupFromQuery,
+  // Betragseingabe (#1607): Formularpruefung und die beiden Speicherwege
+  // (test-split-amount-input.js).
+  validateSplitForm, updateGroupDefaults, openSettlementModal,
   renderMainForTest(container) { _container = container; renderMain(); },
   renderGroupsForTest(container) { _container = container; renderGroups(); },
   // R10 L11: die Gruppenzahl steht am Kopf der Liste (test-split-activity-ui.js).

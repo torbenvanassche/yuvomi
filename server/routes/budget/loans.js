@@ -6,14 +6,14 @@
 import express from 'express';
 import { createLogger } from '../../logger.js';
 import * as db from '../../db.js';
-import { str, num, date as validateDate, month as validateMonth, collectErrors, MAX_TITLE, MAX_SHORT } from '../../middleware/validate.js';
+import { str, num, date as validateDate, month as validateMonth, MAX_TITLE, MAX_SHORT } from '../../middleware/validate.js';
 import { normalizeObjectVisibility } from '../../services/budget-visibility.js';
 import { computeLoanSchedule, MAX_LOAN_MONTHS } from '../../services/loan-amortization.js';
 import { translate, resolveHouseholdLocale } from '../../utils/i18n.js';
 import {
   budgetFilter, mayEdit, getBudgetMode, loanSummaryRow, loadLoan, refreshLoanStatus, cents,
   budgetCurrency, toBudgetAmount, CURRENCY_RE, validateAccountRef, addMonths,
-  LOAN_DIRECTIONS, bookingFor,
+  LOAN_DIRECTIONS, bookingFor, refusal, refusals, refuse,
 } from './helpers.js';
 
 const log = createLogger('Budget');
@@ -22,6 +22,10 @@ const router = express.Router();
 // 'variable' = Darlehen ganz ohne Zinsbindung (#569-Nachtrag): rechnet einphasig
 // wie 'fixed', der Satz gilt aber nur als aktueller Wert (Prognose).
 const INTEREST_MODES = ['none', 'fixed', 'variable', 'fixed_then_variable'];
+
+// Hoechste Ratenanzahl eines Darlehens ohne Zins. Die Absage nennt sie als
+// `max`, damit der Dialog die Grenze sagen kann (#1668).
+const MAX_LOAN_INSTALLMENTS = 360;
 
 /**
  * Richtung aus dem Request (#638).
@@ -32,7 +36,7 @@ const INTEREST_MODES = ['none', 'fixed', 'variable', 'fixed_then_variable'];
 function validateDirection(body, loan = null) {
   if (body.direction === undefined) return { value: loan?.direction || 'lent' };
   const raw = String(body.direction || '').trim();
-  if (!LOAN_DIRECTIONS.includes(raw)) return { error: 'Direction must be either lent or borrowed.' };
+  if (!LOAN_DIRECTIONS.includes(raw)) return refusal('loan_direction_invalid', 'Direction must be either lent or borrowed.');
   return { value: raw };
 }
 
@@ -80,7 +84,7 @@ function validateCurrencyFields(body, loan = null) {
     : String(body.currency || '').trim().toUpperCase();
   const currency = !raw || raw === base ? null : raw;
   if (currency !== null && !CURRENCY_RE.test(currency)) {
-    return { error: 'Currency must be a three-letter ISO code.' };
+    return refusal('loan_currency_invalid', 'Currency must be a three-letter ISO code.');
   }
   // Ohne Fremdwährung ist jeder Kurs bedeutungslos - hart auf 1, damit kein
   // Restwert aus einem früheren Fremdwährungs-Zustand hängen bleibt.
@@ -91,7 +95,7 @@ function validateCurrencyFields(body, loan = null) {
     : body.exchange_rate;
   const rate = Number(rawRate);
   if (!Number.isFinite(rate) || rate <= 0 || rate > MAX_EXCHANGE_RATE) {
-    return { error: 'Exchange rate must be greater than zero.' };
+    return refusal('loan_exchange_rate_invalid', 'Exchange rate must be greater than zero.');
   }
   return { currency, exchange_rate: rate };
 }
@@ -109,25 +113,25 @@ function deriveInterestTerms(body, mode) {
   const fixedPeriodMonths = variable ? parseInt(body.fixed_period_months, 10) : null;
   const followupRate = variable ? Number(body.followup_rate) : null;
 
-  if (!Number.isFinite(principal) || principal <= 0) return { error: 'Principal must be greater than zero.' };
-  if (!Number.isFinite(fixedRate) || fixedRate < 0 || fixedRate > 100) return { error: 'Fixed rate must be between 0 and 100.' };
+  if (!Number.isFinite(principal) || principal <= 0) return refusal('loan_principal_invalid', 'Principal must be greater than zero.');
+  if (!Number.isFinite(fixedRate) || fixedRate < 0 || fixedRate > 100) return refusal('loan_rate_invalid', 'Fixed rate must be between 0 and 100.');
   if (!Number.isFinite(initialRepaymentRate) || initialRepaymentRate <= 0 || initialRepaymentRate > 100) {
-    return { error: 'Initial repayment rate must be greater than 0 and at most 100.' };
+    return refusal('loan_repayment_invalid', 'Initial repayment rate must be greater than 0 and at most 100.');
   }
   if (variable) {
     if (!Number.isInteger(fixedPeriodMonths) || fixedPeriodMonths < 1 || fixedPeriodMonths > MAX_LOAN_MONTHS) {
-      return { error: 'Fixed-rate period is invalid.' };
+      return refusal('loan_fixed_period_invalid', 'Fixed-rate period is invalid.');
     }
     if (!Number.isFinite(followupRate) || followupRate < 0 || followupRate > 100) {
-      return { error: 'Follow-up rate must be between 0 and 100.' };
+      return refusal('loan_followup_rate_invalid', 'Follow-up rate must be between 0 and 100.');
     }
   }
 
   const result = computeLoanSchedule({ principal, fixedRate, initialRepaymentRate, interestMode: mode, fixedPeriodMonths, followupRate });
   if (!result.ok) {
-    return { error: result.reason === 'not_amortizing'
-      ? 'The monthly rate does not cover the interest; the loan never amortizes.'
-      : 'The resulting term exceeds the supported maximum.' };
+    return result.reason === 'not_amortizing'
+      ? refusal('loan_not_amortizing', 'The monthly rate does not cover the interest; the loan never amortizes.')
+      : refusal('loan_term_too_long', 'The resulting term exceeds the supported maximum.', { max: MAX_LOAN_MONTHS });
   }
   return {
     calc: result,
@@ -154,7 +158,11 @@ router.post('/loans/preview', (req, res) => {
       return res.json({ data: { ok: false } });
     }
     const derived = deriveInterestTerms(req.body, mode);
-    if (derived.error) return res.json({ data: { ok: false } });
+    // Der Grund reist mit (#1668): "tilgt nicht" und "laeuft zu lange" sind zwei
+    // Saetze, und die Vorschau soll denselben sagen wie die Absage beim Speichern.
+    if (derived.error) {
+      return res.json({ data: { ok: false, reason: derived.reason, ...(derived.max !== undefined ? { max: derived.max } : {}) } });
+    }
     const c = derived.calc;
     const bindingEnd = mode === 'fixed_then_variable' && req.body.fixed_period_months
       ? c.remainingAfterBinding
@@ -270,8 +278,13 @@ router.post('/loans', (req, res) => {
     const vBorrower = str(req.body.borrower, 'Borrower', { max: MAX_SHORT });
     const vStartMonth = validateMonth(req.body.start_month, 'Start month');
     const vNotes = str(req.body.notes, 'Notes', { max: 1000, required: false });
-    const errors = collectErrors([vTitle, vBorrower, vStartMonth, vNotes]);
-    if (!vStartMonth.value) errors.push('Start month is required.');
+    const errors = [
+      ...refusals('loan_title_invalid', [vTitle]),
+      ...refusals('loan_borrower_invalid', [vBorrower]),
+      ...refusals('loan_start_month_invalid', [vStartMonth]),
+      ...refusals('loan_notes_invalid', [vNotes]),
+    ];
+    if (!vStartMonth.value) errors.push(refusal('loan_start_month_invalid', 'Start month is required.'));
 
     const mode = INTEREST_MODES.includes(req.body.interest_mode) ? req.body.interest_mode : 'none';
     let terms = null;
@@ -279,11 +292,11 @@ router.post('/loans', (req, res) => {
       // Zinsfreier Pfad (unverändert): Gesamtbetrag + Ratenanzahl manuell.
       const vAmount = num(req.body.total_amount, 'Amount', { required: true });
       const installmentCount = parseInt(req.body.installment_count, 10);
-      errors.push(...collectErrors([vAmount]));
-      if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 360) {
-        errors.push('Installment count must be between 1 and 360.');
+      errors.push(...refusals('loan_amount_invalid', [vAmount]));
+      if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > MAX_LOAN_INSTALLMENTS) {
+        errors.push(refusal('loan_installments_invalid', `Installment count must be between 1 and ${MAX_LOAN_INSTALLMENTS}.`, { max: MAX_LOAN_INSTALLMENTS }));
       }
-      if (vAmount.value !== null && vAmount.value <= 0) errors.push('Amount must be greater than zero.');
+      if (vAmount.value !== null && vAmount.value <= 0) errors.push(refusal('loan_amount_invalid', 'Amount must be greater than zero.'));
       terms = {
         interest_mode: 'none', principal: null, fixed_rate: null, initial_repayment_rate: null,
         fixed_period_months: null, followup_rate: null,
@@ -291,15 +304,15 @@ router.post('/loans', (req, res) => {
       };
     } else {
       const derived = deriveInterestTerms(req.body, mode);
-      if (derived.error) errors.push(derived.error);
+      if (derived.error) errors.push(derived);
       else terms = derived.fields;
     }
     const money = validateCurrencyFields(req.body);
-    if (money.error) errors.push(money.error);
+    if (money.error) errors.push(money);
     const dir = validateDirection(req.body);
-    if (dir.error) errors.push(dir.error);
+    if (dir.error) errors.push(dir);
     const account = validateAccountRef(req.body.account_id);
-    if (account.error) errors.push(account.error);
+    if (account.error) errors.push(refusal('loan_account_invalid', account.error));
 
     // Altlasten beim Anlegen (#813): Ein Darlehen, das schon läuft, wenn es hier
     // eingetragen wird, startet sonst mit lauter offenen Raten - der Nutzer müsste
@@ -314,12 +327,12 @@ router.post('/loans', (req, res) => {
         && req.body.paid_installments !== '') {
       paidInstallments = parseInt(req.body.paid_installments, 10);
       if (!Number.isInteger(paidInstallments) || paidInstallments < 0) {
-        errors.push('Paid installments must be zero or a positive number.');
+        errors.push(refusal('loan_paid_installments_invalid', 'Paid installments must be zero or a positive number.'));
       } else if (terms && paidInstallments > terms.installment_count) {
-        errors.push('Paid installments cannot exceed the installment count.');
+        errors.push(refusal('loan_paid_installments_exceed', 'Paid installments cannot exceed the installment count.', { max: terms.installment_count }));
       }
     }
-    if (errors.length) return res.status(400).json({ error: errors.join(' '), code: 400 });
+    if (errors.length) return refuse(res, errors);
 
     const me = req.authUserId || req.session.userId;
     const visibility = normalizeObjectVisibility(
@@ -368,25 +381,24 @@ router.put('/loans/:id', (req, res) => {
     // zinsfreie Legacy-Pfad darunter bleibt für Teil-Updates ohne interest_mode.
     if (req.body.interest_mode !== undefined) {
       const mode = INTEREST_MODES.includes(req.body.interest_mode) ? req.body.interest_mode : null;
-      const iChecks = [];
-      if (req.body.title !== undefined) iChecks.push(str(req.body.title, 'Title', { max: MAX_TITLE }));
-      if (req.body.borrower !== undefined) iChecks.push(str(req.body.borrower, 'Borrower', { max: MAX_SHORT }));
-      if (req.body.start_month !== undefined) iChecks.push(validateMonth(req.body.start_month, 'Start month'));
-      if (req.body.notes !== undefined) iChecks.push(str(req.body.notes, 'Notes', { max: 1000, required: false }));
-      const iErrors = collectErrors(iChecks);
+      const iErrors = [];
+      if (req.body.title !== undefined) iErrors.push(...refusals('loan_title_invalid', [str(req.body.title, 'Title', { max: MAX_TITLE })]));
+      if (req.body.borrower !== undefined) iErrors.push(...refusals('loan_borrower_invalid', [str(req.body.borrower, 'Borrower', { max: MAX_SHORT })]));
+      if (req.body.start_month !== undefined) iErrors.push(...refusals('loan_start_month_invalid', [validateMonth(req.body.start_month, 'Start month')]));
+      if (req.body.notes !== undefined) iErrors.push(...refusals('loan_notes_invalid', [str(req.body.notes, 'Notes', { max: 1000, required: false })]));
       const paidCount = db.get().prepare('SELECT COUNT(*) AS c FROM budget_loan_payments WHERE loan_id = ?').get(id).c;
 
       let terms = null;
       if (!mode) {
-        iErrors.push('Interest mode is invalid.');
+        iErrors.push(refusal('loan_interest_mode_invalid', 'Interest mode is invalid.'));
       } else if (mode === 'none') {
         const vAmount = num(req.body.total_amount, 'Amount', { required: true });
         const installmentCount = parseInt(req.body.installment_count, 10);
-        iErrors.push(...collectErrors([vAmount]));
-        if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 360) {
-          iErrors.push('Installment count must be between 1 and 360.');
+        iErrors.push(...refusals('loan_amount_invalid', [vAmount]));
+        if (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > MAX_LOAN_INSTALLMENTS) {
+          iErrors.push(refusal('loan_installments_invalid', `Installment count must be between 1 and ${MAX_LOAN_INSTALLMENTS}.`, { max: MAX_LOAN_INSTALLMENTS }));
         }
-        if (vAmount.value !== null && vAmount.value <= 0) iErrors.push('Amount must be greater than zero.');
+        if (vAmount.value !== null && vAmount.value <= 0) iErrors.push(refusal('loan_amount_invalid', 'Amount must be greater than zero.'));
         terms = {
           interest_mode: 'none', principal: null, fixed_rate: null, initial_repayment_rate: null,
           fixed_period_months: null, followup_rate: null,
@@ -394,21 +406,21 @@ router.put('/loans/:id', (req, res) => {
         };
       } else {
         const derived = deriveInterestTerms(req.body, mode);
-        if (derived.error) iErrors.push(derived.error);
+        if (derived.error) iErrors.push(derived);
         else terms = derived.fields;
       }
       if (terms && terms.installment_count !== null && terms.installment_count < paidCount) {
-        iErrors.push('The resulting term is shorter than the already paid installments.');
+        iErrors.push(refusal('loan_term_below_paid', 'The resulting term is shorter than the already paid installments.'));
       }
       const iMoney = validateCurrencyFields(req.body, loan);
-      if (iMoney.error) iErrors.push(iMoney.error);
+      if (iMoney.error) iErrors.push(iMoney);
       const iDir = validateDirection(req.body, loan);
-      if (iDir.error) iErrors.push(iDir.error);
+      if (iDir.error) iErrors.push(iDir);
       const iAccount = req.body.account_id === undefined
         ? { value: loan.account_id }
         : validateAccountRef(req.body.account_id);
-      if (iAccount.error) iErrors.push(iAccount.error);
-      if (iErrors.length) return res.status(400).json({ error: iErrors.join(' '), code: 400 });
+      if (iAccount.error) iErrors.push(refusal('loan_account_invalid', iAccount.error));
+      if (iErrors.length) return refuse(res, iErrors);
 
       db.get().prepare(`
         UPDATE budget_loans SET
@@ -440,34 +452,33 @@ router.put('/loans/:id', (req, res) => {
     // Neutrale Partial-Updates (Titel, Notes, Startmonat) bleiben erlaubt.
     if (loan.interest_mode && loan.interest_mode !== 'none'
         && (req.body.total_amount !== undefined || req.body.installment_count !== undefined)) {
-      return res.status(400).json({ error: 'Interest loans must be edited via the interest fields.', code: 400 });
+      return refuse(res, [refusal('loan_interest_fields_required', 'Interest loans must be edited via the interest fields.')]);
     }
 
-    const checks = [];
-    if (req.body.title !== undefined) checks.push(str(req.body.title, 'Title', { max: MAX_TITLE }));
-    if (req.body.borrower !== undefined) checks.push(str(req.body.borrower, 'Borrower', { max: MAX_SHORT }));
-    if (req.body.total_amount !== undefined) checks.push(num(req.body.total_amount, 'Amount'));
-    if (req.body.start_month !== undefined) checks.push(validateMonth(req.body.start_month, 'Start month'));
-    if (req.body.notes !== undefined) checks.push(str(req.body.notes, 'Notes', { max: 1000, required: false }));
-    const errors = collectErrors(checks);
+    const errors = [];
+    if (req.body.title !== undefined) errors.push(...refusals('loan_title_invalid', [str(req.body.title, 'Title', { max: MAX_TITLE })]));
+    if (req.body.borrower !== undefined) errors.push(...refusals('loan_borrower_invalid', [str(req.body.borrower, 'Borrower', { max: MAX_SHORT })]));
+    if (req.body.total_amount !== undefined) errors.push(...refusals('loan_amount_invalid', [num(req.body.total_amount, 'Amount')]));
+    if (req.body.start_month !== undefined) errors.push(...refusals('loan_start_month_invalid', [validateMonth(req.body.start_month, 'Start month')]));
+    if (req.body.notes !== undefined) errors.push(...refusals('loan_notes_invalid', [str(req.body.notes, 'Notes', { max: 1000, required: false })]));
     const installmentCount = req.body.installment_count === undefined ? null : parseInt(req.body.installment_count, 10);
-    if (req.body.installment_count !== undefined && (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > 360)) {
-      errors.push('Installment count must be between 1 and 360.');
+    if (req.body.installment_count !== undefined && (!Number.isInteger(installmentCount) || installmentCount < 1 || installmentCount > MAX_LOAN_INSTALLMENTS)) {
+      errors.push(refusal('loan_installments_invalid', `Installment count must be between 1 and ${MAX_LOAN_INSTALLMENTS}.`, { max: MAX_LOAN_INSTALLMENTS }));
     }
     const paidCount = db.get().prepare('SELECT COUNT(*) AS c FROM budget_loan_payments WHERE loan_id = ?').get(id).c;
     if (installmentCount !== null && installmentCount < paidCount) {
-      errors.push('Installment count cannot be lower than paid installments.');
+      errors.push(refusal('loan_term_below_paid', 'Installment count cannot be lower than paid installments.'));
     }
-    if (req.body.total_amount !== undefined && Number(req.body.total_amount) <= 0) errors.push('Amount must be greater than zero.');
+    if (req.body.total_amount !== undefined && Number(req.body.total_amount) <= 0) errors.push(refusal('loan_amount_invalid', 'Amount must be greater than zero.'));
     const money = validateCurrencyFields(req.body, loan);
-    if (money.error) errors.push(money.error);
+    if (money.error) errors.push(money);
     const dir = validateDirection(req.body, loan);
-    if (dir.error) errors.push(dir.error);
+    if (dir.error) errors.push(dir);
     const account = req.body.account_id === undefined
       ? { value: loan.account_id }
       : validateAccountRef(req.body.account_id);
-    if (account.error) errors.push(account.error);
-    if (errors.length) return res.status(400).json({ error: errors.join(' '), code: 400 });
+    if (account.error) errors.push(refusal('loan_account_invalid', account.error));
+    if (errors.length) return refuse(res, errors);
 
     db.get().prepare(`
       UPDATE budget_loans
@@ -511,7 +522,7 @@ router.post('/loans/:id/payments', (req, res) => {
     if (!mayEdit(req, loanRow)) return res.status(403).json({ error: 'You cannot modify this loan.', code: 403 });
     // is_settled statt remaining_installments: ein frueh volltilgtes Zins-Darlehen
     // hat noch ungebuchte Plan-Raten, aber nichts mehr zu bezahlen (#954).
-    if (loan.is_settled) return res.status(409).json({ error: 'Loan is already paid.', code: 409 });
+    if (loan.is_settled) return refuse(res, [refusal('loan_settled', 'Loan is already paid.')], 409);
 
     const installmentNumber = req.body.installment_number === undefined
       ? loan.next_installment_number
@@ -521,20 +532,24 @@ router.post('/loans/:id/payments', (req, res) => {
       : Math.min(loan.installment_amount, loan.remaining_amount);
     const vAmount = num(req.body.amount ?? defaultAmount, 'Amount', { required: true });
     const vDate = validateDate(req.body.paid_date, 'Paid date', true);
-    const errors = collectErrors([vAmount, vDate]);
+    // Reihenfolge der Saetze wie bisher: Betrag, Datum, Ratennummer, Grenzen.
+    const errors = [
+      ...refusals('loan_payment_amount_invalid', [vAmount]),
+      ...refusals('loan_payment_date_invalid', [vDate]),
+    ];
     if (!Number.isInteger(installmentNumber) || installmentNumber < 1 || installmentNumber > loan.installment_count) {
-      errors.push('Installment number is invalid.');
+      errors.push(refusal('loan_payment_installment_invalid', 'Installment number is invalid.'));
     }
-    if (vAmount.value !== null && vAmount.value <= 0) errors.push('Amount must be greater than zero.');
+    if (vAmount.value !== null && vAmount.value <= 0) errors.push(refusal('loan_payment_amount_invalid', 'Amount must be greater than zero.'));
     if (vAmount.value !== null && vAmount.value - loan.remaining_amount > 0.005) {
-      errors.push('Amount cannot be greater than the remaining loan amount.');
+      errors.push(refusal('loan_payment_amount_exceeds', 'Amount cannot be greater than the remaining loan amount.'));
     }
-    if (errors.length) return res.status(400).json({ error: errors.join(' '), code: 400 });
+    if (errors.length) return refuse(res, errors);
 
     const existing = db.get().prepare(`
       SELECT 1 FROM budget_loan_payments WHERE loan_id = ? AND installment_number = ?
     `).get(id, installmentNumber);
-    if (existing) return res.status(409).json({ error: 'Installment already paid.', code: 409 });
+    if (existing) return refuse(res, [refusal('loan_installment_paid', 'Installment already paid.')], 409);
 
     const paymentAmount = cents(vAmount.value);
     // Währung je Darlehen (#582): Die Rate wird in Darlehenswährung geführt

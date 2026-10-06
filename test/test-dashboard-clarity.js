@@ -436,6 +436,39 @@ test('FLIP haengt am Neuaufbau: vorher messen, nach dem setHtml abspielen - nur 
     'gemessen wird, bevor der Modus des letzten Aufbaus ueberschrieben ist - sonst gleitet auch das Betreten des Modus');
 });
 
+// R16 (Bewegung): beim Betreten/Verlassen des Anpassen-Modus sprang das Raster
+// (Gruss bricht um, Ablage schiebt sich davor - gemessen y 486 -> 868). Die
+// Kacheln bleiben ruhig (Test darueber), aber das Raster gleitet ALS GANZES.
+test('Anpassen-Modus betreten/verlassen: das Raster gleitet als Ganzes, ohne Feder, nicht unter reduzierter Bewegung', async () => {
+  const calls = [];
+  const grid = {
+    top: 868,
+    getBoundingClientRect: () => ({ top: grid.top }),
+    animate: (keyframes, timing) => { calls.push({ keyframes, timing }); return {}; },
+  };
+  const root = { querySelector: (sel) => (sel === '#dashboard-widget-grid' ? grid : null) };
+  __test.playGridShift(root, 486, { reduced: false });
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].keyframes, [{ transform: 'translateY(-382px)' }, { transform: 'none' }], 'von der alten Oberkante an die neue');
+  assert.equal(calls[0].timing.duration, 250, '--duration-lg');
+  assert.equal(calls[0].timing.easing, 'ease-out', 'Rueckfall der --ease-out; keine Feder ueber hunderte Pixel');
+  assert.equal(calls[0].timing.fill, undefined, 'kein fill: der Endzustand steht vor der Animation');
+
+  __test.playGridShift(root, 486, { reduced: true });
+  __test.playGridShift(root, null, { reduced: false });
+  __test.playGridShift(root, 868.4, { reduced: false });
+  __test.playGridShift({ querySelector: () => ({ getBoundingClientRect: () => ({ top: 0 }) }) }, 100, { reduced: false });
+  assert.equal(calls.length, 1, 'reduzierte Bewegung, kein Vorher-Wert, kein Versatz, kein animate: nichts');
+
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../public/pages/dashboard.js', import.meta.url), 'utf8');
+  const body = src.match(/function rebuildDashboard\(cfg\) \{[\s\S]*?\n {2}\}\n/)?.[0] ?? '';
+  const capture = body.search(/const gridTopBefore = modeChanged\s*\?/);
+  const rebuild = body.search(/setHtml\(shell, `\s*<section class="dashboard-masthead/);
+  const play = body.search(/playGridShift\(shell, gridTopBefore\)/);
+  assert.ok(capture > -1 && capture < rebuild && rebuild < play, 'nur beim Moduswechsel: vorher messen, neu bauen, gleiten');
+});
+
 test('Anpassen-Modus: das Raster traegt eine Kante, keine Toenung ueber allen Kacheln', async () => {
   const { readFileSync } = await import('node:fs');
   const { eachRule } = await import('./css-rules.js');
@@ -675,3 +708,46 @@ test('#1452: ob der Check-in von heute ist, entscheidet die Haushaltszone', () =
     assert.equal(row.sortKey, '00:01');
   });
 }));
+
+// --------------------------------------------------------
+// #1607: die Budget-Kachel fuehrt auf die Monatsuebersicht
+// --------------------------------------------------------
+// Das Budget merkt sich seinen zuletzt offenen Reiter (Modul-Singleton). Wer
+// zuletzt in der Statistik stand, landete ueber „Eintrag hinzufuegen" der
+// Kachel dort - auf einem Reiter ohne Anlegen. Die Kachel zeigt Einnahmen,
+// Ausgaben und Saldo des Monats, also nennt jeder ihrer Wege diesen Reiter.
+const routesOf = (html) => [...html.matchAll(/data-route="([^"]*)"/g)].map((m) => m[1]);
+
+test('#1607: jeder Weg aus der Budget-Kachel nennt den Reiter der Monatsuebersicht', () => {
+  const leer = routesOf(__test.renderBudgetWidget({ entryCount: 0 }, 'EUR'));
+  assert.equal(leer.length, 2, `Reichweite: Kopf-Link und „Eintrag hinzufuegen", bekam ${leer}`);
+  assert.deepEqual([...new Set(leer)], ['/budget?tab=budget']);
+
+  const gefuellt = routesOf(__test.renderBudgetWidget({ income: 100, expenses: 40, balance: 60, entryCount: 2 }, 'EUR'));
+  assert.ok(gefuellt.length >= 1, 'Reichweite: der Kopf-Link');
+  assert.deepEqual([...new Set(gefuellt)], ['/budget?tab=budget']);
+});
+
+test('#1607: die Kennzahl-Kachel „Monatssaldo" nennt denselben Reiter', () => {
+  const prevWindow = global.window;
+  global.window = { yuvomi: { isModuleDisabled: () => false } };
+  try {
+    // Zwei Kacheln, sonst ist es keine Reihe (selectMetricTiles).
+    const tile = __test.selectMetricTiles({
+      budget: { income: 100, expenses: 40, balance: 60, entryCount: 2 },
+      housekeeping: { configured: true, present: false, visitsThisMonth: 4 },
+    }, 'EUR').find((entry) => entry.id === 'budget');
+    assert.ok(tile, 'Reichweite: die Budget-Kachel steht in der Reihe');
+    assert.equal(tile.route, '/budget?tab=budget');
+  } finally {
+    global.window = prevWindow;
+  }
+});
+
+test('#1607: der Reiter aus der Kachel ist einer, den das Budget kennt', async () => {
+  globalThis.HTMLElement = globalThis.HTMLElement ?? class {};
+  globalThis.customElements = globalThis.customElements ?? { define() {}, get() {} };
+  globalThis.localStorage = globalThis.localStorage ?? { getItem: () => null, setItem() {}, removeItem() {} };
+  const { __test: budget } = await import('../public/pages/budget.js');
+  assert.equal(budget.tabFromQuery('?tab=budget'), 'budget');
+});

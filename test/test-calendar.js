@@ -939,10 +939,10 @@ test('Wochenraster: Kopf, Ganztagszeile und Stunden verwenden dieselbe Zeitspalt
  *
  * Die Prüfung darüber sichert die SPALTE. Was in ihr steht, hat sie nicht
  * gesehen: die Ganztags-Beschriftung stand auf --space-12 (48px) in der
- * 64px-Spur, ist rechtsbündig und endete deshalb 16px links von den
- * Stundenzahlen, die genau darunter anfangen - der Versatz überlebte den Fix
- * für die Spalten. Beide Texte enden nur dann auf derselben Kante, wenn sie
- * dieselbe Breite UND dasselbe padding-right haben. */
+ * 64px-Spur, ist endbündig und endete deshalb 16px vor den Stundenzahlen,
+ * die genau darunter anfangen - der Versatz überlebte den Fix für die
+ * Spalten. Beide Texte enden nur dann auf derselben Kante, wenn sie dieselbe
+ * Breite UND denselben Innenabstand am Zeilenende (padding-inline-end) haben. */
 test('Ganztags-Beschriftung endet auf derselben Kante wie die Stundenzahlen', () => {
   const rules = [...eachRule(calendarCss)];
   const label = rules.find((rule) => rule.selector.trim() === '.calendar-all-day-label');
@@ -952,10 +952,23 @@ test('Ganztags-Beschriftung endet auf derselben Kante wie die Stundenzahlen', ()
   assert(/width:\s*var\(--cal-gutter-width\)/.test(label.body),
     'die Ganztags-Beschriftung muss die volle Zeitspalte füllen, nicht --space-12');
 
-  const paddingRight = (body) => body.match(/padding(?:-right)?:\s*([^;]+)/)?.[1]?.trim() ?? '';
-  const labelPad = paddingRight(label.body).split(/\s+/)[1] ?? paddingRight(label.body);
-  assert(labelPad === paddingRight(slot.body),
-    `rechter Innenabstand läuft auseinander: Beschriftung ${labelPad}, Stunde ${paddingRight(slot.body)}`);
+  // Der Innenabstand am Zeilenende: padding-inline-end, sonst der zweite Wert
+  // von padding-inline (ein Wert gilt fuer beide Seiten). Findet keine der
+  // beiden Schreibweisen etwas, ist das ein Fehler - sonst waere '' === ''.
+  const inlineEnd = (body) => {
+    const end = body.match(/(?:^|[;\s])padding-inline-end\s*:\s*([^;]+)/);
+    if (end) return end[1].trim();
+    const inline = body.match(/(?:^|[;\s])padding-inline\s*:\s*([^;]+)/);
+    if (!inline) return '';
+    const [start, endValue = start] = inline[1].trim().split(/\s+/);
+    return endValue;
+  };
+  const labelPad = inlineEnd(label.body);
+  const slotPad = inlineEnd(slot.body);
+  assert(labelPad && slotPad,
+    `Innenabstand am Zeilenende nicht gefunden: Beschriftung "${labelPad}", Stunde "${slotPad}"`);
+  assert(labelPad === slotPad,
+    `Innenabstand am Zeilenende läuft auseinander: Beschriftung ${labelPad}, Stunde ${slotPad}`);
 });
 
 function zIndexOf(selector) {
@@ -2133,6 +2146,37 @@ test('Telefon-Monat: „+" legt fuer den gewaehlten Tag an, der Reset fuehrt zu 
   }
 });
 
+// PR #1673 Review: die Tagesansicht laedt seit R16 die Folgetage fuer die
+// Seitenspalte mit. syncTodayButton() las diese LADESPANNE als angezeigten
+// Zeitraum - stand der Cursor bis zu sieben Tage vor heute, galt die Ansicht
+// als aktuell und der Reset war weg; am Telefon (ohne Spalte) ohne Rueckweg.
+// Gegen den Stand davor rot gelaufen.
+test('Tagesansicht: der Reset ist nur am heutigen TAG aktuell, nicht in der Ladespanne der Seitenspalte', () => {
+  const { state, syncTodayButton, getRangeForView } = calendarHelpers;
+  const zuvor = { view: state.view, cursor: state.cursor, today: state.today };
+  const btn = fakeResetButton();
+  const root = { querySelector: (sel) => (sel === '#cal-today' ? btn : null), contains: () => false };
+  try {
+    Object.assign(state, { view: 'day', today: '2026-10-05', cursor: '2026-10-02' });
+    const { from, to } = getRangeForView('day', state.cursor);
+    assert(state.today >= from && state.today <= to, 'Vorbedingung: heute liegt in der Ladespanne des Tages');
+    syncTodayButton(root);
+    assert(btn.classList.contains('is-current') === false, 'drei Tage vor heute muss „Heute" erreichbar sein');
+    assert(btn.inert === false, 'drei Tage vor heute darf der Reset nicht inert sein');
+
+    state.cursor = '2026-10-05';
+    syncTodayButton(root);
+    assert(btn.classList.contains('is-current') === true, 'am heutigen Tag traegt der Reset .is-current');
+    assert(btn.inert === true, 'am heutigen Tag ist der Reset inert');
+
+    state.cursor = '2026-10-06';
+    syncTodayButton(root);
+    assert(btn.classList.contains('is-current') === false, 'einen Tag nach heute muss „Heute" erreichbar sein');
+  } finally {
+    Object.assign(state, zuvor);
+  }
+});
+
 // Schichtplan-Bloecke im Zeitraster: Ueberlappungs-Layout (#1043)
 //
 // Vorher bekam JEDER Schichtplan-Block dieselben festen Aussenraender
@@ -2345,6 +2389,58 @@ test('renderDayView: zwei ueberlappende Schichten am selben Tag bekommen untersc
       `renderDayView() muss das berechnete Layout an renderScheduleTimeBlock() weiterreichen, sonst liegen `
       + `beide Bloecke deckungsgleich uebereinander (#1043): ${lefts}`);
   });
+});
+
+// --------------------------------------------------------
+// Tagesansicht am Desktop: die Folgetage als Seitenspalte (Critique R16,
+// 2026-10-05). Der Tag war eine einzelne 932px breite Spalte; ab der
+// Split-Schwelle stehen rechts die naechsten sieben Tage als Agenda-Zeilen.
+// --------------------------------------------------------
+
+test('Tagesansicht: laedt die sieben Folgetage mit, die die Seitenspalte zeigt', () => {
+  const { from, to } = calendarHelpers.getRangeForView('day', '2026-03-28');
+  assert(from === '2026-03-28', `der Tag selbst bleibt der Anfang: ${from}`);
+  assert(to === '2026-04-04', `sieben Folgetage, auch ueber die Monatsgrenze: ${to}`);
+});
+
+test('renderDayView: die Seitenspalte zeigt Folgetage mit Eintrag als Agenda-Zeilen, nie den Tag selbst', () => {
+  const schicht = (tag, name) => ({ ...scheduleEntry({ start: '08:00', end: '12:00', name }), date_key: tag });
+  withOverlappingScheduleState({
+    scheduleEntries: [schicht('2026-09-07', 'Heute'), schicht('2026-09-09', 'Uebermorgen'), schicht('2026-09-15', 'Zu weit')],
+  }, () => {
+    const container = fakeContainer();
+    calendarHelpers.renderDayView(container);
+    const [grid, rail] = container.html.split('<aside class="day-rail"');
+    assert(rail, 'die Tagesansicht traegt eine Seitenspalte (.day-rail)');
+    assert(/<div class="day-layout">\s*<div class="day-view">/.test(grid), 'Raster und Spalte stehen in EINER Huelle (.day-layout)');
+    assert(/class="section-title-link day-rail__more"/.test(rail), 'der Titel ist der Weg in die Agenda');
+    assert((rail.match(/class="agenda-day"/g) || []).length === 1, 'nur Tage mit Eintrag bekommen einen Kopf');
+    assert(rail.includes('Uebermorgen'), 'ein Eintrag in zwei Tagen steht in der Spalte');
+    assert(!rail.includes('Heute'), 'der gezeigte Tag steht im Raster, nicht noch einmal daneben');
+    assert(!rail.includes('Zu weit'), 'nach sieben Tagen ist Schluss');
+  });
+  withOverlappingScheduleState({ scheduleEntries: [] }, () => {
+    const container = fakeContainer();
+    calendarHelpers.renderDayView(container);
+    const rail = container.html.split('<aside class="day-rail"')[1] ?? '';
+    assert(/agenda-day__empty/.test(rail), 'eine leere Spanne sagt, dass sie leer ist');
+    assert(!/class="agenda-day"/.test(rail));
+  });
+});
+
+test('Tagesansicht: die Seitenspalte gibt es erst ab der Split-Schwelle der Modulflaeche', () => {
+  const rules = [...eachRule(calendarCss)];
+  const base = rules.find((r) => r.selector.trim() === '.day-rail' && !r.at.length);
+  assert(/display:\s*none/.test(base?.body ?? ''), 'unter der Schwelle (mobil) ist die Spalte ausgeblendet');
+  const wide = (r) => r.at.some((a) => /@container module-surface \(min-width:\s*65rem\)/.test(a));
+  const shown = rules.find((r) => r.selector.trim() === '.day-rail' && wide(r));
+  assert(/display:\s*block/.test(shown?.body ?? ''), 'ab 65rem Modulflaeche steht sie');
+  const layout = rules.find((r) => r.selector.trim() === '.day-layout' && wide(r));
+  assert(/grid-template-columns:\s*minmax\(0,\s*1fr\)\s*var\(--layout-rail-min\)/.test(layout?.body ?? ''),
+    'Stundenraster flexibel, Spalte auf --layout-rail-min');
+  const src = readFileSync(new URL('../public/pages/calendar.js', import.meta.url), 'utf8');
+  assert(/classList\.toggle\('app-page--columns', state\.view === 'day'\)/.test(src),
+    'nur die Tagesansicht macht die Seitenwurzel zum Container der Spalte');
 });
 
 // --------------------------------------------------------
@@ -4185,6 +4281,165 @@ test('Baender: im Nachbarmonat toent das Band zurueck wie der Chip der Zelle, ni
   assert(!/opacity|filter/.test(band.body), 'nie ueber Opacity auf Text');
 });
 
+// --- Physische Seiten in CSS-Deklarationen -------------------------------
+// Beide RTL-Guards unten lesen Werte ueber DIESE Helfer. Sie zaehlen die
+// Klammertiefe, statt mit einem Regex an der ersten `)` zu raten:
+// `calc(-1 * var(--space-1))` ist EIN Wert, auch mit Leerzeichen und
+// geschachtelten Klammern.
+// Was in einem CSS-String steht oder hinter einem Backslash, ist Text und
+// keine Syntax: `content: "("` oeffnet keine Klammer, `content: ")"` schliesst
+// keine, und ein `;` im String trennt keine Deklaration. Ohne das schluckte
+// eine einzige solche Klammer jede Deklaration dahinter, und der Guard sah
+// den Rest der Regel nicht mehr. Ein Zeilenende beendet einen offenen String
+// (so liest ihn auch der Browser), und eine ueberzaehlige `)` zaehlt nicht
+// ins Minus - sonst waere wieder alles dahinter "geschachtelt". In einem
+// `url(` ohne Anfuehrungszeichen ist bis zur `)` alles Adresse, auch ein
+// Anfuehrungszeichen: es oeffnet dort keinen String.
+function splitTopLevel(text, isSeparator) {
+  const out = [];
+  let depth = 0;
+  let quote = '';
+  let rawUrl = false;
+  let cur = '';
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '\\' && i + 1 < text.length) {
+      // Ein Backslash vor dem Zeilenende setzt den String fort, und CRLF ist
+      // EIN Zeilenende: bliebe das \n stehen, beendete es den String.
+      const escaped = text.startsWith('\r\n', i + 1) ? '\r\n' : text[i + 1];
+      cur += ch + escaped;
+      i += escaped.length;
+      continue;
+    }
+    if (rawUrl) {
+      if (ch === ')') rawUrl = false;
+      cur += ch;
+      continue;
+    }
+    if (quote) {
+      if (ch === quote || ch === '\n') quote = '';
+      cur += ch;
+      continue;
+    }
+    if (ch === '(' && /(?:^|[^\w-])url$/i.test(cur) && !/^\s*["']/.test(text.slice(i + 1))) {
+      rawUrl = true;
+      cur += ch;
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      cur += ch;
+      continue;
+    }
+    if (ch === '(') depth += 1;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    if (depth === 0 && isSeparator(ch)) {
+      out.push(cur);
+      cur = '';
+    } else {
+      cur += ch;
+    }
+  }
+  out.push(cur);
+  return out.map((part) => part.trim()).filter(Boolean);
+}
+/** Werte einer Deklaration, an Leerraum ausserhalb von Klammern getrennt. */
+const cssWords = (value) => splitTopLevel(value, (ch) => /\s/.test(ch));
+/** `[{ prop, value, text }]` eines Regelrumpfs aus eachRule(), ohne `!important`. */
+function cssDeclarations(body) {
+  return splitTopLevel(body, (ch) => ch === ';').flatMap((decl) => {
+    const colon = decl.indexOf(':');
+    if (colon < 1) return [];
+    const prop = decl.slice(0, colon).trim().toLowerCase();
+    const value = decl.slice(colon + 1).replace(/!\s*important/i, '').trim().replace(/\s+/g, ' ');
+    return [{ prop, value, text: `${prop}: ${value}` }];
+  });
+}
+// Vier Werte heissen oben/rechts/unten/links; ein, zwei und drei Werte sind
+// seitengleich, weil rechts und links denselben Wert bekommen.
+const BOX_SHORTHANDS = new Set([
+  'inset', 'margin', 'padding', 'border-width', 'border-style', 'border-color', 'scroll-margin', 'scroll-padding',
+]);
+// Eigenschaften, deren WERT eine Seite nennen kann. justify-* steht bewusst
+// nicht hier: dort gibt es start/end, und left/right bedeutet etwas anderes.
+const SIDE_KEYWORD_PROPS = new Set([
+  'text-align', 'float', 'clear', 'transform-origin', 'background-position', 'object-position',
+]);
+/**
+ * Die Deklarationen eines Regelrumpfs, die an einer physischen Seite haengen
+ * (als `prop: value`). Custom Properties zaehlen nicht - `--band-to: left`
+ * ist ein Wert, den erst die lesende Regel zu einer Seite macht.
+ */
+function physicalSideDeclarations(body) {
+  return cssDeclarations(body).filter(({ prop, value }) => {
+    if (prop.startsWith('--')) return false;
+    // Langformen: left, right, margin-left, border-right-color,
+    // scroll-padding-left, border-top-left-radius ...
+    if (/(?:^|-)(?:left|right)(?:-|$)/.test(prop)) return true;
+    if (BOX_SHORTHANDS.has(prop)) {
+      const v = cssWords(value);
+      return v.length === 4 && v[1] !== v[3];
+    }
+    if (prop === 'border-radius') {
+      // Ecken: oben-links, oben-rechts, unten-rechts, unten-links - je vor und
+      // hinter dem `/` (waagrechte und senkrechte Halbachse). Gespiegelt
+      // tauschen oben-links/oben-rechts und unten-links/unten-rechts.
+      return splitTopLevel(value, (ch) => ch === '/').some((half) => {
+        const [tl, tr = tl, br = tl, bl = tr] = cssWords(half);
+        return tl !== tr || br !== bl;
+      });
+    }
+    if (SIDE_KEYWORD_PROPS.has(prop)) {
+      return splitTopLevel(value, (ch) => /[\s,]/.test(ch)).some((word) => /^(?:left|right)$/i.test(word));
+    }
+    return false;
+  }).map(({ text }) => text);
+}
+
+test('RTL-Leser: eine Klammer in einem CSS-String oder hinter einem Backslash verdeckt keine Deklaration', () => {
+  // Der Leser selbst, ohne Stylesheet: was er hier verschluckt, prueft der
+  // Guard darunter gar nicht erst.
+  const seen = (body) => physicalSideDeclarations(body).join('; ');
+  const blind = [
+    ['content: "("; margin-left: 1px', 'margin-left: 1px'],
+    ["content: '('; margin-left: 1px", 'margin-left: 1px'],
+    ['content: ")"; margin-left: 1px', 'margin-left: 1px'],
+    ['content: "\\"("; margin-left: 1px', 'margin-left: 1px'],
+    ["content: '\\')'; margin-left: 1px", 'margin-left: 1px'],
+    ['content: "\'("; margin-left: 1px', 'margin-left: 1px'],
+    ['background-image: url("a)b"); margin-left: 1px', 'margin-left: 1px'],
+    ['background-image: url("a(b"); float: right', 'float: right'],
+    ['background-image: url(a\\)b.png); margin-left: 1px', 'margin-left: 1px'],
+    ['background-image: url(a\\(b.png); margin-left: 1px', 'margin-left: 1px'],
+    ['background-image: url(a.png); margin-left: 1px', 'margin-left: 1px'],
+    ["background-image: url(a'b.png); margin-left: 1px", 'margin-left: 1px'],
+    ['background-image: URL( a"(b.png ); margin-left: 1px', 'margin-left: 1px'],
+    ['content: "("; margin: 0 1px 0 2px', 'margin: 0 1px 0 2px'],
+    ['content: "(\n; margin-left: 1px', 'margin-left: 1px'],
+    ['content: "a\\\nb ( c"; margin-left: 1px', 'margin-left: 1px'],
+    ['content: "a\\\r\nb ( c"; margin-left: 1px', 'margin-left: 1px'],
+    ['margin: 0 ); margin-left: 1px', 'margin-left: 1px'],
+  ];
+  for (const [body, want] of blind) {
+    assert(seen(body) === want, `${JSON.stringify(body)}: gesehen "${seen(body)}", erwartet "${want}"`);
+  }
+  // Umgekehrt: Text IN einem String ist keine Deklaration.
+  const quiet = [
+    'content: "x; margin-left: 1px"; color: red',
+    "content: 'a; float: right; b'; color: red",
+    'content: "a\\\r\nb; margin-left: 1px"; color: red',
+    'content: "("; margin-inline-start: 1px',
+    'quotes: "(" ")"; padding: 0 1px 0 1px',
+    'background-image: url(a.png); margin-inline: 0 1px',
+  ];
+  for (const body of quiet) {
+    assert(seen(body) === '', `${JSON.stringify(body)}: faelschlich gemeldet "${seen(body)}"`);
+  }
+  // Der String bleibt EIN Wort, auch mit Leerraum darin.
+  assert(JSON.stringify(cssWords('0 "a b" 0 \'c ) d\'')) === JSON.stringify(['0', '"a b"', '0', "'c ) d'"]),
+    `Worte: ${JSON.stringify(cssWords('0 "a b" 0 \'c ) d\''))}`);
+});
+
 test('Baender in RTL: offene Kante, Chevron und Nachbarmonat-Toenung kippen mit der Schreibrichtung (#1467)', () => {
   // Das Raster kippt in RTL selbst: Spalte 1 steht rechts, `first` und
   // --band-out-start zaehlen vom Zeilenanfang. Was an einer SEITE des Bands
@@ -4207,33 +4462,16 @@ test('Baender in RTL: offene Kante, Chevron und Nachbarmonat-Toenung kippen mit 
   // physisch: `margin: 0 var(--band-me) 0 var(--band-ms)` setzt den Einzug in
   // RTL auf die falsche Seite. Drei Werte (`a b c`) sind seitengleich, weil
   // der mittlere Wert fuer links UND rechts gilt.
-  const words = (value) => {
-    const out = [];
-    let depth = 0;
-    let cur = '';
-    for (const ch of value.trim()) {
-      if (ch === '(') depth += 1;
-      if (ch === ')') depth -= 1;
-      if (/\s/.test(ch) && depth === 0) {
-        if (cur) out.push(cur);
-        cur = '';
-      } else {
-        cur += ch;
-      }
-    }
-    if (cur) out.push(cur);
-    return out;
-  };
   const lopsided = (body) => [...body.matchAll(/(?:^|[;{\s])(margin|padding|inset|border-radius)\s*:\s*([^;]+)/g)]
     .filter(([, prop, raw]) => {
       const value = raw.replace(/!important/, '').trim();
       if (prop !== 'border-radius') {
-        const v = words(value);
+        const v = cssWords(value);
         return v.length === 4 && v[1] !== v[3];
       }
       // Radius: gespiegelt tauschen oben-links/oben-rechts und unten-links/unten-rechts.
       return value.split('/').some((half) => {
-        const [tl, tr = tl, br = tl, bl = tr] = words(half);
+        const [tl, tr = tl, br = tl, bl = tr] = cssWords(half);
         return tl !== tr || br !== bl;
       });
     })
@@ -4286,6 +4524,89 @@ test('Baender in RTL: offene Kante, Chevron und Nachbarmonat-Toenung kippen mit 
     'beide Stopps messen vom Anfang des Bands');
   const rtl = rule('[dir="rtl"] .month-bands > .cal-band--outside');
   assert(/--band-to:\s*left/.test(rtl.body), 'in RTL laeuft der Verlauf von rechts nach links');
+});
+test('Kalender in RTL: keine Regel in calendar.css haengt an einer physischen Seite', () => {
+  // Unter dir="rtl" steht die Zeitspalte rechts und Spalte 1 des Rasters
+  // ebenfalls. Eine Fuge per border-left, ein Einzug per margin-left oder
+  // eine Jetzt-Linie ab `left: <Zeitspalte>` bleibt dann auf der LTR-Seite:
+  // die Linien der Ganztags-Zeile laufen 1px neben denen des Zeitrasters, die
+  // Monatszelle zieht eine Linie an den Aussenrand, die Beschriftung klebt an
+  // der falschen Kante, und die Jetzt-Linie ueberdeckt die Zeitspalte.
+  // Geprueft wird jede Regel der Datei (auch in @media), nicht eine Liste -
+  // eine neue Regel mit border-right soll hier auffallen, nicht erst in RTL.
+  const all = [...eachRule(calendarCss)];
+  const where = (r) => `${r.selector.trim()}${r.at.length ? ` (in ${r.at.join(' ')})` : ''}`;
+
+  // Ausnahmen nennen die Deklarationen, die sie erlauben - nicht die ganze
+  // Regel - in der Schreibweise, die physicalSideDeclarations() liefert.
+  // Regel und Ausnahme gehen durch denselben Leser: was er als physisch
+  // meldet, muss hier woertlich stehen, und was hier steht, muss er in der
+  // Regel noch als physisch melden. Eine neue border-left in einer gelisteten
+  // Regel faellt so genauso auf wie in jeder anderen.
+  const exceptions = {
+    // links und rechts 0: die Linie spannt die ganze Spalte, in beiden Richtungen gleich
+    '.week-view__hour-line': ['left: 0', 'right: 0'],
+    '.week-view__now-line': ['left: 0', 'right: 0'],
+    // left: 50% mit translateX(-50%) zentriert, die Richtung spielt keine Rolle
+    '.day-view__empty-hint': ['left: 50%'],
+    // Ueberlappung im Avatar-Stapel: gehoert zur Folgearbeit an .avatar-stack
+    // (user-multi-select.css, row-reverse mit margin-left) und kippt mit ihr
+    '.allday-event .avatar-stack__item, .week-event__time .avatar-stack__item': [
+      'margin-left: calc(-1 * var(--space-1))',
+    ],
+  };
+  const used = new Set();
+  for (const r of all) {
+    const found = physicalSideDeclarations(r.body);
+    if (found.length === 0) continue;
+    const key = r.selector.trim().replace(/\s+/g, ' ');
+    const allowed = exceptions[key] ?? [];
+    if (key in exceptions) used.add(key);
+    for (const decl of allowed) {
+      assert(found.includes(decl), `${where(r)} ist als Ausnahme gelistet, ihr Grund stimmt aber nicht mehr (${decl} fehlt): ${r.body}`);
+    }
+    const rest = found.filter((decl) => !allowed.includes(decl));
+    assert(rest.length === 0, `${where(r)} haengt an einer physischen Seite: ${rest.join('; ')}`);
+  }
+  // Eine Ausnahme, deren Regel keine physische Seite mehr hat (oder die es
+  // nicht mehr gibt), ist tot: sie wuerde die naechste physische Seite unter
+  // demselben Selektor still durchwinken.
+  for (const key of Object.keys(exceptions)) {
+    assert(used.has(key), `Ausnahme ohne Treffer - die Regel hat keine physische Seite mehr oder heisst anders: ${key}`);
+  }
+  // Die Zentrierung ist eine Bedingung, keine Seite: ohne translateX(-50%)
+  // stuende der Hinweis ab der Mitte nach rechts.
+  const hint = all.find((r) => r.at.length === 0 && r.selector.trim() === '.day-view__empty-hint');
+  assert(hint && /translateX\(-50%\)/.test(hint.body), '.day-view__empty-hint zentriert mit translateX(-50%)');
+
+  // Die umgestellten Regeln tragen ihre logische Eigenschaft.
+  const rule = (sel) => {
+    const found = all.filter((r) => r.at.length === 0 && r.selector.trim() === sel);
+    assert(found.length > 0, `Regel nicht gefunden: ${sel}`);
+    return found.map((r) => r.body).join(';');
+  };
+  const expect = {
+    '.month-day': /border-inline-end:/,
+    '.month-day:nth-child(7n)': /border-inline-end:\s*none/,
+    '.week-view__day-header': /border-inline-start:/,
+    '.week-view__col': /border-inline-start:/,
+    '.day-view__col': /border-inline-start:/,
+    '.allday-cell': /border-inline-start:/,
+    '.allday-row--week .allday-cell': /border-inline-start:\s*0/,
+    '.week-view__time-slot': /padding-inline-end:/,
+    '.calendar-all-day-label': /text-align:\s*end/,
+    '.week-view__now-line::before': /inset-inline-start:/,
+    '.day-view__now-line': /inset-inline:\s*var\(--cal-gutter-width\)\s+0/,
+    '.day-view__now-dot': /inset-inline-start:/,
+    '.cal-chip__assigned': /margin-inline-start:\s*auto/,
+    '.cal-band__until + .cal-chip__assigned': /margin-inline:\s*0/,
+    '.cal-filters__nested': /margin-inline-start:/,
+    '.event-icon-dialog__results': /padding-inline-end:/,
+  };
+  for (const [sel, logical] of Object.entries(expect)) {
+    assert(logical.test(rule(sel)), `${sel} traegt die logische Eigenschaft nicht: ${rule(sel)}`);
+  }
+
 });
 test('Monatszelle: der Fokusring liegt ueber der Band-Schicht, die Zelle nicht', () => {
   // Ein Band liegt in `.month-bands` (z-index 1) ueber den Zellen. Hob sich die
@@ -4889,6 +5210,161 @@ test('Z2: Hinweis im leeren Tag nennt die Geste des Zeigers, nicht den Einzelkli
     assert(!/Tippe auf eine Uhrzeit|Klicke auf eine Uhrzeit/.test(value), `${key}: „${value}" verspricht den Einzeltipp`);
   }
   assert(de.calendar.dayEmptyHintPointer && de.calendar.dayEmptyHintTouch, 'je ein Hinweis fuer Maus (Doppelklick) und Touch (langes Druecken)');
+});
+
+// --------------------------------------------------------
+// #1607 (M4b): ein Termin, der um exakt 00:00 endet
+//
+// 23:00-00:00 stand als 30-Minuten-Strich im Raster. eventEndDate() zieht ein
+// Ende um 00:00 auf den Starttag (#804, richtig fuer die TAGESZUORDNUNG: der
+// Termin gehoert dem Abend). timeRangeForEvent() fragte denselben Helfer aber
+// nach der LAENGE: "endet nicht spaeter als dieser Tag", also Ende = 00:00 = 0
+// Minuten, also vor dem Start, also die Mindesthoehe von 30 Minuten.
+// Mitternacht am Folgetag ist das Tagesende, 24 * 60.
+//
+// Feste Kalendertage (Juni 2026, keine Zeitumstellung) und, wo ein Instant im
+// Spiel ist, eine ausdruecklich gesetzte Anzeigezone.
+// --------------------------------------------------------
+
+function endsAtMidnight(startTime, extra = {}) {
+  return {
+    id: 4401, title: 'Spaetschicht', all_day: 0, assigned_users: [],
+    start_datetime: `2026-06-14T${startTime}`, end_datetime: '2026-06-15T00:00',
+    ...extra,
+  };
+}
+
+test('renderDayView: 23:00 bis 00:00 ist eine Stunde hoch, kein 30-Minuten-Strich (#1607)', () => {
+  withOvernightState({ cursor: '2026-06-14', events: [endsAtMidnight('23:00')] }, () => {
+    const container = fakeContainer();
+    calendarHelpers.renderDayView(container);
+    const bloecke = timedBlocks(container.html);
+    assert(bloecke.length === 1 && bloecke[0].id === 4401, `ein Zeitblock erwartet: ${JSON.stringify(bloecke)}`);
+    assert(bloecke[0].top === hourOffset(23 * 60), `Beginn 23:00: ${bloecke[0].top}`);
+    assert(bloecke[0].height === `calc(${hourOffset(60)} - 4px)`,
+      `der Block reicht bis Mitternacht, also eine Stunde: ${bloecke[0].height}`);
+  });
+});
+
+test('renderDayView: 22:00 bis 00:00 ist zwei Stunden hoch (#1607)', () => {
+  withOvernightState({ cursor: '2026-06-14', events: [endsAtMidnight('22:00')] }, () => {
+    const container = fakeContainer();
+    calendarHelpers.renderDayView(container);
+    const bloecke = timedBlocks(container.html);
+    assert(bloecke.length === 1, `ein Zeitblock erwartet: ${JSON.stringify(bloecke)}`);
+    assert(bloecke[0].top === hourOffset(22 * 60), `Beginn 22:00: ${bloecke[0].top}`);
+    assert(bloecke[0].height === `calc(${hourOffset(2 * 60)} - 4px)`, `zwei Stunden: ${bloecke[0].height}`);
+  });
+});
+
+test('renderWeekView: der Termin bis 00:00 steht nur am Abend, eine Stunde hoch (#1607)', () => {
+  withOvernightState({ events: [endsAtMidnight('23:00')] }, () => {
+    const container = fakeContainer();
+    calendarHelpers.renderWeekView(container);
+    const html = container.html;
+    const abend = timedBlocks(weekColumnHtml(html, '2026-06-14'));
+    const folgetag = timedBlocks(weekColumnHtml(html, '2026-06-15'));
+    assert(abend.length === 1, `der 14. zeigt den Block: ${JSON.stringify(abend)}`);
+    assert(abend[0].height === `calc(${hourOffset(60)} - 2px)`, `eine Stunde: ${abend[0].height}`);
+    assert(folgetag.length === 0,
+      `ein Ende um 00:00 gehoert dem Abend (#804) - der 15. bleibt leer: ${JSON.stringify(folgetag)}`);
+    assert(!html.slice(0, html.indexOf('week-view__scroll')).includes('class="allday-event"'),
+      'und in der Ganztags-Zeile steht er auch nicht');
+  });
+});
+
+test('layoutOverlaps: 23:00 bis 00:00 teilt sich die Spalte mit 23:30 (#1607)', () => {
+  const spaet = endsAtMidnight('23:00');
+  const anruf = {
+    id: 4402, title: 'Anruf', all_day: 0, assigned_users: [],
+    start_datetime: '2026-06-14T23:30', end_datetime: '2026-06-14T23:45',
+  };
+  const layout = calendarHelpers.layoutOverlaps([spaet, anruf], '2026-06-14');
+  assert(layout.get(spaet)?.totalCols === 2 && layout.get(anruf)?.totalCols === 2,
+    'als 23:00-23:30 gerechnet endete der Termin genau dort, wo der Anruf beginnt, und beide '
+    + `lagen deckungsgleich uebereinander: ${JSON.stringify([layout.get(spaet), layout.get(anruf)])}`);
+});
+
+test('ein Instant, der in der Anzeigezone um 00:00 endet, reicht ebenfalls bis zum Tagesende (#1607)', () => {
+  // 21:00Z-22:00Z ist in Berlin (Sommerzeit, +2) 23:00-00:00, in UTC 21:00-22:00.
+  // Beide Antworten sind eine Stunde hoch, aber an VERSCHIEDENEN Stellen - eine
+  // Rechnung am UTC-Tag oder an der Rechnerzone laege in einer der beiden falsch.
+  const instant = endsAtMidnight('23:00', { start_datetime: '2026-06-14T21:00:00Z', end_datetime: '2026-06-14T22:00:00Z' });
+  for (const [zone, beginn] of [['Europe/Berlin', 23 * 60], ['UTC', 21 * 60]]) {
+    withDisplayTimeZone(zone, () => {
+      withOvernightState({ cursor: '2026-06-14', events: [instant] }, () => {
+        const container = fakeContainer();
+        calendarHelpers.renderDayView(container);
+        const bloecke = timedBlocks(container.html);
+        assert(bloecke.length === 1, `${zone}: ein Zeitblock erwartet: ${JSON.stringify(bloecke)}`);
+        assert(bloecke[0].top === hourOffset(beginn), `${zone}: Beginn ${bloecke[0].top}`);
+        assert(bloecke[0].height === `calc(${hourOffset(60)} - 4px)`, `${zone}: eine Stunde: ${bloecke[0].height}`);
+      });
+    });
+  }
+});
+
+test('Mehrtaegige ab 24 Stunden bleiben in der Ganztags-Zeile, auch mit Ende um 00:00 (#1607, Regel aus #1323)', () => {
+  // Die Aenderung darf nur die HOEHE eines Zeitblocks treffen, nicht die Frage,
+  // WER ein Zeitblock ist. 45 Stunden (14. 14:00 bis 16. 11:00) und 38 Stunden
+  // mit Ende um Mitternacht (14. 10:00 bis 16. 00:00, gehoert bis zum 15.).
+  const lang = longTimedEvent();
+  const bisMitternacht = longTimedEvent({ id: 4403, start_datetime: '2026-06-14T10:00', end_datetime: '2026-06-16T00:00' });
+  for (const ev of [lang, bisMitternacht]) {
+    assert(calendarHelpers.isAllDayLike(ev) === true, `${ev.id}: ab 24 Stunden Ganztags-Zeile`);
+    withOvernightState({ events: [ev] }, () => {
+      const container = fakeContainer();
+      calendarHelpers.renderWeekView(container);
+      assert(timedBlocks(container.html).length === 0,
+        `${ev.id}: kein Zeitblock im Raster: ${JSON.stringify(timedBlocks(container.html))}`);
+      assert(container.html.includes(`data-id="${ev.id}"`), `${ev.id}: der Termin steht in der Ganztags-Zeile`);
+    });
+  }
+  assert(calendarHelpers.eventEndDate(bisMitternacht) === '2026-06-15', 'das Ende um 00:00 gehoert weiter dem Vortag (#804)');
+  assert(calendarHelpers.eventEndDate(lang) === '2026-06-16', 'der lange Termin endet unveraendert am 16.');
+  // Und der kurze Nacht-Termin aus #1313 bleibt, wie er war.
+  const nacht = overnightEvent();
+  const kopf = calendarHelpers.layoutOverlaps([nacht], '2026-06-14');
+  const schwanz = calendarHelpers.layoutOverlaps([nacht], '2026-06-15');
+  assert(kopf.get(nacht)?.totalCols === 1 && schwanz.get(nacht)?.totalCols === 1, '22:00-01:30 unveraendert');
+});
+
+// --------------------------------------------------------
+// #1607 (9): das Serienende vor dem Start im Dialog - WANN gefragt wird
+//
+// Der Dialog fragt nur, wenn das Speichern Regel oder Starttag aendert; eine
+// eingelesene Serie, die schon so dasteht, bleibt bearbeitbar. "Starttag
+// geaendert" muss dabei in EINER Darstellung verglichen werden: das Formular
+// liefert den Tag der Anzeigezone, die Zeile eines synchronisierten Termins
+// einen Instant. Am rohen Text verglichen galt ein reiner Titel-Edit als
+// Startaenderung, sobald UTC-Tag und Anzeigetag auseinanderfallen (Review an
+// PR #1618).
+// --------------------------------------------------------
+
+const ENDET_VORHER_REGEL = 'RRULE:FREQ=DAILY;UNTIL=20910930T235959Z';
+
+test('seriesEndConflict: ein Titel-Edit an einer eingelesenen Serie wird nicht blockiert, auch wenn ihr UTC-Tag ein anderer ist (#1607)', () => {
+  // 20:00Z am 1. Oktober ist in Tokio der 2. Oktober, 05:00.
+  const fremd = { id: 9, start_datetime: '2091-10-01T20:00:00Z', recurrence_rule: ENDET_VORHER_REGEL };
+  withDisplayTimeZone('Asia/Tokyo', () => {
+    assert(calendarHelpers.seriesEndConflict('edit', fremd, ENDET_VORHER_REGEL, '2091-10-02T05:00') === false,
+      'Start und Regel sind unveraendert - der Tag des Formulars ist nur der Anzeigetag desselben Zeitpunkts');
+    assert(calendarHelpers.seriesEndConflict('edit', fremd, ENDET_VORHER_REGEL, '2091-10-03T05:00') === true,
+      'ein wirklich verschobener Start wird gefragt');
+  });
+  withDisplayTimeZone('UTC', () => {
+    assert(calendarHelpers.seriesEndConflict('edit', fremd, ENDET_VORHER_REGEL, '2091-10-01T20:00') === false,
+      'in UTC ist der Anzeigetag der 1. - auch dort unveraendert');
+  });
+});
+
+test('seriesEndConflict: neue Serie, geaenderte Regel und unveraenderte Bestandsserie (#1607)', () => {
+  const lokal = { id: 10, start_datetime: '2091-10-02T09:00', recurrence_rule: 'FREQ=DAILY;UNTIL=20910930T235959Z' };
+  assert(calendarHelpers.seriesEndConflict('create', null, 'FREQ=DAILY;UNTIL=20910930T235959Z', '2091-10-02T09:00') === true, 'neu: wird gefragt');
+  assert(calendarHelpers.seriesEndConflict('create', null, 'FREQ=DAILY;UNTIL=20911002T235959Z', '2091-10-02T09:00') === false, 'Ende am Starttag ist gueltig');
+  assert(calendarHelpers.seriesEndConflict('edit', lokal, lokal.recurrence_rule, '2091-10-02T11:00') === false,
+    'gleicher Tag, gleiche Regel: der Bestand bleibt bearbeitbar');
+  assert(calendarHelpers.seriesEndConflict('edit', lokal, 'FREQ=DAILY;UNTIL=20910929T235959Z', '2091-10-02T09:00') === true, 'geaenderte Regel: wird gefragt');
 });
 
 // --------------------------------------------------------

@@ -4,7 +4,7 @@ export function budgetPaths() {
   return {
     '/api/v1/budget/summary': { get: op({ summary: 'Get budget summary', tag: 'Budget' }) },
     '/api/v1/budget/plans': {
-      get: op({ summary: 'Get planned budget vs. actual for a month (category caps + savings goal)', tag: 'Budget' }),
+      get: op({ summary: 'Get planned budget vs. actual for a month (category caps + savings goal)', tag: 'Budget', description: 'In personal budget mode the actual figures count what you can see, like the summary: `scope` (`mine`|`household`, default `mine`) picks the view, private entries of others do not count, and the amount of an entry of someone else whose details are hidden (`shared_amount`) counts only toward income and balance of the savings goal, never toward a category. Shared mode counts every entry.' }),
     },
     '/api/v1/budget/plans/{category}': {
       put: op({ summary: 'Set planned monthly amount for a category or the savings goal (__savings__)', tag: 'Budget', params: [stringPathParam('category', 'Expense category key or __savings__')], stateChanging: true, requestBody: jsonBody(null) }),
@@ -68,8 +68,14 @@ export function budgetPaths() {
           name: 'scope',
           in: 'query',
           required: false,
-          description: "View filter when the household runs in personal budget mode (preference `budget_mode=personal`): `mine` shows entries you own, `household` shows the shared pot. Ignored in shared mode. Entries also carry `owner_id` and `visibility` (`private`|`shared`); private entries are only visible to their owner (no admin bypass). Each entry carries `attachments`: linked documents from the documents module, filtered by document visibility.",
+          description: "View filter when the household runs in personal budget mode (preference `budget_mode=personal`): `mine` shows entries you own, `household` shows the shared pot. Ignored in shared mode. Entries also carry `owner_id` and `visibility` (`private`|`shared`|`shared_amount`); private entries are only visible to their owner (no admin bypass), and on a `shared_amount` entry of someone else only amount, date and account remain (`details_hidden: true`). Each entry carries `attachments`: linked documents from the documents module, filtered by document visibility.",
           schema: { type: 'string', enum: ['mine', 'household'], default: 'mine' },
+        }, {
+          name: 'category',
+          in: 'query',
+          required: false,
+          description: 'Only entries of this category key; an unknown key is ignored. The filter sees the same view as the response: in personal budget mode an entry of someone else whose details are hidden from you (`shared_amount`) carries the category `__private__` and matches only that key, like the catch-all bucket in the summary and statistics.',
+          schema: { type: 'string' },
         }, {
           name: 'q',
           in: 'query',

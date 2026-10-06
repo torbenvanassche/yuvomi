@@ -313,9 +313,9 @@ docker compose up -d
 Docker pulls `ghcr.io/ulsklyc/yuvomi:latest` automatically. No build step, no Node.js installation needed.
 
 > **Pinning a version.** Every release is also published under immutable tags:
-> `2.71.0` (exact version), `2.71` (latest patch of that minor), plus a moving `main`
+> `2.73.0` (exact version), `2.73` (latest patch of that minor), plus a moving `main`
 > tag for the current development state. To pin production to a known-good release,
-> set `image: ghcr.io/ulsklyc/yuvomi:2.71.0` in your compose file and bump it
+> set `image: ghcr.io/ulsklyc/yuvomi:2.73.0` in your compose file and bump it
 > deliberately; `latest` always points at the newest release.
 
 > **Verifying what you pull.** Every image the publish workflow builds is signed at build
@@ -324,7 +324,7 @@ Docker pulls `ghcr.io/ulsklyc/yuvomi:latest` automatically. No build step, no No
 > image you are about to run is one GitHub built from a release tag of this repository:
 >
 > ```bash
-> cosign verify ghcr.io/ulsklyc/yuvomi:2.71.0 \
+> cosign verify ghcr.io/ulsklyc/yuvomi:2.73.0 \
 >   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 >   --certificate-identity-regexp '^https://github.com/ulsklyc/yuvomi/.github/workflows/docker-publish.yml@refs/tags/v'
 > ```
@@ -333,7 +333,7 @@ Docker pulls `ghcr.io/ulsklyc/yuvomi:latest` automatically. No build step, no No
 > anything else means the image is not one this repository released. The `main` tag is
 > signed too, under `refs/heads/main`, which the pattern above deliberately excludes. Tags
 > published before September 2026 carry no signature. Provenance and SBOM travel inside the
-> image: `docker buildx imagetools inspect ghcr.io/ulsklyc/yuvomi:2.71.0 --format '{{ json .Provenance }}'`.
+> image: `docker buildx imagetools inspect ghcr.io/ulsklyc/yuvomi:2.73.0 --format '{{ json .Provenance }}'`.
 
 Continue with [Step 4 — Verify](#4-verify-the-container-is-running).
 
@@ -378,7 +378,7 @@ docker compose logs -f
 You should see output like:
 
 ```
-yuvomi  | [Yuvomi] Server running on port 3000 | Version 2.71.0
+yuvomi  | [Yuvomi] Server running on port 3000 | Version 2.73.0
 yuvomi  | [Yuvomi] Environment: production
 yuvomi  | [Sync] Auto-sync active every 15 minutes.
 ```
@@ -528,7 +528,7 @@ All configuration happens in the `.env` file. The container reads these values o
 | `BIND_ADDRESS` | Address the Express server listens on. Unset means all interfaces, and a container needs exactly that: the published port only reaches the app this way, so leave it unset for Docker, Podman, Unraid, TrueNAS and Umbrel. Set it to `127.0.0.1` when Node runs directly on the host behind a reverse proxy on that host. It has to be an IP address: a host name, `localhost` included, is refused at startup, because the MCP bridge would resolve it again on every call and could reach another machine with the caller's credentials. An IPv6 address with a zone ID (`fe80::1%eth0`) is refused at startup: no URL can reach it, so the built-in MCP bridge could never call the API back. Not to be confused with `OIKOS_HTTP_BIND`, which decides where the container engine publishes the port. | all interfaces | No |
 | `OIKOS_HTTP_PORT` | Host port that the compose file maps to the container's port 3000. Change this to expose Yuvomi on a different host port; the app inside the container always listens on 3000. | `3000` | No |
 | `OIKOS_HTTP_BIND` | Host bind address for the published port (`podman-compose.yml` only). Set to `127.0.0.1` for rootless Podman behind a reverse proxy on the same host. | `0.0.0.0` | No |
-| `TZ` | Container timezone (e.g. `Europe/Berlin`). Affects log timestamps and the automated-backup schedule, and is the **default** for the household zone. Since v2.34.0 the household zone is a setting of its own (Settings → Account → Appearance → Region), and where both exist the setting wins: `TZ` lives in the compose file, which is out of reach on Umbrel, TrueNAS and Unraid, and it also drives things that have nothing to do with the family calendar. Whichever applies is the zone used wherever a time carries none of its own: the calendar day server-side jobs call "today" (upcoming events, countdowns, recurring split expenses, birthdays), events pushed to Google Calendar when the target calendar reports no zone, events pushed to Outlook, events pushed to a CalDAV server (#938 - before that they carried no zone at all, leaving every server free to read them on its own clock), the due times of CalDAV reminders synced into Tasks, and the times in the exported calendar feed (`/feed/calendar/<token>.ics`), which subscribers read in this zone - a wrong zone shifts every appointment for everyone subscribed. **Since v2.36.0 the app's own display follows it too**, so a device travelling in another zone shows the household's clock rather than its own; that half applies only when the setting is set, since `TZ` alone leaves the display on the browser as before. | `UTC` | No |
+| `TZ` | Container timezone (e.g. `Europe/Berlin`). Affects log timestamps and the automated-backup schedule, and is the **default** for the household zone. Since v2.34.0 the household zone is a setting of its own (Settings → Account → Appearance → Region), and where both exist the setting wins: `TZ` lives in the compose file, which is out of reach on Umbrel, TrueNAS and Unraid, and it also drives things that have nothing to do with the family calendar. A household whose admin account is created on the first-run page in the browser gets that setting right away: the page sends the browser's zone and the server stores it (#1607); a browser that reports no usable zone, or only UTC, sends nothing, and an admin account created by the installer leaves the setting empty, so `TZ` applies there. A household set up earlier is not changed; if an admin's browser is in a different zone, the overview asks once whether to use it. Whichever applies is the zone used wherever a time carries none of its own: the calendar day server-side jobs call "today" (upcoming events, countdowns, recurring split expenses, birthdays), events pushed to Google Calendar when the target calendar reports no zone, events pushed to Outlook, events pushed to a CalDAV server (#938 - before that they carried no zone at all, leaving every server free to read them on its own clock), the due times of CalDAV reminders synced into Tasks, and the times in the exported calendar feed (`/feed/calendar/<token>.ics`), which subscribers read in this zone - a wrong zone shifts every appointment for everyone subscribed. **Since v2.36.0 the app's own display follows it too**, so a device travelling in another zone shows the household's clock rather than its own; that half applies only when the setting is set, since `TZ` alone leaves the display on the browser as before. | `UTC` | No |
 | `NODE_ENV` | Runtime environment | `production` | No |
 | `LOG_LEVEL` | Lowest severity written to the container log (`debug`, `info`, `warn`, `error`). Set to `debug` to see the per-run detail of the calendar, contact and holiday sync, which stays quiet at `info` when a run has nothing to do. | `info` | No |
 | `TRUST_PROXY` | Number of reverse-proxy hops to trust, or a subnet string (e.g. `1`, `172.16.0.0/12`, `loopback`). The default already trusts a single hop, so `req.ip` returns the real client IP behind one Caddy/Nginx/Traefik proxy without any configuration. Set to `loopback` for direct, proxy-less deployments, or to a subnet/higher hop count behind multiple proxy layers. Numeric values are treated as a hop count; named values (`loopback`, `linklocal`, `uniquelocal`) work as expected. | `1` | No |
@@ -886,16 +886,55 @@ the same kind, listed in the same table.
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID from Google Cloud Console | - | No |
-| `GOOGLE_CLIENT_SECRET` | OAuth 2.0 Client Secret | - | No |
-| `GOOGLE_REDIRECT_URI` | OAuth callback URL | `https://<YOUR-DOMAIN>/api/v1/calendar/google/callback` | No |
+| `GOOGLE_CLIENT_ID` | OAuth 2.0 Client ID from Google Cloud Console | - | Yes when Google sync is used |
+| `GOOGLE_CLIENT_SECRET` | OAuth 2.0 Client Secret | - | Yes when Google sync is used |
+| `GOOGLE_REDIRECT_URI` | OAuth callback URL, `https://<YOUR-DOMAIN>/api/v1/calendar/google/callback`. Yuvomi does not derive it, so it has to be set | - | Yes when Google sync is used |
 
-After connecting, enable the calendars to sync under **Settings → Modules → Calendar → Calendar sync**. The sync runs both ways:
+The three variables belong together. As long as one of them is empty, the settings page shows
+"Not configured (missing .env variables)" instead of the connect button.
+
+**Setting it up at Google.** Google renames the pages of its console from time to time, so the steps
+below say what has to exist rather than where to click; the current click path is in Google's own
+guide, [Using OAuth 2.0 for Web Server Applications](https://developers.google.com/identity/protocols/oauth2/web-server).
+
+1. In the Google Cloud console, create a project (or pick an existing one) and enable the
+   **Google Calendar API** for it.
+2. Configure the OAuth consent screen of that project. Outside a Google Workspace organization the
+   user type is **External**. While the publishing status is **Testing**, only the Google accounts
+   listed as test users can connect, so add the account whose calendars you want to sync.
+3. Create an OAuth client of the type **Web application** and add
+   `https://<YOUR-DOMAIN>/api/v1/calendar/google/callback` as an authorized redirect URI. Google
+   compares scheme, case and trailing slash exactly, and accepts only HTTPS addresses with a host
+   name, not a raw IP address (`localhost` is exempt); see
+   [Google's rules for redirect URIs](https://support.google.com/cloud/answer/15549257).
+4. Put the client ID and the client secret into `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, set
+   `GOOGLE_REDIRECT_URI` to the same string as in step 3, and restart Yuvomi.
+
+**Connecting.** Sign in to Yuvomi as an admin, under the address that is in the redirect URI, and
+choose **Connect with Google** under **Settings → Modules → Calendar → Calendar sync**. Only an
+admin sees that button. Google's answer is matched against the session of the browser that started
+the request, so starting from another address (the LAN IP instead of the domain, for example) ends
+back on the settings page with an error. After connecting, tick the calendars to sync under
+"Synced calendars" on the same page. Nothing is imported before a calendar is ticked, and ticking
+one starts a sync right away.
+
+The sync runs both ways:
 events created, edited, deleted, or moved to another calendar in Yuvomi are applied in Google as
-well, and changes made in Google flow back. Outbound changes are attempted immediately and retried
+well, and changes made in Google flow back. A new event only goes to Google when a Google calendar
+is chosen as its **Sync target** in the event form; with "Store locally only" it stays in Yuvomi.
+Outbound changes are attempted immediately and retried
 by the next sync run (`SYNC_INTERVAL_MINUTES`) if Google is unreachable. A calendar is only written
-to when the connected account has write access to it, and the **read-only mode** checkbox stops
+to when the connected account has write access to it, and the **Read-only** switch stops
 Yuvomi from changing anything in Google while still importing normally.
+
+One Google account can be connected per installation; the calendars on offer are the ones in that
+account's Google calendar list. If Google returns no refresh token when connecting, the connection
+fails: remove Yuvomi's access in the settings of that Google account and connect again. And while
+the consent screen is in the publishing status Testing, Google lets the authorization, refresh
+token included, expire seven days after consent, so Yuvomi has to be connected again every week.
+Google documents this expiry for the Testing status only
+([Manage App Audience](https://support.google.com/cloud/answer/15549945)); a project switched to
+"In production" may show Google's unverified-app warning when connecting.
 
 Recurring appointments are imported as one series with its repeat rule, and cancelled or moved
 occurrences are carried over individually. Upgrading to v1.56.0 makes the first sync run read every

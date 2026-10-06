@@ -15,10 +15,12 @@ import {
   sendDocumentLinkRefusal, visibleDocumentRef,
 } from '../services/document-links.js';
 import { sendDocumentDeletionConflict } from '../services/document-deletion-lock.js';
-import { buildSplits, decorateMoney, groupBalanceRows, minorToDecimal, parseMoneyToMinor, simplifyDebts } from '../services/split-expenses.js';
+import {
+  buildSplits, decorateMoney, groupBalanceRows, insertExpenseLedger, membershipRefusal, minorToDecimal, parseMoneyToMinor, simplifyDebts, splitSnapshot,
+} from '../services/split-expenses.js';
 import { CURRENCY_CODES } from '../../public/utils/currency-codes.js';
 import { syncBirthdayArtifacts } from '../services/birthdays.js';
-import { householdMemberSql, newNonMembers, staffMessage } from '../services/household-members.js';
+import { activeAccountSql, householdMemberSql, newNonMembers, staffMessage } from '../services/household-members.js';
 import { EMAIL_IN_USE_MESSAGE, emailsTakenByOtherAccounts } from '../services/contact-identity.js';
 import { todayKey } from '../utils/timezone.js';
 import { mayReadModule, mayWriteModule } from '../permissions.js';
@@ -96,6 +98,17 @@ function activity(groupId, actorId, type, entityType, entityId, metadata = {}) {
     INSERT INTO expense_activity (group_id, actor_id, type, entity_type, entity_id, metadata)
     VALUES (?, ?, ?, ?, ?, ?)
   `).run(groupId, actorId, type, entityType, entityId, JSON.stringify(metadata));
+}
+
+/**
+ * Was ein Verlaufseintrag ueber eine Ausgabe festhaelt (#1607): Titel, Betrag
+ * und Waehrung im Augenblick des Schreibens. Der Verlauf ist Geschichte - las
+ * die Oberflaeche den Betrag aus der geladenen Ausgabe, schrieb jede spaetere
+ * Bearbeitung alle frueheren Eintraege um. Minor-Units wie bei
+ * ledger_restored; die Leseroute ergaenzt die Dezimalform.
+ */
+function expenseSnapshot(title, amountMinor, currency) {
+  return { title, amount_minor: amountMinor, currency };
 }
 
 function groupSelectWhere(where) {
@@ -426,29 +439,6 @@ function settlementForViewer(row, req) {
     ...decorateMoney(row),
     proof_document_id: documentRefForViewer(db.get(), row.proof_document_id, documentViewer(req)),
   };
-}
-
-// `created_by` jeder Ledger-Zeile ist `expense.created_by`, nie die Person, die
-// gerade anlegt oder bearbeitet: Ausgabe und Zeilen haengen per ON DELETE
-// CASCADE am selben Konto und fallen so nur gemeinsam. Trug ein PUT die
-// bearbeitende Person ein, nahm deren Kontoloeschung die Zeilen mit, und die
-// weiter aktive Ausgabe zaehlte nicht mehr im Saldo. Wer bearbeitet hat, steht
-// in `expense_edited` (expense_activity.actor_id).
-//
-// Migration v226 baut verlorene Zeilen mit einer EINGEFRORENEN SQL-Fassung
-// dieser Regel neu auf. Aendert sich die Regel, wird test:split-ledger-rebuild-
-// migration rot - dann gilt die neue Regel ab hier, v226 bleibt, wie sie ist.
-function insertExpenseLedger(database, expense, splits, sourceType = 'expense') {
-  const actorId = expense.created_by;
-  const insert = database.prepare(`
-    INSERT INTO expense_ledger_entries
-      (group_id, source_type, source_id, user_id, counterparty_id, amount_minor, currency, memo, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  insert.run(expense.group_id, sourceType, expense.id, expense.payer_id, null, expense.converted_amount_minor, expense.converted_currency, expense.title, actorId);
-  for (const split of splits) {
-    insert.run(expense.group_id, sourceType, expense.id, split.user_id, expense.payer_id, -split.amount_minor, split.currency, expense.title, actorId);
-  }
 }
 
 function replaceExpenseSplits(database, expense, splits) {
@@ -844,7 +834,7 @@ router.post('/groups/:id/members', async (req, res) => {
         // ist ein Schreibvorgang in `contacts` und braucht dessen Schreibrecht
         // (beide Achsen) - vor dem Hash, damit nichts angefangen wird.
         if (!mayWriteModule(req, 'contacts')) {
-          return res.status(403).json({ error: 'Write access to contacts is required to add a contact without an account.', code: 403 });
+          return res.status(403).json({ error: 'Write access to contacts is required to add a contact without an account.', code: 403, reason: 'cross_module_access' });
         }
         passwordHash = await randomGuestPasswordHash();
       }
@@ -1016,11 +1006,9 @@ router.post('/groups/:id/expenses', (req, res) => {
     if (!group) return res.status(404).json({ error: 'Group not found.', code: 404 });
     const parsed = parseExpenseBody(req.body, group.default_currency);
     const payerId = Number(req.body.payer_id || userId(req));
-    if (!memberRole(groupId, payerId)) return res.status(400).json({ error: 'Payer must be a group member.', code: 400 });
     const participants = Array.isArray(req.body.participants) ? req.body.participants : [payerId];
-    for (const participantId of participants) {
-      if (!memberRole(groupId, Number(participantId))) return res.status(400).json({ error: 'All participants must be group members.', code: 400 });
-    }
+    const refusal = membershipRefusal(db.get(), groupId, payerId, participants);
+    if (refusal) return res.status(400).json({ error: refusal, code: 400 });
     const splits = buildSplits({
       method: parsed.method,
       amountMinor: parsed.convertedAmountMinor,
@@ -1045,7 +1033,7 @@ router.post('/groups/:id/expenses', (req, res) => {
         viewer: documentViewer(req),
         extraValues: { kind: 'receipt' },
       });
-      activity(groupId, userId(req), 'expense_created', 'expense', expense.id, { title: parsed.title });
+      activity(groupId, userId(req), 'expense_created', 'expense', expense.id, expenseSnapshot(parsed.title, parsed.amountMinor, parsed.currency));
       return expense.id;
     });
     res.status(201).json({ data: serializeExpense(loadExpense(createdId, req), null, documentViewer(req)) });
@@ -1066,15 +1054,8 @@ router.put('/expenses/:id', (req, res) => {
     const parsed = parseExpenseBody(req.body, existing.converted_currency);
     const payerId = Number(req.body.payer_id || existing.payer_id);
     const participants = Array.isArray(req.body.participants) ? req.body.participants : db.get().prepare('SELECT user_id FROM expense_splits WHERE expense_id = ?').all(existing.id).map((r) => r.user_id);
-    // Dieselbe Regel wie beim Anlegen (GHSA-4p5w-5346-8598): Zahler und
-    // Beteiligte muessen Mitglieder DIESER Gruppe sein. Der PUT nahm die IDs
-    // bisher ungeprueft - ein Mitglied konnte einer Person, die nie in der
-    // Gruppe war, eine Schuld zuschreiben, die diese nirgends sieht und nicht
-    // bestreiten kann.
-    if (!memberRole(existing.group_id, payerId)) return res.status(400).json({ error: 'Payer must be a group member.', code: 400 });
-    for (const participantId of participants) {
-      if (!memberRole(existing.group_id, Number(participantId))) return res.status(400).json({ error: 'All participants must be group members.', code: 400 });
-    }
+    const refusal = membershipRefusal(db.get(), existing.group_id, payerId, participants);
+    if (refusal) return res.status(400).json({ error: refusal, code: 400 });
     const splits = buildSplits({ method: parsed.method, amountMinor: parsed.convertedAmountMinor, currency: parsed.convertedCurrency, participants, splits: req.body.splits });
     db.transaction(() => {
       db.get().prepare(`
@@ -1096,7 +1077,7 @@ router.put('/expenses/:id', (req, res) => {
           extraValues: { kind: 'receipt' },
         });
       }
-      activity(existing.group_id, userId(req), 'expense_edited', 'expense', existing.id, { title: parsed.title });
+      activity(existing.group_id, userId(req), 'expense_edited', 'expense', existing.id, expenseSnapshot(parsed.title, parsed.amountMinor, parsed.currency));
     });
     res.json({ data: serializeExpense(loadExpense(existing.id, req), null, documentViewer(req)) });
   } catch (err) {
@@ -1107,6 +1088,27 @@ router.put('/expenses/:id', (req, res) => {
   }
 });
 
+/**
+ * Loeschen einer Ausgabe (#1382). Die Ledger-Zeilen der Ausgabe bleiben
+ * stehen, daneben entsteht je `expense`-Zeile ihr genaues Negativ als
+ * `expense_reversal` (gleiche `source_id`) - dieselbe Form wie das Storno einer
+ * Zahlung (#1309). Die Salden stellen sich so von selbst zurueck, und das
+ * Ledger sagt weiter, warum.
+ *
+ * Gespiegelt werden die GEBUCHTEN Zeilen, nicht aus dem Datensatz neu
+ * gerechnet: eine Fremdwaehrungs-Ausgabe steht im Ledger in
+ * `converted_currency`, und genau dieser Betrag muss wieder heraus.
+ *
+ * Ein Ausgleich ist nicht an Ausgaben gebunden (`settlements` kennt nur zwei
+ * Personen und einen Betrag) und bleibt unberuehrt; nach dem Loeschen zeigen
+ * die Salden, was er ohne die Ausgabe zu viel war.
+ *
+ * Statuswechsel und Gegenbuchung stehen in EINER Transaktion, und der ganze
+ * Handler laeuft ohne await: `loadExpense` findet nur aktive Ausgaben, ein
+ * zweites Loeschen ist deshalb 404 und bucht nie ein zweites Negativ. Aeltere
+ * Loeschungen haben ihre Zeilen schon verloren und brauchen nichts: ihr Saldo
+ * stimmt, nur der Verlauf fehlt dort.
+ */
 router.delete('/expenses/:id', (req, res) => {
   try {
     const existing = loadExpense(Number(req.params.id), req);
@@ -1114,8 +1116,32 @@ router.delete('/expenses/:id', (req, res) => {
     if (!mayChangeGroupRecord(existing, req)) return res.status(403).json({ error: 'Not authorized.', code: 403 });
     db.transaction(() => {
       db.get().prepare("UPDATE expenses SET status = 'deleted', deleted_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = ?").run(existing.id);
-      db.get().prepare('DELETE FROM expense_ledger_entries WHERE source_type = ? AND source_id = ?').run('expense', existing.id);
-      activity(existing.group_id, userId(req), 'expense_deleted', 'expense', existing.id, { title: existing.title });
+      const booked = db.get().prepare(`
+        SELECT group_id, user_id, counterparty_id, amount_minor, currency, memo, created_by
+        FROM expense_ledger_entries
+        WHERE source_type = 'expense' AND source_id = ?
+        ORDER BY id ASC
+      `).all(existing.id);
+      const insert = db.get().prepare(`
+        INSERT INTO expense_ledger_entries (group_id, source_type, source_id, user_id, counterparty_id, amount_minor, currency, memo, created_by)
+        VALUES (?, 'expense_reversal', ?, ?, ?, ?, ?, ?, ?)
+      `);
+      // `created_by` kommt aus der Originalzeile, nicht von der loeschenden
+      // Person: beide Zeilen haengen per ON DELETE CASCADE an diesem Konto und
+      // fallen so nur gemeinsam. Mit dem Konto der loeschenden Person
+      // verschwaende sonst nur die Gegenbuchung, und die geloeschte Ausgabe
+      // zaehlte still wieder im Saldo; mit dem Konto der anlegenden Person
+      // fielen Ausgabe und Buchung, und die Gegenbuchung bliebe als Waise
+      // stehen. Wer geloescht hat, steht in `expense_deleted`
+      // (expense_activity.actor_id). Seit #1381 deaktiviert das Entfernen
+      // eines Kontos mit solchen Zeilen es nur noch; die Kaskade steht aber
+      // weiter im Schema, und die Regel haelt das Paar auch dort zusammen.
+      for (const row of booked) {
+        insert.run(row.group_id, existing.id, row.user_id, row.counterparty_id, -row.amount_minor, row.currency, row.memo, row.created_by);
+      }
+      // Der Betrag, unter dem die Ausgabe in der Liste stand (eingegeben, in
+      // seiner Waehrung); das Ledger fuehrt den umgerechneten.
+      activity(existing.group_id, userId(req), 'expense_deleted', 'expense', existing.id, expenseSnapshot(existing.title, existing.amount_minor, existing.currency));
     });
     res.json({ data: { ok: true } });
   } catch (err) {
@@ -1131,7 +1157,7 @@ router.post('/expenses/:id/comments', (req, res) => {
     const vComment = str(req.body.comment, 'Comment', { max: MAX_TEXT });
     if (vComment.error) return res.status(400).json({ error: vComment.error, code: 400 });
     const result = db.get().prepare('INSERT INTO expense_comments (expense_id, user_id, comment) VALUES (?, ?, ?)').run(expense.id, userId(req), vComment.value);
-    activity(expense.group_id, userId(req), 'comment_added', 'expense', expense.id);
+    activity(expense.group_id, userId(req), 'comment_added', 'expense', expense.id, { title: expense.title });
     res.status(201).json({ data: { id: result.lastInsertRowid, expense_id: expense.id, user_id: userId(req), comment: vComment.value } });
   } catch (err) {
     log.error('POST /expenses/:id/comments error:', err);
@@ -1290,7 +1316,8 @@ function activityCursor(query) {
   return { cursor: { beforeAt: query.before_at, beforeId } };
 }
 
-const LEDGER_REPAIR_ACTIVITY = new Set(['ledger_restored', 'ledger_removed']);
+// Typen, deren Metadaten einen Betrag in Minor-Units festhalten.
+const AMOUNT_SNAPSHOT_ACTIVITY = new Set(['ledger_restored', 'ledger_removed', 'expense_created', 'expense_edited', 'expense_deleted']);
 
 router.get('/groups/:id/activity', (req, res) => {
   try {
@@ -1316,13 +1343,16 @@ router.get('/groups/:id/activity', (req, res) => {
       // 'ledger_restored' (Migration v226) und 'ledger_removed' (v227)
       // speichern den Betrag in Minor-Units: eingefrorenes SQL kennt die
       // Nachkommastellen je Waehrung nicht. Hier bekommt er dieselbe
-      // Dezimalform wie payment_registered (`amount`).
-      if (LEDGER_REPAIR_ACTIVITY.has(row.type) && Number.isInteger(metadata?.amount_minor) && metadata.currency) {
+      // Dezimalform wie payment_registered (`amount`). Dasselbe gilt fuer den
+      // Betrag, den expense_created/_edited/_deleted festhalten (#1607);
+      // Eintraege von vor dem Snapshot tragen keinen und bleiben, wie sie sind.
+      if (AMOUNT_SNAPSHOT_ACTIVITY.has(row.type) && Number.isInteger(metadata?.amount_minor) && metadata.currency) {
         return { ...row, metadata: decorateMoney(metadata) };
       }
       return { ...row, metadata };
     });
     attachSettlementState(rows, groupId, req);
+    attachExpenseState(rows, groupId);
     const last = rows[rows.length - 1];
     const nextCursor = hasMore && last ? { before_at: last.created_at, before_id: last.id } : null;
     const pagination = cursor
@@ -1377,6 +1407,38 @@ function attachSettlementState(rows, groupId, req) {
   }
 }
 
+/**
+ * Haengt an jede Aktivitaet, die eine Ausgabe anlegt oder loescht, ob es die
+ * Ausgabe noch gibt (#1382): `expense.deleted_at`. Die Oberflaeche zeigt eine
+ * geloeschte Ausgabe damit weiter im Verlauf - als Zeichen, in derselben Form
+ * wie eine stornierte Zahlung.
+ *
+ * Nur der Stand, kein Titel und kein Betrag: die stehen seit #1607 in den
+ * Metadaten des Eintrags, wie sie beim Schreiben galten. Aus dem Datensatz
+ * gelesen, nennte ein alter Eintrag den heutigen Betrag.
+ */
+const EXPENSE_STATE_TYPES = new Set(['expense_created', 'recurring_generated', 'expense_deleted']);
+function attachExpenseState(rows, groupId) {
+  const wanted = (row) => EXPENSE_STATE_TYPES.has(row.type) && row.entity_type === 'expense' && row.entity_id != null;
+  const ids = [...new Set(rows.filter(wanted).map((row) => row.entity_id))];
+  if (!ids.length) return;
+  const expenses = db.get().prepare(`
+    SELECT id, status, deleted_at
+    FROM expenses
+    WHERE group_id = ? AND id IN (${ids.map(() => '?').join(', ')})
+  `).all(groupId, ...ids);
+  const byId = new Map(expenses.map((e) => [e.id, e]));
+  for (const row of rows) {
+    if (!wanted(row)) continue;
+    const e = byId.get(row.entity_id);
+    if (!e) continue;
+    row.expense = {
+      id: e.id,
+      deleted_at: e.status === 'deleted' ? (e.deleted_at ?? null) : null,
+    };
+  }
+}
+
 router.get('/groups/:id/recurring', (req, res) => {
   try {
     const groupId = Number(req.params.id);
@@ -1400,7 +1462,13 @@ router.post('/groups/:id/recurring', (req, res) => {
     if (!frequency) return res.status(400).json({ error: 'Invalid frequency.', code: 400 });
     const payerId = Number(req.body.payer_id || userId(req));
     const participants = Array.isArray(req.body.participants) ? req.body.participants : [payerId];
-    const snapshot = { participants, splits: req.body.splits || [] };
+    const refusal = membershipRefusal(db.get(), groupId, payerId, participants);
+    if (refusal) return res.status(400).json({ error: refusal, code: 400 });
+    // Dieselbe Pruefung wie bei einer Ausgabe, hier VOR dem ersten Termin: der
+    // Buchungslauf rechnet den Snapshot spaeter ohne Nutzer vor dem Bildschirm
+    // durch, und eine Serie, die dort wirft, haelt den ganzen Lauf an.
+    // Gespeichert wird die gepruefte Fassung, nicht der Request.
+    const snapshot = splitSnapshot({ method: parsed.method, amountMinor: parsed.amountMinor, currency: parsed.currency, participants, splits: req.body.splits });
     const result = db.get().prepare(`
       INSERT INTO recurring_expenses
         (group_id, title, description, amount_minor, currency, payer_id, category, split_method, split_snapshot, frequency, next_run_date, created_by)
@@ -1461,6 +1529,8 @@ router.get('/search', (req, res) => {
       JOIN expense_group_members mine ON mine.group_id = gm.group_id AND mine.user_id = @uid
       WHERE (@q = '' OR u.display_name LIKE '%' || @q || '%' OR u.username LIKE '%' || @q || '%')
         AND (@isGuest = 0 OR gm.group_id = @restrictedGroupId)
+        -- Ehemalige bleiben in Buchungen und Salden stehen, die Suche bietet sie nicht an (#1381).
+        AND ${activeAccountSql('u')}
       ORDER BY u.display_name COLLATE NOCASE ASC LIMIT 10
     `).all({ uid, q, restrictedGroupId, isGuest });
     res.json({ data: { groups, expenses: expensesSerialized, people } });

@@ -9,10 +9,11 @@ import { openModal as openSharedModal, closeModal, advancedSection, refocusAfter
 import { openDetailView } from '/components/detail-view.js';
 import { stagger, vibrate, wireScrollFade, scheduleUndoableDelete } from '/utils/ux.js';
 import { t, formatDate } from '/i18n.js';
-import { esc } from '/utils/html.js';
+import { esc, REQUIRED_MARK } from '/utils/html.js';
+import { initials } from '/utils/initials.js';
 import { renderSkeletonList } from '/utils/skeleton.js';
 import { renderPageSearch, wirePageSearch } from '/utils/page-search.js';
-import { pageToolsMenuHtml, popoverMenuHtml, installPopoverMenus } from '/utils/popover-menu.js';
+import { pageToolsMenuHtml, pageToolsActionEl, popoverMenuHtml, installPopoverMenus } from '/utils/popover-menu.js';
 import { setBulkPill, clearBulkPill } from '/utils/bulk-pill.js';
 import { parseVCards } from '/utils/vcard.js';
 import { getReadableTextColor, AVATAR_FALLBACK_COLOR } from '/utils/color.js';
@@ -84,15 +85,6 @@ function catTintStyle(key) {
     : '';
 }
 
-// Initialen aus dem Namen (max. 2 Buchstaben): Vorname + letzter Namensteil.
-function initials(name) {
-  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (!parts.length) return '?';
-  const first = parts[0][0] || '';
-  const last  = parts.length > 1 ? parts[parts.length - 1][0] : '';
-  return (first + last).toUpperCase();
-}
-
 // Avatar einer Zeile. Zwei Faelle, zwei Sprecher:
 //
 // EIN VERKNUEPFTER KONTAKT IST EIN MENSCH DES HAUSHALTS, und der traegt ueberall
@@ -113,7 +105,7 @@ function contactAvatar(c) {
   const name  = c.family_display_name || c.name;
   const inner = c.family_avatar_data
     ? `<img src="${esc(c.family_avatar_data)}" alt="" loading="lazy">`
-    : esc(initials(name));
+    : esc(initials(name, '?'));
   return `<span class="contact-item__icon contact-item__icon--member"
     style="background-color:${esc(color)};color:${getReadableTextColor(color)}"
     aria-hidden="true">${inner}</span>`;
@@ -261,7 +253,7 @@ export async function render(container, { user, signal } = {}) {
   // Spalten fuer sich scrollen.
   container.insertAdjacentHTML('beforeend', `
     <div class="contacts-page app-page app-page--reading app-page--list-detail page-measure--narrow" data-composition="reading">
-      <div class="page-toolbar page-toolbar--wrap page-toolbar--narrow contacts-toolbar">
+      <div class="page-toolbar page-toolbar--wrap page-toolbar--narrow page-toolbar--title-tools contacts-toolbar">
         <h1 class="page-toolbar__title">${t('contacts.title')}</h1>
         ${renderPageSearch({ id: 'contacts-search', label: t('contacts.searchPlaceholder'), placeholder: t('contacts.searchPlaceholder'), value: state.searchQuery, clearLabel: t('common.searchClear'), className: 'contacts-toolbar__search page-toolbar__center' })}
         <div class="page-toolbar__actions">${toolbarActionsHtml()}</div>
@@ -395,7 +387,7 @@ export async function render(container, { user, signal } = {}) {
   installPopoverMenus(_container);
   const toolbar = _container.querySelector('.contacts-toolbar');
   toolbar.addEventListener('click', (e) => {
-    const item = e.target.closest('.popover-menu__item[data-action]');
+    const item = pageToolsActionEl(e.target);
     if (!item || item.disabled || readOnly()) return;
     const action = item.dataset.action;
     if (action === 'manage-categories') openContactCategoryManager();
@@ -1474,7 +1466,7 @@ function buildContactForm({ mode, contact = null }) {
 
   const content = `
     <fieldset class="contact-modal__name-group">
-      <legend class="form-label">${t('contacts.nameGroupLabel')}</legend>
+      <legend class="form-label">${t('contacts.nameGroupLabel')}${REQUIRED_MARK}</legend>
       <div class="modal-grid modal-grid--2 contact-modal__name-grid">
         <div class="form-group">
           <label class="form-label" for="cm-first-name">${t('contacts.firstNameLabel')}</label>

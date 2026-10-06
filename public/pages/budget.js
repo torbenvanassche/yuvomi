@@ -9,11 +9,14 @@ import { api } from '/api.js';
 import { openModal as openSharedModal, closeModal, confirmOverModal, advancedSection, wireBlurValidation, reportFieldError, refocusAfterRender } from '/components/modal.js';
 import { renderDocumentAttachField, bindDocumentAttachField, attachmentLinksNode } from '/components/document-attach.js';
 import { openDetailView } from '/components/detail-view.js';
-import { stagger, vibrate, scheduleUndoableDelete } from '/utils/ux.js';
+import { stagger, vibrate, scheduleUndoableDelete, growBars } from '/utils/ux.js';
 import { wireTablist } from '/utils/tablist.js';
 import { attachSegmentIndicator } from '/utils/segment-indicator.js';
-import { t, formatDate, formatDayMonth, getLocale, getNumberFormat } from '/i18n.js';
-import { esc } from '/utils/html.js';
+import { t, formatDate, formatDayMonth, formatMonthYear, getLocale, getNumberFormat } from '/i18n.js';
+import { esc, REQUIRED_MARK } from '/utils/html.js';
+import { periodStepperHtml, syncPeriodReset, swapPeriod } from '/utils/period-stepper.js';
+import { swapContent } from '/utils/content-swap.js';
+import { friendlyError } from '/utils/friendly-error.js';
 import { renderSkeletonList } from '/utils/skeleton.js';
 import { render as renderSplitExpenses, prefillSplitExpense, canAddSplitExpense, openNewSplitExpense } from '/pages/split-expenses.js';
 import { openSubscriptionModal, render as renderSubscriptions } from '/pages/subscriptions.js';
@@ -432,9 +435,11 @@ function loanBudgetEquivalent(n, loan) {
   return t('budget.loanConvertedAmount', { amount: formatAmount(Number(n || 0) * Number(loan.exchange_rate || 1)) });
 }
 
+// Reihenfolge und Fuegung von Monat und Jahr kommen aus der Sprache (#1607),
+// nicht aus einem Leerzeichen zwischen zwei Teilen.
 function formatMonthLabel(ym) {
   const [y, m] = ym.split('-');
-  return `${getMonthName(parseInt(m, 10) - 1)} ${y}`;
+  return formatMonthYear(y, m);
 }
 
 function addMonths(ym, n) {
@@ -639,15 +644,13 @@ async function loadBudgetMeta() {
  * statt Quelltext zu lesen.
  */
 function monthNavHtml() {
-  return `
-          <button class="btn btn--icon" id="budget-prev" aria-label="${t('budget.prevMonth')}">
-            <i data-lucide="chevron-left" aria-hidden="true"></i>
-          </button>
-          <span class="budget-nav__label" id="budget-label" aria-live="polite"></span>
-          <button class="btn btn--icon" id="budget-next" aria-label="${t('budget.nextMonth')}">
-            <i data-lucide="chevron-right" aria-hidden="true"></i>
-          </button>
-          <button class="btn btn--secondary budget-nav__today" id="budget-today">${t('budget.currentMonth')}</button>
+  // Markup und Reihenfolge kommen aus dem EINEN Baustein (utils/period-stepper.js).
+  return `${periodStepperHtml({
+    prev: { id: 'budget-prev', label: t('budget.prevMonth') },
+    value: { id: 'budget-label', className: 'budget-nav__label', live: true },
+    next: { id: 'budget-next', label: t('budget.nextMonth') },
+    reset: { id: 'budget-today', className: 'budget-nav__today', label: t('budget.currentMonth') },
+  })}
           <span class="budget-nav__note" id="budget-period-note" hidden></span>
   `;
 }
@@ -699,15 +702,23 @@ function syncCurrentButton(root = _container) {
   const isCurrent = !caps.month || (state.activeTab === 'reports'
     ? reportShowsToday()
     : state.month === currentMonth());
-  // `typeof document` statt eines nackten Bezeichners: Testumgebungen ohne DOM
-  // stubben `document` nicht immer, und ein nackter Bezeichner wirft dort
-  // schon beim Werteauswerten.
-  const active = typeof document !== 'undefined' ? document.activeElement : null;
-  if (isCurrent && active === btn) {
-    (root.querySelector('#budget-prev') || root.querySelector('#budget-next'))?.focus();
-  }
-  btn.classList.toggle('is-current', isCurrent);
-  btn.inert = isCurrent;
+  // Verbergen, Fokus-Uebergabe und `inert`: die eine Regel in period-stepper.js.
+  syncPeriodReset(root, { reset: '#budget-today', isCurrent, prev: '#budget-prev', next: '#budget-next' });
+}
+
+/**
+ * Setzt zurueck, was an eine Sitzung mit dem Modul gebunden ist - beim Betreten
+ * der Seite. Der Zustaendigen-Filter fehlte hier (#1593): er ueberlebte den
+ * Seitenwechsel, und wer zurueckkam, sah eine gekuerzte Liste. Mit ihm faellt
+ * der gemerkte Name, sonst beschriftete er den naechsten Chip.
+ */
+function resetSessionFilters(target) {
+  target.accountFilterId = null;
+  target.responsibleFilterId = null;
+  target.responsibleFilterCachedName = '';
+  target.loanFilterId = null;
+  target.loanStatusFilter = 'active';
+  target.accountsShowArchived = false;
 }
 
 export async function render(container, { user }) {
@@ -718,10 +729,7 @@ export async function render(container, { user }) {
   // aber an eine Sitzung mit dem Modul gebunden: sonst zeigt das Budget nach
   // einer Woche noch den Kontoauszug von damals — beim Darlehens-Statusfilter
   // sogar ohne sichtbaren Hinweis. Der aktive Tab bleibt bewusst erhalten.
-  state.accountFilterId = null;
-  state.loanFilterId = null;
-  state.loanStatusFilter = 'active';
-  state.accountsShowArchived = false;
+  resetSessionFilters(state);
   // Sprungziel von aussen (Dashboard-Kachel „Ausgleich offen"): ?tab= waehlt
   // den Reiter. Ohne Parameter bleibt der zuletzt aktive, wie bisher.
   const tabFromUrl = tabFromQuery(window.location.search);
@@ -754,7 +762,7 @@ export async function render(container, { user }) {
 
   setHtml(container, `
     <div class="budget-page app-page app-page--reading page-measure--narrow" data-composition="reading">
-      <div class="page-toolbar page-toolbar--wrap page-toolbar--narrow page-toolbar--period budget-nav">
+      <div class="page-toolbar page-toolbar--wrap page-toolbar--narrow page-toolbar--period page-toolbar--period-inline budget-nav">
         <h1 class="page-toolbar__title">${t('budget.title')}</h1>
         <!-- Der Kopf-Slot bleibt auf jedem Tab besetzt: entweder Stepper oder
              ein ruhiger Kontexttext. Eine Lücke machte jeden Tabwechsel zur
@@ -838,15 +846,17 @@ function wireNav() {
   // EIN Stepper für alle Tabs mit Zeitbezug. Welche Achse er bewegt, sagt der
   // Tab: Budget und Plan rechnen in Monaten, die Berichte in ihrer gewählten
   // Auflösung. Vorher trugen die Berichte einen zweiten Stepper im Panel.
+  // Der neue Zeitraum kommt von der Seite, zu der man blaettert (swapPeriod,
+  // utils/period-stepper.js) - vorher ein harter Schnitt.
+  const bodyEl = () => _container.querySelector('#budget-body');
   const stepPeriod = async (dir) => {
     if (state.activeTab === 'reports') {
       state.reportAnchor = stepAnchor(state.reportAnchor, state.range, dir);
-      renderBody();
+      swapPeriod(bodyEl(), dir, renderBody);
       return;
     }
     await loadMonth(addMonths(state.month, dir));
-    renderBody();
-    updateLabel();
+    swapPeriod(bodyEl(), dir, () => { renderBody(); updateLabel(); });
   };
   _container.querySelector('#budget-prev').addEventListener('click', () => stepPeriod(-1));
   _container.querySelector('#budget-next').addEventListener('click', () => stepPeriod(1));
@@ -856,15 +866,17 @@ function wireNav() {
       // ein Klick, waehrend der Anker schon im heutigen Bereich liegt, waere
       // sonst ein sichtbares No-Op, obwohl der Knopf `inert` sein sollte.
       if (reportShowsToday()) return;
+      const back = todayKey() < state.reportAnchor ? -1 : 1;
       state.reportAnchor = todayKey();
-      renderBody();
+      swapPeriod(bodyEl(), back, renderBody);
       return;
     }
     const m = currentMonth();
     if (m === state.month) return;
+    // 'YYYY-MM' vergleicht sich als Text: zurueck zum laufenden Monat oder vor.
+    const back = m < state.month ? -1 : 1;
     await loadMonth(m);
-    renderBody();
-    updateLabel();
+    swapPeriod(bodyEl(), back, () => { renderBody(); updateLabel(); });
   });
   // Ansichts-Scope (Mein Budget / Haushalt) — nur im personal-Modus vorhanden.
   // Dieselbe Verhaltensschicht wie die Haupt-Tabs: Roving-Tabindex ohne
@@ -908,7 +920,7 @@ function wireNav() {
   // Tab (sub-tab--active/aria/tabindex); renderBody übernimmt nur noch den Inhalt.
   _tablist = wireTablist(_container.querySelector('.budget-tabs'), {
     activeId: state.activeTab,
-    onChange: async (id) => {
+    onChange: async (id, { direction = 0 } = {}) => {
       const prev = state.activeTab;
       state.activeTab = id;
       writeTabToUrl(id);
@@ -919,8 +931,9 @@ function wireNav() {
       if (id === 'reports' && prev !== 'reports') {
         state.reportAnchor = anchorForMonth(state.month);
       }
-      renderBody();
-      markTabEntering();
+      // Nur der Reiterwechsel blendet (in Schrittrichtung der Leiste) - ein
+      // Neuaufbau desselben Reiters (Filter, Speichern) nicht.
+      swapContent(_container.querySelector('#budget-body'), renderBody, { direction });
       if (prev === 'reports' && id !== 'reports') {
         const ym = state.reportAnchor.slice(0, 7);
         if (ym !== state.month) {
@@ -945,7 +958,15 @@ function refocusSegmented(barSelector) {
 
 function updateLabel() {
   const lbl = _container.querySelector('#budget-label');
-  if (lbl) lbl.textContent = state.activeTab === 'reports' ? reportPeriodLabel() : formatMonthLabel(state.month);
+  if (!lbl) return;
+  const reports = state.activeTab === 'reports';
+  lbl.textContent = reports ? reportPeriodLabel() : formatMonthLabel(state.month);
+  // Die Kurzform fuer die Titelzeile mobil (layout.css, `--period-inline`):
+  // neben dem Large Title bleiben dem Label rund 96px, „September 2026"
+  // braucht 128. Nur der Monat hat eine; Jahr und Woche stehen wie sie sind.
+  const ym = reports ? (state.range === 'month' ? state.reportAnchor.slice(0, 7) : null) : state.month;
+  const [y, m] = ym ? ym.split('-') : [];
+  lbl.setAttribute('data-short', ym ? formatMonthYear(y, m, { month: 'short' }) : lbl.textContent);
 }
 
 // --------------------------------------------------------
@@ -978,18 +999,6 @@ function watchAsideFit(panel) {
 // --------------------------------------------------------
 // Body
 // --------------------------------------------------------
-
-/* DER NEUE REITER BLENDET EIN (R14 P11, A5 P3). Die Untertabs wechselten per
- * hartem Schnitt, waehrend jeder Seitenwechsel blendet. Nur der Wechsel selbst
- * blendet - ein Neuaufbau desselben Reiters (Filter, Monat, Speichern) nicht;
- * die Klasse faellt nach der Blende. Unter reduzierter Bewegung schneidet die
- * globale Sperre (reset.css) die Animation ab. */
-function markTabEntering() {
-  const panel = _container?.querySelector('#budget-body > .budget-tab-panel');
-  if (!panel) return;
-  panel.classList.add('budget-tab-panel--entering');
-  panel.addEventListener('animationend', () => panel.classList.remove('budget-tab-panel--entering'), { once: true });
-}
 
 function renderBody() {
   const body = _container.querySelector('#budget-body');
@@ -1028,7 +1037,8 @@ function renderBody() {
       anchor: state.reportAnchor,
       onRangeChange: (r) => {
         state.range = r;
-        renderBody();
+        // Woche/Monat/Jahr wechselt die Aufloesung: Blende ohne Richtung.
+        swapContent(body, renderBody);
         refocusSegmented('.budget-stats__ranges');
       },
       // Die Wochengrenzen kennt der Server; das Kopf-Label holt sie sich von dort
@@ -1051,6 +1061,7 @@ function renderBody() {
     setHtml(body, '<div class="budget-tab-panel page-scrollport budget-tab-panel--reading budget-tab-panel--plan" id="budget-plan-panel"></div>');
     renderPlans(body.querySelector('#budget-plan-panel'), {
       user: _user, currency: state.currency, month: state.month,
+      budgetMode: state.budgetMode, scope: state.scope,
       formatAmount, categoryLabel, esc,
       expenseCategories: expenseCategories(),
     }).catch((err) => console.error('[Budget] plans render error:', err));
@@ -1060,6 +1071,7 @@ function renderBody() {
     setHtml(body, renderLoansPage());
     wireLoansPage();
     if (window.lucide) lucide.createIcons({ el: body });
+    growBars(body, { selector: '.budget-loan-card__progress span', memo: 'budget-loans' });
     return;
   }
   if (state.activeTab === 'accounts') {
@@ -1113,7 +1125,9 @@ function renderBody() {
     : s.balance >= 0
       ? 'metric-card--balance-positive'
       : 'metric-card--balance-negative';
-  const prevLabel = p ? formatMonthLabel(p.month).split(' ')[0].slice(0, 3) : '';
+  // Der Monatsname selbst, nicht das erste Wort des Labels: wo die Sprache das
+  // Jahr voranstellt ("2026년 10월"), waere das erste Wort das Jahr (#1607).
+  const prevLabel = p ? getMonthName(parseInt(p.month.split('-')[1], 10) - 1).slice(0, 3) : '';
 
   /* EIN MONAT, DER NOCH KOMMT, IST EINE PROGNOSE (Critique 2026-09-25). Seine
    * Buchungen sind Serien, die der Server beim Aufruf fuer den Monat anlegt -
@@ -1278,6 +1292,9 @@ function renderBody() {
   `);
 
   if (window.lucide) lucide.createIcons({ el: body });
+  // Die Kategorie-Balken wachsen an ihren Wert (vom letzten gezeigten aus) -
+  // ihre Transition lief nie, weil der Endwert schon im Markup steht (ux.js).
+  growBars(body, { selector: '.budget-bar-row__fill', memo: 'budget-categories' });
   watchAsideFit(body.querySelector('.budget-tab-panel--budget'));
   wirePageSearch(body, { id: 'budget-ledger-search', delay: 250, onQuery: runLedgerSearch });
   _container.querySelector('#empty-cta-budget')?.addEventListener('click', () => {
@@ -1672,7 +1689,7 @@ function renderCategoryBars(byCategory) {
             <div class="budget-bar-row${lead && i < CHART_LEAD ? ' budget-bar-row--lead' : ''}">
               <div class="budget-bar-row__label" title="${label}">${label}</div>
               <div class="budget-bar-row__track" style="--bar-visible:${r.amount !== 0 ? 1 : 0}">
-                <div class="budget-bar-row__fill budget-bar-row__fill--${kind}" style="--bar-scale:${scale.toFixed(4)}"></div>
+                <div class="budget-bar-row__fill budget-bar-row__fill--${kind}" style="--bar-scale:${scale.toFixed(4)}" data-bar-key="${kind}:${esc(String(r.category))}"></div>
               </div>
               <div class="budget-bar-row__amount">${amountByRole(r.amount, 'flow').text}</div>
             </div>`;
@@ -1971,7 +1988,15 @@ function renderAccountsPage() {
       ${title}
       <div class="panel-head__actions">${archiveToggle}</div>
     </div>` : title}
-    <div class="metric-grid">
+    ${/* Mobil die Kurzzeile wie in jedem Reiter mit Kennzahlen (R16): hier stand
+       * unter 640px als einzige Stelle des Moduls noch die Karte. EINE Zahl,
+       * also ohne Aufklapper (metric-glance.js) - die Karte bleibt dort aus. */ ''}
+    ${metricGlanceHtml({
+      label: t('budget.netWorth'),
+      value: netWorth.text,
+      tone: Number(state.netWorth) > 0 ? 'positive' : Number(state.netWorth) < 0 ? 'negative' : 'neutral',
+    })}
+    <div class="metric-grid budget-glance-details">
       <div class="metric-card ${netWorth.className}">
         <div class="metric-card__label">${t('budget.netWorth')}</div>
         <div class="metric-card__value">${netWorth.text}</div>
@@ -2093,7 +2118,7 @@ function openAccountModal(account = null) {
 
   const content = `
     <div class="form-group">
-      <label class="form-label" for="am-name">${t('budget.accountNameLabel')}<span class="required-marker" aria-hidden="true"> *</span></label>
+      <label class="form-label" for="am-name">${t('budget.accountNameLabel')}${REQUIRED_MARK}</label>
       <input type="text" class="form-input" id="am-name" maxlength="100"
              placeholder="${t('budget.accountNamePlaceholder')}" value="${esc(isEdit ? account.name : '')}">
     </div>
@@ -2180,7 +2205,7 @@ function openAccountModal(account = null) {
           refocusAfterRender();
           window.yuvomi?.showToast(nextArchived ? t('budget.accountArchivedToast') : t('budget.accountRestoredToast'), 'success');
         } catch (err) {
-          window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+          showBudgetError(err);
         }
       });
 
@@ -2201,7 +2226,7 @@ function openAccountModal(account = null) {
           refocusAfterRender();
           window.yuvomi?.showToast(t('budget.accountDeletedToast'), 'success');
         } catch (err) {
-          window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+          showBudgetError(err);
         }
       });
 
@@ -2252,7 +2277,7 @@ function openAccountModal(account = null) {
         } catch (err) {
           saveBtn.disabled = false;
           saveBtn.textContent = isEdit ? t('common.save') : t('common.add');
-          window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+          showBudgetError(err, { panel, fallback: BUDGET_SAVE_FAILED });
         }
       });
     },
@@ -2364,7 +2389,7 @@ function renderLoanTransactions(loans) {
   if (!payments.length) return '';
 
   return `<div class="budget-loan-transactions">
-    <div class="budget-loan-transactions__title">${t('budget.loanTransactions')}</div>
+    <h2 class="budget-loan-transactions__title u-section-title">${t('budget.loanTransactions')}</h2>
     ${/* Traeger wie das Hauptbuch (Re-Critique 2026-09-28 P1-1): vorher lagen
         * die Raten nackt auf der Buehne, der einzige Tab ohne Flaeche. */ ''}
     <div class="row-carrier budget-loan-transactions__list">
@@ -2563,7 +2588,7 @@ async function openLoanPaymentEntry(loanId, paymentId) {
     }
     openBudgetModal({ mode: 'edit', entry });
   } catch (err) {
-    window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+    showBudgetError(err);
   }
 }
 
@@ -2778,7 +2803,7 @@ function renderLoanCard(loan) {
       <div class="budget-loan-card__progress" role="progressbar"
            aria-valuenow="${paidPct}" aria-valuemin="0" aria-valuemax="100"
            aria-label="${t('budget.loanProgressLabel')}">
-        <span style="--bar-scale:${paidPct / 100}"></span>
+        <span data-bar-key="loan:${loan.id}" style="--bar-scale:${paidPct / 100}"></span>
       </div>
       <div class="budget-loan-card__footer">
         <span>${t('budget.loanNextDue', { month: nextDue })}</span>
@@ -3105,7 +3130,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
         * Belege), steht hinter „Weitere Angaben" - beim Bearbeiten offen,
         * sobald eines davon einen Wert traegt. */ ''}
     <div class="form-group js-entry-field">
-      <label class="form-label" for="bm-amount">${t('budget.amountLabel')}<span class="required-marker" aria-hidden="true"> *</span></label>
+      <label class="form-label" for="bm-amount">${t('budget.amountLabel')}${REQUIRED_MARK}</label>
       <input type="number" class="form-input budget-amount-input" id="bm-amount"
              placeholder="${amountPlaceholder(state.currency)}"
              step="${amountStep(state.currency, absAmount)}" min="${amountMin(state.currency, absAmount)}"
@@ -3113,14 +3138,14 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
     </div>
 
     <div class="form-group js-entry-field">
-      <label class="form-label" for="bm-title">${t('budget.titleLabel')}<span class="required-marker" aria-hidden="true"> *</span></label>
+      <label class="form-label" for="bm-title">${t('budget.titleLabel')}${REQUIRED_MARK}</label>
       <input type="text" class="form-input" id="bm-title"
              placeholder="${t('budget.titlePlaceholder')}" value="${esc(isEdit ? entry.title : '')}">
     </div>
 
     <div class="form-group js-entry-field">
       <div class="budget-field-header">
-        <label class="form-label" for="bm-category">${t('budget.categoryLabel')}<span class="required-marker" aria-hidden="true"> *</span></label>
+        <label class="form-label" for="bm-category">${t('budget.categoryLabel')}${REQUIRED_MARK}</label>
         <button class="btn btn--secondary budget-inline-add" type="button" id="bm-add-category">${t('budget.addCategory')}</button>
       </div>
       <select class="form-input" id="bm-category" required aria-required="true">${catOpts}</select>
@@ -3135,7 +3160,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
     </div>
 
     <div class="form-group js-entry-field">
-      <label class="form-label" for="bm-date">${t('budget.dateLabel')}</label>
+      <label class="form-label" for="bm-date">${t('budget.dateLabel')}${REQUIRED_MARK}</label>
       <yuvomi-datepicker type="date" id="bm-date"
              value="${isEdit ? entry.date : defaultDate}"></yuvomi-datepicker>
     </div>
@@ -3227,29 +3252,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
     </div>
 
     <div id="bm-loan-fields" hidden>
-      ${loanIdentityFieldsHtml(null)}
-      ${loanCurrencyFieldsHtml(null)}
-      <div class="form-grid-2" id="lm-manual-fields">
-        <div class="form-group">
-          <label class="form-label" for="lm-amount">${t('budget.loanAmountLabel')}</label>
-          <input type="number" class="form-input" id="lm-amount"
-                 step="${amountStep(state.currency, '')}" min="${amountMin(state.currency, '')}"
-                 placeholder="${amountPlaceholder(state.currency)}" inputmode="decimal">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="lm-installments">${t('budget.loanInstallmentsLabel')}</label>
-          <input type="number" class="form-input" id="lm-installments" step="1" min="1" max="360" inputmode="numeric">
-        </div>
-      </div>
-      ${loanInterestFieldsHtml(null)}
-      <div class="form-group">
-        <label class="form-label" for="lm-start">${t('budget.loanStartMonthLabel')}</label>
-        <input type="month" class="form-input" id="lm-start" value="${defaultDate.slice(0, 7)}">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="lm-notes">${t('budget.loanNotesLabel')}</label>
-        <textarea class="form-input" id="lm-notes" rows="3"></textarea>
-      </div>
+      ${loanFormFieldsHtml(null, { startMonth: defaultDate.slice(0, 7) })}
     </div>
 
     <div class="modal-panel__footer modal-panel__footer--plain">
@@ -3377,7 +3380,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
           updateCategoryOptions(res.data.key);
           window.yuvomi?.showToast(t('budget.categoryAddedToast'), 'success');
         } catch (err) {
-          window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+          showBudgetError(err, { fallback: BUDGET_SAVE_FAILED });
         }
       };
 
@@ -3397,7 +3400,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
           updateSubcategoryOptions(res.data.key);
           window.yuvomi?.showToast(t('budget.subcategoryAddedToast'), 'success');
         } catch (err) {
-          window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+          showBudgetError(err, { fallback: BUDGET_SAVE_FAILED });
         }
       };
 
@@ -3412,10 +3415,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
         onChange: (id) => setType(id),
       });
       attachSegmentIndicator(panel.querySelector('.budget-type-toggle'));
-      wireLoanDirectionField(panel);
-      wireLoanCurrencyFields(panel);
-      wireLoanInterestFields(panel);
-      wireLoanPaidInstallmentsField(panel);
+      wireLoanFormFields(panel);
       // Belege (#583): landen als Dokumente im Dokumente-Modul, deshalb die
       // Finanz-Kategorie und ein eigener Ordner - ein Kassenbon soll dort
       // auffindbar sein, nicht namenlos zwischen den Verträgen liegen.
@@ -3626,7 +3626,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
             window.yuvomi?.showToast(t('budget.savedToast'), 'success');
           }
         } catch (err) {
-          window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+          showBudgetError(err, { panel, fallback: BUDGET_SAVE_FAILED });
           saveBtn.disabled    = false;
           saveBtn.textContent = isEdit ? t('common.save') : t('common.add');
         }
@@ -3802,16 +3802,16 @@ function loanIdentityFieldsHtml(loan) {
       </select>
     </div>
     <div class="form-group">
-      <label class="form-label" for="lm-borrower" id="lm-borrower-label">${
+      <label class="form-label" for="lm-borrower"><span id="lm-borrower-label">${
         t(borrowed ? 'budget.loanLenderLabel' : 'budget.loanBorrowerLabel')
-      }</label>
-      <input type="text" class="form-input" id="lm-borrower"
+      }</span>${REQUIRED_MARK}</label>
+      <input type="text" class="form-input" id="lm-borrower" maxlength="100"
              placeholder="${t(borrowed ? 'budget.loanLenderPlaceholder' : 'budget.loanBorrowerPlaceholder')}"
              value="${esc(loan?.borrower ?? '')}">
     </div>
     <div class="form-group">
       <label class="form-label" for="lm-title">${t('budget.loanTitleLabel')}</label>
-      <input type="text" class="form-input" id="lm-title"
+      <input type="text" class="form-input" id="lm-title" maxlength="200"
              placeholder="${t('budget.loanTitlePlaceholder')}" value="${esc(loan?.title ?? '')}">
     </div>
     ${loanAccountFieldHtml(loan)}`;
@@ -3871,7 +3871,7 @@ function loanInterestFieldsHtml(loan) {
     </div>
     <div id="lm-interest-fields" ${mode === 'none' ? 'hidden' : ''}>
       <div class="form-group">
-        <label class="form-label" for="lm-principal">${t('budget.loanPrincipalLabel')}</label>
+        <label class="form-label" for="lm-principal">${t('budget.loanPrincipalLabel')}${REQUIRED_MARK}</label>
         <input type="number" class="form-input" id="lm-principal"
                step="${amountStep(currency, it?.principal ?? '')}" min="${amountMin(currency, it?.principal ?? '')}"
                placeholder="${amountPlaceholder(currency)}" inputmode="decimal" value="${v(it?.principal)}">
@@ -3912,7 +3912,13 @@ function loanInterestFieldsHtml(loan) {
 // Verdrahtet den Zinsmodus-Umschalter: blendet Betrag/Ratenanzahl vs. Zinsfelder
 // ein/aus und holt die Live-Vorschau (Monatsrate/Laufzeit/Gesamtzins) vom Server
 // (einzige Quelle der Zins-Mathematik). No-op, wenn der Block fehlt.
-function wireLoanInterestFields(panel) {
+//
+// `onTerm` bekommt die vom Server abgeleitete Laufzeit in Monaten, sobald die
+// Vorschau sie kennt, und `null`, solange sie unbekannt ist (kein Zins, Angaben
+// unvollständig oder ungültig, Antwort noch unterwegs). Daran deckelt der
+// Vorschlag der gezahlten Raten (#1648) - dieselbe Zahl, die POST /loans als
+// installment_count speichert, ohne eine zweite Zinsformel im Client.
+function wireLoanInterestFields(panel, { onTerm = () => {} } = {}) {
   const modeSel = panel.querySelector('#lm-interest-mode');
   if (!modeSel) return;
   const interestFields = panel.querySelector('#lm-interest-fields');
@@ -3922,9 +3928,17 @@ function wireLoanInterestFields(panel) {
   const rateLabel = panel.querySelector('#lm-fixed-rate-label');
   const variableHint = panel.querySelector('#lm-variable-hint');
   let timer = null;
+  // Zählt die Anfragen: eine Antwort, die von einer späteren Eingabe überholt
+  // wurde, darf weder Text noch Laufzeit setzen - sonst deckelte der Vorschlag
+  // an der Laufzeit der VORIGEN Angaben.
+  let request = 0;
 
   const requestPreview = () => {
     const mode = modeSel.value;
+    const seq = ++request;
+    clearTimeout(timer);
+    // Jede Änderung macht die bekannte Laufzeit ungültig, bis die neue da ist.
+    onTerm(null);
     if (mode === 'none') { preview.textContent = ''; return; }
     const body = {
       interest_mode: mode,
@@ -3939,11 +3953,17 @@ function wireLoanInterestFields(panel) {
     const incomplete = !(body.principal > 0) || !(body.fixed_rate >= 0) || !(body.initial_repayment_rate > 0)
       || (mode === 'fixed_then_variable' && !(body.fixed_period_months > 0 && body.followup_rate >= 0));
     if (incomplete) { preview.textContent = ''; return; }
-    clearTimeout(timer);
     timer = setTimeout(async () => {
       try {
         const { data } = await api.post('/budget/loans/preview', body);
-        if (!data?.ok) { preview.textContent = t('budget.loanPreviewInvalid'); return; }
+        if (seq !== request) return;
+        if (!data?.ok) {
+          // Zwei Faelle, zwei Saetze (#1668): die Rate deckt die Zinsen nicht,
+          // oder das Darlehen liefe laenger, als gerechnet wird.
+          preview.textContent = refusalText(LOAN_REFUSALS.get(data?.reason) ?? [null, 'budget.loanPreviewInvalid'], data?.max);
+          return;
+        }
+        onTerm(Number.isInteger(data.total_months) && data.total_months >= 1 ? data.total_months : null);
         // Die Vorschau rechnet in der im Dialog gewählten Darlehenswährung (#582) -
         // die Kreditsumme darüber wird ja ebenfalls in dieser Währung eingegeben.
         const currency = panel.querySelector('#lm-currency')?.value || state.currency;
@@ -3952,7 +3972,7 @@ function wireLoanInterestFields(panel) {
           term: t('budget.loanTermYearsMonths', { years: Math.floor(data.total_months / 12), months: data.total_months % 12 }),
           interest: formatAmount(data.total_interest, currency),
         });
-      } catch { preview.textContent = ''; }
+      } catch { if (seq === request) preview.textContent = ''; }
     }, 300);
   };
 
@@ -3988,24 +4008,366 @@ function wireLoanInterestFields(panel) {
  * Die Differenz wird auf den Monats-Strings gerechnet, nicht über Date-Objekte:
  * ein "YYYY-MM" ist kein Zeitpunkt, und der Umweg über Date kippt westlich von
  * UTC auf den Vormonat.
+ *
+ * "Heute" holt sich die Funktion selbst (#1648): sie las `todayMonth` aus dem
+ * Geltungsbereich eines Aufrufers, den es dort nie gab, und wurde zugleich nur
+ * an dem Dialog verdrahtet, der das Feld nicht hatte - der Vorschlag lief also
+ * nie, und sein ReferenceError auch nicht.
+ *
+ * DER VORSCHLAG LÄUFT NIE IN EIN 400. POST /loans lehnt mehr gezahlte Raten ab,
+ * als das Darlehen hat, und eine Zahl, die das Formular selbst gesetzt hat, darf
+ * kein sonst gültiges Darlehen abweisen lassen. Ohne Zins steht die Ratenanzahl
+ * im Formular. Mit Zins leitet sie der Server ab; die Vorschau liefert genau
+ * diese Laufzeit (`setTerm`, aus wireLoanInterestFields). Solange sie unbekannt
+ * ist, schlägt das Feld 0 vor statt einer ungeprüften Zahl.
+ *
+ * @returns {{ setTerm: (months: number|null) => void }}
  */
 function wireLoanPaidInstallmentsField(panel) {
   const paid = panel.querySelector('#lm-paid');
-  if (!paid) return; // Bearbeiten-Modus: das Feld gibt es dort bewusst nicht.
+  // Bearbeiten-Modus: das Feld gibt es dort bewusst nicht.
+  if (!paid) return { setTerm() {} };
   const start = panel.querySelector('#lm-start');
+  const installments = panel.querySelector('#lm-installments');
+  const modeSel = panel.querySelector('#lm-interest-mode');
   let touched = false;
+  let derivedTerm = null;
   paid.addEventListener('input', () => { touched = true; });
 
   const suggest = () => {
     if (touched) return;
     const m = /^(\d{4})-(\d{2})$/.exec(start.value || '');
     if (!m) return;
-    const now = todayMonth.split('-');
-    const months = (Number(now[0]) - Number(m[1])) * 12 + (Number(now[1]) - Number(m[2]));
-    paid.value = String(Math.max(0, months));
+    const now = todayKey().slice(0, 7).split('-');
+    let months = Math.max(0, (Number(now[0]) - Number(m[1])) * 12 + (Number(now[1]) - Number(m[2])));
+    if ((modeSel?.value ?? 'none') === 'none') {
+      const count = parseInt(installments?.value, 10);
+      if (Number.isInteger(count) && count >= 1) months = Math.min(months, count);
+    } else {
+      months = derivedTerm === null ? 0 : Math.min(months, derivedTerm);
+    }
+    paid.value = String(months);
   };
   start.addEventListener('change', suggest);
+  installments?.addEventListener('input', suggest);
+  modeSel?.addEventListener('change', suggest);
   suggest();
+  return {
+    setTerm(months) {
+      derivedTerm = months;
+      suggest();
+    },
+  };
+}
+
+/**
+ * DIE Feldliste eines Darlehens (#1648). Beide Einstiege - der Typ "Kredit" im
+ * Eintrags-Dialog der Übersicht und der eigene Dialog im Darlehen-Tab - bauen
+ * ihr Formular aus dieser einen Funktion und verdrahten es über
+ * wireLoanFormFields(). Bis dahin stand die Liste zweimal im Quelltext: "Bereits
+ * gezahlte Raten" (#813) kam nur in die eine, der Vorschlag dazu wurde nur an
+ * der anderen verdrahtet, und so fehlte dem einen Weg das Feld und dem anderen
+ * der Vorschlag. Ein neues Darlehensfeld gehört hierher und nirgends sonst.
+ *
+ * Richtung (#638) steht ganz oben: sie entscheidet, ob die Rate als Einnahme oder
+ * als Ausgabe gebucht wird, und benennt das Feld darunter um (Person vs. Kreditgeber).
+ *
+ * @param {object|null} loan        Bestehendes Darlehen (Bearbeiten) oder null (Neuanlage).
+ * @param {object} opts
+ * @param {string} opts.startMonth  Vorbelegung "YYYY-MM" des ersten Fälligkeitsmonats
+ *                                  bei der Neuanlage; der Aufrufer kennt seinen Kontext
+ *                                  (angezeigter Monat der Übersicht bzw. heute).
+ */
+function loanFormFieldsHtml(loan, { startMonth }) {
+  const isEdit = Boolean(loan);
+  const loanCurrency = loan?.currency || state.currency;
+  return `
+    ${loanIdentityFieldsHtml(loan)}
+    ${loanCurrencyFieldsHtml(loan)}
+    <div class="form-grid-2" id="lm-manual-fields">
+      <div class="form-group">
+        <label class="form-label" for="lm-amount">${t('budget.loanAmountLabel')}${REQUIRED_MARK}</label>
+        <input type="number" class="form-input" id="lm-amount"
+               step="${amountStep(loanCurrency, loan ? loan.total_amount : '')}"
+               min="${amountMin(loanCurrency, loan ? loan.total_amount : '')}"
+               placeholder="${amountPlaceholder(loanCurrency)}" inputmode="decimal"
+               value="${loan ? String(loan.total_amount) : ''}">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="lm-installments">${t('budget.loanInstallmentsLabel')}${REQUIRED_MARK}</label>
+        <input type="number" class="form-input" id="lm-installments" step="1" min="1" max="360"
+               inputmode="numeric" value="${loan?.installment_count ?? ''}">
+      </div>
+    </div>
+    ${loanInterestFieldsHtml(loan)}
+    <div class="form-group">
+      <label class="form-label" for="lm-start">${t('budget.loanStartMonthLabel')}${REQUIRED_MARK}</label>
+      <input type="month" class="form-input" id="lm-start" value="${esc(loan?.start_month ?? startMonth)}">
+    </div>
+    ${isEdit ? '' : `
+    <div class="form-group">
+      <label class="form-label" for="lm-paid">${t('budget.loanPaidInstallmentsLabel')}</label>
+      <input type="number" class="form-input" id="lm-paid" step="1" min="0"
+             inputmode="numeric" value="0">
+      <p class="form-hint budget-loan-hint">${t('budget.loanPaidInstallmentsHint')}</p>
+    </div>`}
+    <div class="form-group">
+      <label class="form-label" for="lm-notes">${t('budget.loanNotesLabel')}</label>
+      <textarea class="form-input" id="lm-notes" rows="3" maxlength="1000">${esc(loan?.notes ?? '')}</textarea>
+    </div>`;
+}
+
+/** Verhalten zu loanFormFieldsHtml() - ebenfalls die eine Stelle für beide Dialoge. */
+function wireLoanFormFields(panel) {
+  wireLoanDirectionField(panel);
+  wireLoanCurrencyFields(panel);
+  // Erst das Feld der gezahlten Raten, dann die Zinsfelder: die Vorschau meldet
+  // ihre Laufzeit schon beim ersten Durchlauf.
+  const paid = wireLoanPaidInstallmentsField(panel);
+  wireLoanInterestFields(panel, { onTerm: paid.setTerm });
+}
+
+const LOAN_SAVE_FAILED = 'budget.loanSaveFailed';
+
+/**
+ * Absage von POST/PUT /budget/loans -> Feld und Satz (#1656).
+ *
+ * Der Server nennt zu jeder 400 des Formulars einen `reason`
+ * (server/routes/budget/loans.js). Hier steht, an welches Feld die Absage
+ * gehoert und welcher Satz der Oberflaeche sie sagt - bis dahin kam der
+ * englische Satz des Servers als Toast, in jeder Sprache. Dieselbe Mechanik wie
+ * in category-manager.js und shopping.js: die Seite liest ihren Grund selbst;
+ * REFUSAL_MESSAGES fuehrt nur, was fuer jede Seite dasselbe heisst.
+ *
+ * Mehrere Felder = das erste, das gerade sichtbar ist (ohne Zins die
+ * Ratenanzahl, mit Zins die Tilgung). `null` = kein Feld, der Satz kommt als
+ * Toast. Eine Map, damit ein Grund wie `__proto__` nichts findet.
+ *
+ * Ein dritter Eintrag ist der Satz, der die Grenze nennt (#1668): er gilt,
+ * wenn die Absage sie als `max` mitbringt - 360 Raten, 600 Monate Laufzeit
+ * oder die Raten, die das Darlehen hat. Die Zahl kommt vom Server, damit sie
+ * hier nicht ein zweites Mal steht.
+ * test:budget-ui haelt die Liste deckungsgleich mit den Gruenden des Servers.
+ */
+const LOAN_REFUSALS = new Map([
+  ['loan_title_invalid', ['#lm-title', 'budget.loanTitleInvalid']],
+  ['loan_borrower_invalid', ['#lm-borrower', 'budget.loanBorrowerRequired']],
+  ['loan_start_month_invalid', ['#lm-start', 'budget.loanStartMonthRequired']],
+  ['loan_notes_invalid', ['#lm-notes', 'budget.loanNotesInvalid']],
+  ['loan_amount_invalid', ['#lm-amount', 'budget.validAmountRequired']],
+  ['loan_installments_invalid', ['#lm-installments', 'budget.loanInstallmentsRequired', 'budget.loanInstallmentsRange']],
+  ['loan_principal_invalid', ['#lm-principal', 'budget.loanPrincipalRequired']],
+  ['loan_rate_invalid', ['#lm-fixed-rate', 'budget.loanRateRequired']],
+  ['loan_repayment_invalid', ['#lm-initial-repayment', 'budget.loanRepaymentRequired']],
+  ['loan_fixed_period_invalid', ['#lm-fixed-period', 'budget.loanFixedPeriodRequired']],
+  ['loan_followup_rate_invalid', ['#lm-followup-rate', 'budget.loanRateRequired']],
+  // Dieselben zwei Saetze, die die Vorschau unter den Zinsfeldern zeigt.
+  ['loan_not_amortizing', ['#lm-initial-repayment', 'budget.loanPreviewInvalid']],
+  ['loan_term_too_long', ['#lm-initial-repayment', 'budget.loanPreviewInvalid', 'budget.loanTermTooLong']],
+  ['loan_currency_invalid', ['#lm-currency', 'budget.loanCurrencyInvalid']],
+  ['loan_exchange_rate_invalid', ['#lm-exchange-rate', 'budget.loanExchangeRateRequired']],
+  ['loan_account_invalid', ['#lm-account', 'budget.accountNotFound']],
+  ['loan_paid_installments_invalid', ['#lm-paid', 'budget.loanPaidInstallmentsInvalid']],
+  ['loan_paid_installments_exceed', ['#lm-paid', 'budget.loanPaidInstallmentsTooMany', 'budget.loanPaidInstallmentsMax']],
+  ['loan_term_below_paid', ['#lm-installments, #lm-initial-repayment', 'budget.loanTermBelowPaid']],
+  // Aus dem Dialog nicht erreichbar (er schickt nur gueltige Werte) - ohne Feld.
+  ['loan_direction_invalid', [null, LOAN_SAVE_FAILED]],
+  ['loan_interest_mode_invalid', [null, LOAN_SAVE_FAILED]],
+  ['loan_interest_fields_required', [null, LOAN_SAVE_FAILED]],
+]);
+
+/**
+ * Was der Darlehens-Dialog zu einem fehlgeschlagenen Speichern sagt (#1656).
+ * Nie der Satz des Servers: eine 400 bekommt den Satz ihres Grundes oder den
+ * allgemeinen des Dialogs, alles andere den Satz der App (friendlyError).
+ *
+ * @param {unknown} err
+ * @returns {{ fields: string|null, message: string }}
+ */
+function loanSaveError(err) {
+  return refusalSentence(err, { refusals: LOAN_REFUSALS, statuses: [400], fallback: LOAN_SAVE_FAILED });
+}
+
+/**
+ * Die Grenze, die eine Absage nennt - nur eine ganze Zahl ab 0 wird zum Satz.
+ * @returns {number|null}
+ */
+function refusalMax(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Der Satz zu einem Eintrag aus LOAN_REFUSALS/BUDGET_REFUSALS: mit Grenze, wo
+ * der Eintrag einen Satz dafuer hat und die Grenze bekannt ist.
+ */
+function refusalText([, key, keyWithMax], max) {
+  const limit = refusalMax(max);
+  return keyWithMax && limit !== null ? t(keyWithMax, { max: limit }) : t(key);
+}
+
+/**
+ * Fehler -> Feld und Satz, fuer den Darlehens-Dialog und den Rest der Seite
+ * (#1656, #1668). Nie der Satz des Servers: eine Absage (`statuses`) bekommt
+ * den Satz ihres Grundes oder `fallback`, alles andere den Satz der App.
+ *
+ * @param {unknown} err
+ * @param {{ refusals: Map<string, Array>, statuses: number[], fallback: string }} options
+ * @returns {{ fields: string|null, message: string }}
+ */
+function refusalSentence(err, { refusals, statuses, fallback }) {
+  const status = err?.status;
+  if (statuses.includes(status)) {
+    const entry = refusals.get(err.data?.reason);
+    return entry
+      ? { fields: entry[0], message: refusalText(entry, err.data?.max) }
+      : { fields: null, message: t(fallback) };
+  }
+  // friendlyError reicht bei einem Status ohne eigenen Satz den Text des Servers
+  // durch - hier nur dort fragen, wo es einen Satz hat.
+  const known = status === 0 || status === 403 || status === 404 || status >= 500 || !navigator.onLine;
+  return { fields: null, message: known ? friendlyError(err) : t(fallback) };
+}
+
+const BUDGET_FAILED = 'common.errorOccurred';
+const BUDGET_SAVE_FAILED = 'budget.saveFailed';
+
+/**
+ * Absage der uebrigen Budget-Routen -> Feld und Satz (#1668).
+ *
+ * Dieselbe Mechanik wie LOAN_REFUSALS, fuer alles ausserhalb des
+ * Darlehens-Formulars: Buchung, Serie, Konto, Kategorie, Rate. Bis dahin
+ * schrieben 13 Stellen dieser Seite `err.data.error` in einen Toast - den Satz
+ * des Servers, englisch oder deutsch, in jeder Sprache.
+ *
+ * Ein Grund kann in mehreren Dialogen ankommen (der Betrag einer Buchung beim
+ * Bearbeiten und beim Verbuchen): die Felder aller Dialoge stehen nebeneinander,
+ * gezeigt wird am ersten, das der offene Dialog hat. `null` oder kein Dialog =
+ * Toast. Was aus der Oberflaeche nicht erreichbar ist (sie schickt nur gueltige
+ * Werte), bekommt den allgemeinen Satz. test:budget-ui haelt die Liste
+ * deckungsgleich mit den Gruenden des Servers.
+ */
+const BUDGET_REFUSALS = new Map([
+  // Buchung und Serie (server/routes/budget/entries.js)
+  ['entry_title_invalid', ['#bm-title', 'common.titleRequired']],
+  ['entry_amount_invalid', ['#bm-amount, #cb-amount', 'budget.validAmountRequired']],
+  ['entry_amount_exceeds_loan', ['#bm-amount', 'budget.amountExceedsLoanRemaining']],
+  ['entry_category_invalid', ['#bm-category', 'budget.categoryRequired']],
+  ['entry_subcategory_invalid', ['#bm-subcategory', 'budget.subcategoryRequired']],
+  ['entry_date_invalid', ['#bm-date, #cb-date', 'calendar.invalidDate']],
+  ['entry_start_date_invalid', ['#bm-date', 'calendar.invalidDate']],
+  ['entry_account_invalid', ['#bm-account', 'budget.accountNotFound']],
+  ['entry_responsible_invalid', [null, 'budget.responsibleNotMember']],
+  ['series_start_too_early', ['#bm-date', 'budget.seriesStartTooEarly']],
+  ['entry_recurrence_invalid', ['#bm-interval', BUDGET_SAVE_FAILED]],
+  ['entry_interval_count_invalid', ['#bm-interval-count', BUDGET_SAVE_FAILED]],
+  ['series_end_refused', [null, BUDGET_SAVE_FAILED]],
+  ['entry_not_recurring', [null, BUDGET_FAILED]],
+  ['entry_already_booked', [null, BUDGET_FAILED]],
+  // Konto (accounts.js)
+  ['account_name_invalid', ['#am-name', 'common.titleRequired']],
+  ['account_balance_invalid', ['#am-balance', 'budget.validAmountRequired']],
+  ['account_credit_limit_invalid', ['#am-credit-limit', 'budget.validAmountRequired']],
+  ['account_credit_bank_invalid', ['#am-credit-bank', BUDGET_SAVE_FAILED]],
+  ['account_type_invalid', ['#am-type', BUDGET_SAVE_FAILED]],
+  ['account_color_invalid', [null, BUDGET_SAVE_FAILED]],
+  // Kategorie aus dem Buchungsdialog (categories.js) - die Saetze der Verwaltung.
+  ['category_name_invalid', [null, 'common.nameRequired']],
+  ['subcategory_name_invalid', [null, 'common.nameRequired']],
+  ['category_type_invalid', [null, BUDGET_SAVE_FAILED]],
+  ['category_exists', [null, 'category.errorExists']],
+  ['subcategory_exists', [null, 'category.errorSubExists']],
+  // Rate eines Darlehens (loans.js, ausserhalb des Formulars)
+  ['loan_settled', [null, 'budget.loanAlreadyPaid']],
+  ['loan_installment_paid', [null, 'budget.loanInstallmentAlreadyPaid']],
+  ['loan_payment_amount_invalid', [null, 'budget.validAmountRequired']],
+  ['loan_payment_amount_exceeds', [null, 'budget.amountExceedsLoanRemaining']],
+  ['loan_payment_date_invalid', [null, 'calendar.invalidDate']],
+  ['loan_payment_installment_invalid', [null, BUDGET_FAILED]],
+]);
+
+/**
+ * Was die Budget-Seite zu einem fehlgeschlagenen Aufruf sagt (#1668). Ein Grund
+ * zaehlt an einer 400 und an einer 409 (Kategorie gibt es schon, Rate schon
+ * bezahlt).
+ *
+ * @param {unknown} err
+ * @param {string} [fallback] - Satz fuer eine Absage ohne bekannten Grund
+ * @returns {{ fields: string|null, message: string }}
+ */
+function budgetError(err, fallback = BUDGET_FAILED) {
+  return refusalSentence(err, { refusals: BUDGET_REFUSALS, statuses: [400, 409], fallback });
+}
+
+/**
+ * Das erste der genannten Felder, das der Dialog hat und das sichtbar ist. Ein
+ * Feld, das nicht mehr im Dokument haengt (der Dialog ist inzwischen zu), zaehlt
+ * nicht - die Meldung daran saehe niemand.
+ */
+function refusalField(panel, fields) {
+  if (!panel || !fields) return null;
+  return [...panel.querySelectorAll(fields)]
+    .find((el) => el.isConnected !== false && !el.closest('[hidden]')) ?? null;
+}
+
+/**
+ * Zeigt den Fehler am Feld des offenen Dialogs, wenn die Absage eines nennt -
+ * sonst als Toast.
+ *
+ * @param {unknown} err
+ * @param {{ panel?: Element|null, fallback?: string }} [options]
+ */
+function showBudgetError(err, { panel = null, fallback = BUDGET_FAILED } = {}) {
+  const { fields, message } = budgetError(err, fallback);
+  const input = refusalField(panel, fields);
+  if (input) reportFieldError(input, message);
+  else window.yuvomi?.showToast(message, 'danger');
+}
+
+/** Zeigt die Absage am Feld, wenn es eines gibt und es sichtbar ist - sonst als Toast. */
+function showLoanSaveError(panel, err) {
+  const { fields, message } = loanSaveError(err);
+  const input = refusalField(panel, fields);
+  if (input) reportFieldError(input, message);
+  else window.yuvomi?.showToast(message, 'danger');
+}
+
+/**
+ * Prueft "Bereits gezahlte Raten" am Feld, bevor etwas gesendet wird (#1656).
+ * `null` = das Feld gibt es nicht (Bearbeiten) oder es ist leer - der Server
+ * behandelt beides als "nichts nachtragen".
+ *
+ * @returns {{ value: number|null }|{ invalid: true }}
+ */
+function readPaidInstallments(panel) {
+  const field = panel.querySelector('#lm-paid');
+  // Ein type=number-Feld liefert '' auch fuer Unlesbares ("abc", "1e"); das
+  // sagt validity.badInput - ein leeres Feld ist dagegen gueltig.
+  if (!field || (field.value.trim() === '' && !field.validity?.badInput)) return { value: null };
+  const value = Number(field.value);
+  if (field.value.trim() === '' || !Number.isInteger(value) || value < 0) {
+    reportFieldError(field, t('budget.loanPaidInstallmentsInvalid'));
+    return { invalid: true };
+  }
+  return { value };
+}
+
+/**
+ * Mit Zins leitet der Server die Laufzeit ab. Die Vorschau liefert genau diese
+ * Zahl - hier wird sie fuer den Koerper gefragt, der gleich gespeichert wird,
+ * statt eine zweite Zinsformel im Client zu fuehren oder sich auf eine Vorschau
+ * zu verlassen, die noch unterwegs sein kann. Kennt die Vorschau keine Laufzeit
+ * (Angaben tilgen nicht, Netz weg), entscheidet der Server - seine Absage
+ * landet ueber LOAN_REFUSALS am selben Feld.
+ *
+ * @returns {Promise<number|null>}
+ */
+async function loanTermFromPreview(body) {
+  try {
+    const { data } = await api.post('/budget/loans/preview', body);
+    return data?.ok && Number.isInteger(data.total_months) ? data.total_months : null;
+  } catch {
+    return null;
+  }
 }
 
 async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave = false } = {}) {
@@ -4014,12 +4376,6 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
   const borrower = panel.querySelector('#lm-borrower').value.trim();
   const title = panel.querySelector('#lm-title').value.trim() || borrower;
   const start_month = panel.querySelector('#lm-start').value;
-  // null = das Feld gibt es nicht (Bearbeiten) oder es ist leer - der Server
-  // behandelt beides als "nichts nachtragen".
-  const paidField = panel.querySelector('#lm-paid');
-  const paidInstallments = paidField && paidField.value.trim() !== ''
-    ? parseInt(paidField.value, 10)
-    : null;
   const notes = panel.querySelector('#lm-notes').value.trim();
   const mode = panel.querySelector('#lm-interest-mode')?.value ?? 'none';
 
@@ -4062,8 +4418,14 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
       reportFieldError(panel.querySelector('#lm-installments'), t('budget.loanInstallmentsRequired'));
       return;
     }
+    const paid = readPaidInstallments(panel);
+    if (paid.invalid) return;
+    if (paid.value !== null && paid.value > installment_count) {
+      reportFieldError(panel.querySelector('#lm-paid'), t('budget.loanPaidInstallmentsMax', { max: installment_count }));
+      return;
+    }
     body = { borrower, title, start_month, notes, interest_mode: 'none', total_amount, installment_count };
-    if (paidInstallments !== null) body.paid_installments = paidInstallments;
+    if (paid.value !== null) body.paid_installments = paid.value;
   } else {
     const principal = parseFloat(panel.querySelector('#lm-principal').value);
     const fixed_rate = parseFloat(panel.querySelector('#lm-fixed-rate').value);
@@ -4085,7 +4447,6 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
       return;
     }
     body = { borrower, title, start_month, notes, interest_mode: mode, principal, fixed_rate, initial_repayment_rate };
-    if (paidInstallments !== null) body.paid_installments = paidInstallments;
     if (mode === 'fixed_then_variable') {
       const fixed_period_months = parseInt(panel.querySelector('#lm-fixed-period').value, 10);
       const followup_rate = parseFloat(panel.querySelector('#lm-followup-rate').value);
@@ -4100,6 +4461,9 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
       body.fixed_period_months = fixed_period_months;
       body.followup_rate = followup_rate;
     }
+    const paid = readPaidInstallments(panel);
+    if (paid.invalid) return;
+    if (paid.value !== null) body.paid_installments = paid.value;
   }
   body.currency = currency;
   body.exchange_rate = exchange_rate;
@@ -4110,8 +4474,20 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
   const accountSel = panel.querySelector('#lm-account');
   if (accountSel) body.account_id = accountSel.value === '' ? null : parseInt(accountSel.value, 10);
 
+  const saveLabel = isEdit ? t('common.save') : t('budget.createLoan');
   saveBtn.disabled = true;
   saveBtn.textContent = '…';
+  // Gezahlte Raten gegen die abgeleitete Laufzeit (#1656) - nur wo es etwas zu
+  // pruefen gibt, und erst bei gesperrtem Knopf: die Frage geht an den Server.
+  if (mode !== 'none' && body.paid_installments > 0) {
+    const term = await loanTermFromPreview(body);
+    if (term !== null && body.paid_installments > term) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = saveLabel;
+      reportFieldError(panel.querySelector('#lm-paid'), t('budget.loanPaidInstallmentsMax', { max: term }));
+      return;
+    }
+  }
   try {
     if (isEdit) {
       await api.put(`/budget/loans/${loan.id}`, body);
@@ -4123,53 +4499,17 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
     renderBody();
     window.yuvomi?.showToast(isEdit ? t('budget.loanSavedToast') : t('budget.loanAddedToast'), 'success');
   } catch (err) {
-    window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
     saveBtn.disabled = false;
-    saveBtn.textContent = isEdit ? t('common.save') : t('budget.createLoan');
+    saveBtn.textContent = saveLabel;
+    showLoanSaveError(panel, err);
   }
 }
 
 function openLoanModal(loan = null) {
   if (readOnly()) return;
   const isEdit = Boolean(loan);
-  const todayMonth = todayKey().slice(0, 7);
-  const loanCurrency = loan?.currency || state.currency;
-  // Richtung (#638) steht ganz oben: sie entscheidet, ob die Rate als Einnahme oder
-  // als Ausgabe gebucht wird, und benennt das Feld darunter um (Person vs. Kreditgeber).
   const content = `
-    ${loanIdentityFieldsHtml(loan)}
-    ${loanCurrencyFieldsHtml(loan)}
-    <div class="form-grid-2" id="lm-manual-fields">
-      <div class="form-group">
-        <label class="form-label" for="lm-amount">${t('budget.loanAmountLabel')}</label>
-        <input type="number" class="form-input" id="lm-amount"
-               step="${amountStep(loanCurrency, loan ? loan.total_amount : '')}"
-               min="${amountMin(loanCurrency, loan ? loan.total_amount : '')}"
-               placeholder="${amountPlaceholder(loanCurrency)}" inputmode="decimal"
-               value="${loan ? String(loan.total_amount) : ''}">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="lm-installments">${t('budget.loanInstallmentsLabel')}</label>
-        <input type="number" class="form-input" id="lm-installments" step="1" min="1" max="360"
-               inputmode="numeric" value="${loan?.installment_count ?? ''}">
-      </div>
-    </div>
-    ${loanInterestFieldsHtml(loan)}
-    <div class="form-group">
-      <label class="form-label" for="lm-start">${t('budget.loanStartMonthLabel')}</label>
-      <input type="month" class="form-input" id="lm-start" value="${esc(loan?.start_month ?? todayMonth)}">
-    </div>
-    ${isEdit ? '' : `
-    <div class="form-group">
-      <label class="form-label" for="lm-paid">${t('budget.loanPaidInstallmentsLabel')}</label>
-      <input type="number" class="form-input" id="lm-paid" step="1" min="0"
-             inputmode="numeric" value="0">
-      <p class="form-hint budget-loan-hint">${t('budget.loanPaidInstallmentsHint')}</p>
-    </div>`}
-    <div class="form-group">
-      <label class="form-label" for="lm-notes">${t('budget.loanNotesLabel')}</label>
-      <textarea class="form-input" id="lm-notes" rows="3">${esc(loan?.notes ?? '')}</textarea>
-    </div>
+    ${loanFormFieldsHtml(loan, { startMonth: todayKey().slice(0, 7) })}
     <div class="modal-panel__footer modal-panel__footer--plain">
       <div></div>
       <div style="display:flex;gap:var(--space-3)">
@@ -4183,9 +4523,7 @@ function openLoanModal(loan = null) {
     content,
     size: 'sm',
     onSave(panel) {
-      wireLoanDirectionField(panel);
-      wireLoanCurrencyFields(panel);
-      wireLoanInterestFields(panel);
+      wireLoanFormFields(panel);
       panel.querySelector('#lm-cancel').addEventListener('click', closeModal);
       panel.querySelector('#lm-save').addEventListener('click', async () => {
         const saveBtn = panel.querySelector('#lm-save');
@@ -4222,14 +4560,14 @@ async function markLoanPayment(id) {
           await loadMonth(state.month);
           renderBody();
         } catch (err) {
-          window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+          showBudgetError(err);
         }
       });
     } else {
       window.yuvomi?.showToast(t('budget.loanPaymentAddedToast'), 'success');
     }
   } catch (err) {
-    window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+    showBudgetError(err);
   }
 }
 
@@ -4252,7 +4590,7 @@ async function deleteLoan(id) {
     restore: (err) => {
       state.loans.loans = [...state.loans.loans, loan];
       renderBody();
-      if (err) window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+      if (err) showBudgetError(err);
     },
   });
 }
@@ -4280,7 +4618,7 @@ async function deleteLoanPayment(loanId, paymentId) {
         loan.payments = [...(loan.payments || []), payment];
         renderBody();
       }
-      if (err) window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+      if (err) showBudgetError(err);
     },
   });
 }
@@ -4313,7 +4651,7 @@ async function openConfirmBookingModal(id) {
              min="${amountMin(state.currency)}" value="${absAmount}">
     </div>
     <div class="form-group">
-      <label class="form-label" for="cb-date">${t('budget.dateLabel')}</label>
+      <label class="form-label" for="cb-date">${t('budget.dateLabel')}${REQUIRED_MARK}</label>
       <yuvomi-datepicker type="date" id="cb-date" value="${esc(entry.date)}"></yuvomi-datepicker>
     </div>
     <div class="modal-panel__footer modal-panel__footer--plain">
@@ -4345,7 +4683,7 @@ async function openConfirmBookingModal(id) {
           refocusAfterRender();
           window.yuvomi?.showToast(t('budget.confirmSaved'), 'success');
         } catch (err) {
-          window.yuvomi?.showToast(err.message || t('common.errorGeneric'), 'danger');
+          showBudgetError(err, { panel, fallback: BUDGET_SAVE_FAILED });
         }
       });
     },
@@ -4466,7 +4804,7 @@ async function deleteEntry(id) {
         back = true;
       }
       if (back) renderBody();
-      if (err) window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+      if (err) showBudgetError(err);
     },
   });
 }
@@ -4647,7 +4985,7 @@ async function deleteEntrySeries(id) {
     restore: async (err) => {
       await loadMonth(state.month);
       renderBody();
-      if (err) window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
+      if (err) showBudgetError(err);
     },
   });
 }
@@ -4658,6 +4996,19 @@ async function deleteEntrySeries(id) {
 // statt Quelltext-Regex.
 export const __test = {
   monthNavHtml,
+  // #1648: die EINE Feldliste des Darlehens und ihre Verdrahtung, als Programm.
+  loanFormFieldsHtml,
+  wireLoanFormFields,
+  // #1656: Absage des Servers -> Feld und Satz.
+  LOAN_REFUSALS,
+  loanSaveError,
+  // #1593: was beim Betreten der Seite zurueckfaellt.
+  resetSessionFilters,
+  visibleEntries,
+  // #1668: dasselbe fuer den Rest der Seite.
+  BUDGET_REFUSALS,
+  budgetError,
+  showBudgetError,
   // #1546: was "alle kuenftigen" aus einem Vorkommen an die Serie schickt.
   occurrenceSeriesBody,
   // #1035: dasselbe von der ersten Buchung aus - mit Rhythmus, Werte nur geaendert.
@@ -4741,9 +5092,5 @@ export const __test = {
   toggleBalanceDetailsForTest(container) {
     _container = container;
     toggleBalanceDetails();
-  },
-  markTabEnteringForTest(container) {
-    _container = container;
-    markTabEntering();
   },
 };

@@ -12,6 +12,7 @@ import { createLogger } from '../logger.js';
 import { getBalance, isEnrolled, postLedger, CATALOG_SELECT, activeCatalog } from '../services/rewards.js';
 import { householdMemberSql, newNonMembers, nonMemberMessage } from '../services/household-members.js';
 import { isAdminRequest } from '../middleware/require-admin.js';
+import { visibilityWhere } from '../services/visibility.js';
 import { displayActingPerson, isDisplayRequest } from '../services/display-acting.js';
 
 const log = createLogger('Rewards');
@@ -305,12 +306,51 @@ router.delete('/catalog/:id', requireAdmin, (req, res) => {
 // --------------------------------------------------------
 // GET /ledger?user_id=&limit= — Punkte-Historie mit Namen.
 // --------------------------------------------------------
+//
+// DER GRUND EINER BUCHUNG IST DER TITEL EINER AUFGABE, und der Verlauf geht an
+// jeden, der das Modul lesen darf. services/rewards.js schreibt `task.title`
+// als Schnappschuss nach `reason` - damit nannte diese Route den Titel einer
+// privaten Aufgabe jedem Mitglied, dem `GET /tasks/:id` dieselbe Aufgabe mit
+// 404 verweigert. `reason` und `task_id` gehen deshalb nur hinaus, wenn
+//   - die Zeile der fragenden Person gehoert (`user_id`), oder
+//   - sie die Aufgabe ueber die Aufgaben-Regel sieht (`visibilityWhere`,
+//     dieselbe Klausel wie GET /tasks - ohne Admin-Bypass, wie dort), oder
+//   - die Zeile gar keine Aufgabe nennt: Bonus, Korrektur, Einloesung und die
+//     Rueckbuchung einer Einloesung.
+// Sonst `null`, und die Oberflaeche faellt auf den Namen des Buchungstyps
+// zurueck (`ledgerReason()` in public/pages/rewards.js). Zeile, Betrag und
+// Person bleiben fuer alle da: der Saldo soll sich weiter nachrechnen lassen.
+//
+// MASKIERT WIRD BEIM LESEN, NICHT BEIM SCHREIBEN. Die Sichtbarkeit einer
+// Aufgabe aendert sich nach der Buchung, und es gibt Zeilen von vor dieser
+// Regel; ein Schnappschuss ohne Titel deckte weder das eine noch das andere.
+//
+// DIE MASKE HAENGT AN `task_id` UND `reason`, NICHT AM TYP. Welche Typen eine
+// Aufgabe nennen, entscheidet der Schreibweg, und der bekommt neue. Aufgezaehlt
+// sind deshalb die Zeilen, die KEINE Aufgabe nennen (Allowlist); alles andere -
+// auch ein Typ, den es heute nicht gibt - gilt als Aufgabenbezug.
+//
+// OHNE `task_id` (die Aufgabe ist geloescht, der Fremdschluessel steht auf SET
+// NULL) laesst sich nicht mehr fragen, wer sie sah. Der Schnappschuss bleibt
+// dann bei der Person, der die Zeile gehoert - die engere Antwort ist die
+// einzige, die nichts verraten kann.
+const LEDGER_TASK_VISIBLE_SQL = `(
+  l.user_id = @me
+  OR (l.task_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM tasks t
+        WHERE t.id = l.task_id AND ${visibilityWhere('t', 'task_assignments', 'task_id', '@me')}))
+  OR (l.task_id IS NULL AND (l.type IN ('bonus', 'adjust', 'redeem') OR l.redemption_id IS NOT NULL))
+)`;
+
 router.get('/ledger', (req, res) => {
   try {
     const limit = Math.min(Math.max(toInt(req.query.limit) || 100, 1), 500);
     const userId = req.query.user_id != null && req.query.user_id !== '' ? toInt(req.query.user_id) : null;
     const rows = db.get().prepare(`
-      SELECT l.id, l.user_id, l.delta, l.type, l.reason, l.task_id, l.redemption_id, l.created_at,
+      SELECT l.id, l.user_id, l.delta, l.type,
+             CASE WHEN ${LEDGER_TASK_VISIBLE_SQL} THEN l.reason  END AS reason,
+             CASE WHEN ${LEDGER_TASK_VISIBLE_SQL} THEN l.task_id END AS task_id,
+             l.redemption_id, l.created_at,
              u.display_name AS user_name, u.avatar_color AS user_color, u.avatar_data AS user_avatar,
              a.display_name AS actor_name
       FROM reward_ledger l
@@ -319,7 +359,7 @@ router.get('/ledger', (req, res) => {
       ${userId ? 'WHERE l.user_id = @userId' : ''}
       ORDER BY l.created_at DESC, l.id DESC
       LIMIT @limit
-    `).all({ userId, limit });
+    `).all({ userId, limit, me: actingUser(req) });
     res.json({ data: rows });
   } catch (err) {
     log.error('GET /ledger error:', err);
@@ -344,6 +384,13 @@ router.get('/redemptions', (req, res) => {
     // also an jeden hinaus, der das Modul lesen darf. Aufgefallen ist es an
     // einem Wandtablett mit `rewards:read`, das gar keine eigenen Zeilen haben
     // kann - der Fehler ist aelter und traf jedes Mitglied ohne Adminrecht.
+    //
+    // `user_balance` ist der HEUTIGE Saldo des Anfragenden, aus dem Ledger
+    // gerechnet (#1623). `overview.balances` fuehrt nur, wer gerade teilnimmt;
+    // wer mit offener Anfrage ausgetragen wird, fiel dort heraus und die
+    // Genehmigungsliste rechnete mit 0. Der Wert folgt dem Subjektfilter
+    // darunter: wer entscheidet, sieht alle (wie in /participants), alle
+    // anderen nur den eigenen.
     const admin = isAdminRequest(req);
     const me = actingUser(req);
     const rows = db.get().prepare(`
@@ -360,6 +407,16 @@ router.get('/redemptions', (req, res) => {
       ORDER BY CASE r.status WHEN 'pending' THEN 0 ELSE 1 END, r.created_at DESC, r.id DESC
       LIMIT 300
     `).all({ status, me });
+    // Je Person EINMAL summieren, nicht je Zeile: als Unterabfrage in der
+    // Liste lief die Ledger-Summe fuer jede der bis zu 300 Zeilen neu, bei
+    // einem Mitglied ohne Adminrecht 300-mal dieselbe. getBalance() ist die
+    // eine Stelle, die einen Saldo rechnet, und liefert 0 ohne Ledger-Zeile.
+    const d = db.get();
+    const balanceByUser = new Map();
+    for (const row of rows) {
+      if (!balanceByUser.has(row.user_id)) balanceByUser.set(row.user_id, getBalance(d, row.user_id));
+      row.user_balance = balanceByUser.get(row.user_id);
+    }
     res.json({ data: rows });
   } catch (err) {
     log.error('GET /redemptions error:', err);
@@ -396,7 +453,7 @@ router.post('/redemptions', (req, res) => {
     let targetId;
     if (isDisplayRequest(req)) {
       const actor = displayActingPerson(req, req.body?.user_id, 'rewards', { db: d });
-      if (!actor.ok) return res.status(actor.status).json({ error: actor.error, code: actor.status });
+      if (!actor.ok) return res.status(actor.status).json({ error: actor.error, code: actor.status, ...(actor.reason ? { reason: actor.reason } : {}) });
       targetId = actor.userId;
     } else {
       targetId = req.body?.user_id != null && isAdminRequest(req) ? toInt(req.body.user_id) : me;

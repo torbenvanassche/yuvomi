@@ -111,6 +111,20 @@ const STUBS = {
     // WELCHES von beiden gerufen wurde (relativeDateLabel), setzt
     // globalThis.__formatDayMonth - dasselbe Muster wie __locale.
     export const formatDayMonth = (d) => (globalThis.__formatDayMonth ?? String)(d);
+    // Monat und Jahr in der Reihenfolge der Sprache (__locale), gregorianisch.
+    // Ein Nachbau wie formatUnit; test:region-presets fuehrt ihn gegen das
+    // Original.
+    export const formatMonthYear = (year, month) => {
+      const y = Number(year);
+      const m = Number(month);
+      if (!Number.isInteger(y) || !Number.isInteger(m) || m < 1 || m > 12) return '';
+      const locale = globalThis.__locale ?? 'de';
+      const text = new Intl.DateTimeFormat(locale, {
+        month: 'long', year: 'numeric', timeZone: 'UTC', calendar: 'gregory',
+      }).format(new Date(Date.UTC(y, m - 1, 1)));
+      const [first = ''] = text;
+      return first.toLocaleUpperCase(locale) + text.slice(first.length);
+    };
     export const formatTime = (d) => String(d);
     export const getTimeFormat = () => '24h';
     // Das Uhrzeit-Suffix der Locale („Uhr"): leer wie in den meisten Sprachen,
@@ -127,11 +141,14 @@ const STUBS = {
     export const timeInputPlaceholder = () => 'HH:MM';
   `,
   '/rrule-ui.js': `
-    export const renderRRuleFields = () => '';
-    // Dieselbe Form wie das Original, das immer { refreshMonthdayHint }
-    // zurueckgibt: der Kalender-Dialog haengt es an sein Startdatum, und ein
-    // leerer Rueckgabewert liess jede Suite sterben, die wireEventForm FAEHRT.
-    export const bindRRuleEvents = () => ({ refreshMonthdayHint: () => {} });
+    // Suiten, die pruefen wollen, WO ein Dialog die Wiederholung hinstellt,
+    // setzen globalThis.__renderRRuleFields - dasselbe Muster wie __apiStub.
+    export const renderRRuleFields = (...args) => globalThis.__renderRRuleFields?.(...args) ?? '';
+    // Dieselbe Form wie das Original, das immer { refreshMonthdayHint,
+    // refreshStartDate } zurueckgibt: der Kalender-Dialog haengt es an sein
+    // Startdatum, und ein leerer Rueckgabewert liess jede Suite sterben, die
+    // wireEventForm FAEHRT.
+    export const bindRRuleEvents = () => ({ refreshMonthdayHint: () => {}, refreshStartDate: () => {} });
     // Das leere Objekt ist fuer jede Suite richtig, die nur das MARKUP prueft -
     // aber es hat kein 'valid_until', und jeder Formular-Handler, der die
     // Wiederholung mitliest, bricht damit sofort mit "invalidDate" ab. Suiten,
@@ -228,7 +245,9 @@ const STUBS = {
   `,
   '/utils/ux.js': `
     export const stagger = () => {};
-    export const vibrate = () => {};
+    // Suiten, die pruefen wollen, WANN eine Seite vibriert (im Moment des
+    // Tipps, nicht nach der Serverantwort), setzen globalThis.__vibrateStub.
+    export const vibrate = (pattern) => { globalThis.__vibrateStub?.(pattern); };
     export const wireScrollFade = () => ({ update: () => {}, destroy: () => {} });
     // Tests, die das Undo-Fenster selbst schliessen oder zuruecknehmen wollen,
     // setzen globalThis.__undoStub = (opts) => {} und bekommen commit/restore
@@ -242,8 +261,38 @@ const STUBS = {
     export const collapseOut = () => Promise.resolve();
     export const expandIn = () => Promise.resolve();
     // Token-Leser ohne Stylesheet: der Rueckfall ist der Wert (utils/flip.js).
+    // Region auf-/zuklappen: ohne Layout bleibt nur der Zustand selbst (hidden).
+    export const toggleRegion = (region, open) => { if (region) region.hidden = !open; return Promise.resolve(); };
+    // Balken wachsen lassen: ohne Layout nichts zu tun, der Endwert steht im Markup.
+    export const growBars = () => 0;
     export const durationToken = (name, fallback) => fallback;
     export const easingToken = (name, fallback = 'ease-out') => fallback;
+  `,
+  // Inhaltswechsel und Listenbewegung (R16): ohne Layout gibt es nichts zu
+  // bewegen - der Tausch selbst muss trotzdem laufen, genau einmal und
+  // synchron. Die Originale importieren ux.js RELATIV und bekaemen hier das
+  // echte statt des Stubs darueber; test:motion faehrt sie ungestubbt.
+  // Suiten, die pruefen wollen, OB und WIE eine Seite den Uebergang anfragt,
+  // setzen globalThis.__motionStub = (name, ...args) => {}.
+  '/utils/content-swap.js': `
+    export const SWAP_SHIFT_PX = 8;
+    export const SWAP_FROM_OPACITY = 0.4;
+    export function swapContent(host, update, opts = {}) {
+      globalThis.__motionStub?.('swapContent', host, opts);
+      if (typeof update === 'function') update();
+      return null;
+    }
+  `,
+  '/utils/list-motion.js': `
+    export function redrawList(host, render, opts = {}) {
+      globalThis.__motionStub?.('redrawList', host, opts);
+      render();
+      return { first: false, entered: 0, moved: 0 };
+    }
+    export function collapseRow(row, opts = {}) {
+      globalThis.__motionStub?.('collapseRow', row, opts);
+      return Promise.resolve();
+    }
   `,
   '/utils/html.js': `
     export const esc = (value) => String(value ?? '')
@@ -253,6 +302,9 @@ const STUBS = {
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#039;');
     export const fmtLocation = (value) => String(value ?? '');
+    // Der Pflichtstern (R16): dieselbe Zeichenkette wie in public/utils/html.js;
+    // test-frontend-audit.js haelt das Original fest.
+    export const REQUIRED_MARK = '<span class="required-marker" aria-hidden="true"> *</span>';
     // Wie __renderUserMultiSelect weiter unten: Suiten, die pruefen wollen, WAS
     // ein Aufrufer dem Markdown-Renderer uebergibt (die Checklisten-Optionen
     // etwa), setzen globalThis.__renderMarkdownLight. Ohne das bleibt es beim

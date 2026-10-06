@@ -6,6 +6,7 @@ import {
   t,
 } from '/i18n.js';
 import { esc } from '/utils/html.js';
+import { initials } from '/utils/initials.js';
 import { prefersInkText } from '/utils/contrast.js';
 import { AVATAR_COLORS } from '/utils/color.js';
 import { openModal, closeModal, confirmModal, refocusAfterRender } from '/components/modal.js';
@@ -69,11 +70,6 @@ function appendCapabilityState(text, state) {
   return state ? `${text} · ${state}` : text;
 }
 
-function initials(name) {
-  if (!name) return '?';
-  return name.split(' ').map((w) => w[0]).slice(0, 2).join('').toUpperCase();
-}
-
 function familyRoleLabel(role) {
   return t(`settings.familyRole${String(role || 'other').replace(/(^|_)([a-z])/g, (_, __, c) => c.toUpperCase())}`);
 }
@@ -98,7 +94,7 @@ function clearError(element) {
 
 function avatarHtml(user, className = 'settings-avatar') {
   const safeName = esc(user?.display_name || '');
-  const fallback = esc(initials(user?.display_name || ''));
+  const fallback = esc(initials(user?.display_name, '?'));
   const background = esc(user?.avatar_color) || 'var(--color-accent)';
   // Die Farbe waehlt das Mitglied selbst; auf hellen Toenen lagen die weissen
   // Initialen bei 3,5:1 und 2,8:1 (Critique 2026-07-27).
@@ -153,6 +149,12 @@ function memberHtml(u, currentUserId) {
   // Personal-Label statt einer Familienrolle (Audit A2-25e).
   const familyRole = u.is_worker ? t('housekeeping.staff') : familyRoleLabel(u.family_role);
   const systemRole = u.role === 'admin' ? ` · ${esc(t('settings.systemAdminBadge'))}` : '';
+  // Ein ehemaliges Konto (#1381): die Zeile bleibt, damit sichtbar ist, wen
+  // die Verwaltung deaktiviert hat - Eintraege nennen die Person weiter.
+  // Bearbeiten laesst sich so ein Konto hier nicht mehr; entfernen schon, das
+  // loescht es, sobald nichts Geteiltes mehr auf es zeigt.
+  const former = Boolean(u.deactivated_at);
+  const formerBadge = former ? ` · ${esc(t('settings.memberFormerBadge'))}` : '';
   const profileMeta = [
     u.phone ? t('settings.memberPhoneMeta', { value: u.phone }) : '',
     u.email || '',
@@ -162,20 +164,21 @@ function memberHtml(u, currentUserId) {
   // erst bei Hover/Fokus laut. Der eigene Account bekommt keine Lösch-Aktion
   // in der Mitgliederliste (Audit A2-25d).
   const deleteBtn = u.id === currentUserId ? '' : `
-      <button class="row-action row-action--danger" data-delete-user="${u.id}" data-name="${esc(u.display_name)}" aria-label="${esc(t('common.deleteNamed', { name: u.display_name }))}" title="${t('settings.deleteMemberLabel')}">
+      <button class="row-action row-action--danger" data-delete-user="${u.id}" data-name="${esc(u.display_name)}" aria-label="${esc(t('settings.removeMemberNamed', { name: u.display_name }))}" title="${esc(t('settings.removeMemberLabel'))}">
         <i data-lucide="trash-2" class="icon-md" aria-hidden="true"></i>
       </button>`;
+  const editBtn = former ? '' : `
+      <button class="row-action" data-edit-user="${u.id}" aria-label="${esc(t('common.editNamed', { name: u.display_name }))}" title="${t('settings.editMemberLabel')}">
+        <i data-lucide="edit-2" class="icon-md" aria-hidden="true"></i>
+      </button>`;
   return `
-    <li class="settings-member" data-id="${u.id}">
+    <li class="settings-member${former ? ' settings-member--former' : ''}" data-id="${u.id}">
       ${avatarHtml(u, 'settings-avatar settings-avatar--sm')}
       <div class="settings-member__info">
         <span class="settings-member__name">${esc(u.display_name)}</span>
-        <span class="settings-member__meta">@${esc(u.username)} · ${esc(familyRole)}${systemRole}</span>
+        <span class="settings-member__meta">@${esc(u.username)} · ${esc(familyRole)}${systemRole}${formerBadge}</span>
         ${profileMeta ? `<span class="settings-member__meta">${profileMeta}</span>` : ''}
-      </div>
-      <button class="row-action" data-edit-user="${u.id}" aria-label="${esc(t('common.editNamed', { name: u.display_name }))}" title="${t('settings.editMemberLabel')}">
-        <i data-lucide="edit-2" class="icon-md" aria-hidden="true"></i>
-      </button>${deleteBtn}
+      </div>${editBtn}${deleteBtn}
     </li>
   `;
 }
@@ -374,7 +377,10 @@ function renderMemberList(container, users, currentUserId) {
   if (!users.length) {
     list.appendChild(listNotice(t('settings.familyEmpty')));
   } else {
-    list.insertAdjacentHTML('beforeend', users.map((u) => memberHtml(u, currentUserId)).join(''));
+    // Ehemalige ans Ende, sonst in der Reihenfolge der Liste (der Server
+    // liefert sie schon so; nach einem Deaktivieren hier stimmt es ebenfalls).
+    const ordered = [...users.filter((u) => !u.deactivated_at), ...users.filter((u) => u.deactivated_at)];
+    list.insertAdjacentHTML('beforeend', ordered.map((u) => memberHtml(u, currentUserId)).join(''));
   }
   window.lucide?.createIcons({ el: list });
 }
@@ -615,7 +621,7 @@ async function loadInvites(container) {
   bindInviteEvents(container, invites);
 }
 
-function bindDeleteButtons(container) {
+function bindDeleteButtons(container, currentUser, users) {
   container.querySelectorAll('[data-delete-user]').forEach((btn) => {
     btn.replaceWith(btn.cloneNode(true));
   });
@@ -623,18 +629,34 @@ function bindDeleteButtons(container) {
     btn.addEventListener('click', async () => {
       const id = parseInt(btn.dataset.deleteUser, 10);
       const name = btn.dataset.name;
-      // Die Folgen stehen im Dialog, nicht in der Dokumentation: `created_by`
-      // kaskadiert (server/db.js), `assigned_to` wird auf NULL gesetzt. In
-      // einer selbstgehosteten Instanz gibt es weder Support noch Undo.
-      if (!await confirmModal(t('settings.deleteMemberConfirm', { name }), {
+      // Die Folgen stehen im Dialog, nicht in der Dokumentation. Was geschieht,
+      // entscheidet der Server (#1381): ein Konto mit Spuren in geteilten Daten
+      // wird deaktiviert, eines ohne wird geloescht. Der Dialog sagt beides,
+      // statt die Kaskade als sichere Folge zu beschreiben. In einer
+      // selbstgehosteten Instanz gibt es weder Support noch Undo.
+      if (!await confirmModal(t('settings.removeMemberConfirm', { name }), {
         danger: true,
-        confirmLabel: t('common.delete'),
-        detail: t('settings.deleteMemberConfirmDetail', { name }),
+        confirmLabel: t('settings.removeMemberLabel'),
+        detail: t('settings.removeMemberConfirmDetail', { name }),
       })) return;
       try {
-        await auth.deleteUser(id);
-        btn.closest('.settings-member').remove();
-        window.yuvomi?.showToast(t('settings.memberDeletedToast', { name }), 'default');
+        const res = await auth.deleteUser(id);
+        const idx = users.findIndex((u) => u.id === id);
+        if (res?.outcome === 'deactivated') {
+          // Die Zeile bleibt und traegt die Marke. Rolle und Zeitpunkt wie der
+          // Server sie gesetzt hat; die Liste liest sie beim naechsten Laden neu.
+          if (idx !== -1) users[idx] = { ...users[idx], role: 'member', deactivated_at: new Date().toISOString() };
+          window.yuvomi?.showToast(t('settings.memberDeactivatedToast', { name }), 'default');
+        } else {
+          if (idx !== -1) users.splice(idx, 1);
+          window.yuvomi?.showToast(t('settings.memberDeletedToast', { name }), 'default');
+        }
+        renderMemberList(container, users, currentUser?.id);
+        bindDeleteButtons(container, currentUser, users);
+        bindEditButtons(container, currentUser, users);
+        // Der Knopf, an den der Dialog den Fokus zurueckgibt, ist eben
+        // weggerendert worden.
+        refocusAfterRender();
       } catch (err) {
         window.yuvomi?.showToast(err.message, 'danger');
       }
@@ -853,7 +875,7 @@ async function openEditMemberModal(member, currentUser, users, container) {
           closeModal({ force: true });
           window.yuvomi?.showToast(t('settings.memberUpdatedToast', { name: res.user.display_name }), 'success');
           renderMemberList(container, users, currentUser?.id);
-          bindDeleteButtons(container);
+          bindDeleteButtons(container, currentUser, users);
           bindEditButtons(container, currentUser, users);
         } catch (err) {
           showError(errorEl, err.message ?? t('common.errorGeneric'));
@@ -935,7 +957,7 @@ function openAddMemberModal(container, currentUser, users) {
           const res = await auth.createUser(data);
           users.push(res.user);
           renderMemberList(container, users, currentUser?.id);
-          bindDeleteButtons(container);
+          bindDeleteButtons(container, currentUser, users);
           bindEditButtons(container, currentUser, users);
           // Der Dialog gibt den Fokus beim Schliessen an "Mitglied hinzufuegen"
           // zurueck (modal.js) - kein Fall auf BODY wie beim Inline-Formular.
@@ -958,7 +980,7 @@ function bindEvents(container, currentUser, users) {
     addMemberBtn.addEventListener('click', () => openAddMemberModal(container, currentUser, users));
   }
 
-  bindDeleteButtons(container);
+  bindDeleteButtons(container, currentUser, users);
   bindEditButtons(container, currentUser, users);
 }
 
@@ -1065,3 +1087,7 @@ export async function render(container, { user } = {}) {
   await loadInvites(container);
   window.lucide?.createIcons({ el: container });
 }
+
+// Der Avatar als Programm (test:initials): welche Zeichen ohne Bild auf der
+// Scheibe stehen.
+export const __test = { avatarHtml };

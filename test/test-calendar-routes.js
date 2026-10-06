@@ -4960,3 +4960,249 @@ test('Farb-Heilung: eine Farbwahl vor dem ersten Heil-Lauf kommt nicht in den Sc
     db.prepare("DELETE FROM sync_config WHERE key LIKE 'caldav_legacy_color_heal_%'").run();
   }
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// Ein Termin aus einem fremden, ungeteilten ICS-Abo - per Kennung
+// ════════════════════════════════════════════════════════════════════════════
+//
+// Die Liste, die Suche und `/upcoming` ziehen den Abo-Filter seit jeher: ein
+// ICS-Termin erscheint nur aus einem geteilten oder eigenen Abo. Die Wege, die
+// eine Kennung aus dem Pfad nehmen, fragten nur die Zeilen-Sichtbarkeit - und
+// die steht bei einem importierten Termin auf `all`.
+test('ICS-Termin aus fremdem ungeteiltem Abo: per Kennung weder lesbar noch aenderbar', async () => {
+  const missing = await call('GET', '/999999', { actor: TOM });
+  assert.equal(missing.status, 404);
+
+  const subId = db.prepare(
+    "INSERT INTO ics_subscriptions (name, url, color, created_by, shared) VALUES ('Marias Abo','https://x/priv.ics','#112233',?,0)",
+  ).run(MARIA.id).lastInsertRowid;
+  const single = insertEvent({ title: 'ABO-GEHEIM', start_datetime: '2043-02-03T09:00', external_source: 'ics', subscription_id: subId, created_by: MARIA.id });
+  const series = insertEvent({ title: 'ABO-GEHEIM-SERIE', start_datetime: '2043-02-03T09:00', recurrence_rule: 'FREQ=DAILY', external_source: 'ics', subscription_id: subId, created_by: MARIA.id });
+  const before = () => db.prepare('SELECT id, title, user_modified FROM calendar_events WHERE subscription_id = ? ORDER BY id').all(subId);
+  const untouched = before();
+  const exdates = () => db.prepare('SELECT COUNT(*) AS n FROM calendar_event_exceptions WHERE event_id = ?').get(series).n;
+
+  // Die Voraussetzung: in der Liste steht er fuer Tom nicht.
+  const listed = await call('GET', '/?from=2043-02-01&to=2043-02-05', { actor: TOM });
+  assert.ok(!JSON.stringify(listed.body).includes('ABO-GEHEIM'), 'die Liste zeigt den Termin');
+
+  for (const viewer of [TOM, ADMIN]) {
+    const who = viewer === ADMIN ? 'Admin' : 'Mitglied';
+    const read = await call('GET', `/${single}`, { actor: viewer });
+    assert.equal(read.status, 404, `${who}: GET /:id`);
+    assert.deepEqual(read.body, missing.body, `${who}: die Antwort verraet den Termin`);
+    assert.equal((await call('PUT', `/${single}`, { actor: viewer, body: { title: 'uebernommen' } })).status, 404, `${who}: PUT /:id`);
+    assert.equal((await call('DELETE', `/${single}`, { actor: viewer })).status, 404, `${who}: DELETE /:id`);
+    assert.equal((await call('POST', `/${series}/exceptions`, { actor: viewer, body: { date: '2043-02-04' } })).status, 404, `${who}: POST /:id/exceptions`);
+    assert.equal((await call('PUT', `/${series}/occurrences/2043-02-04T09:00`, { actor: viewer, body: { title: 'x' } })).status, 404, `${who}: PUT occurrence`);
+    assert.equal((await call('DELETE', `/${series}/occurrences/2043-02-04T09:00`, { actor: viewer })).status, 404, `${who}: DELETE occurrence`);
+  }
+  assert.deepEqual(before(), untouched, 'ein fremder Aufruf hat den Termin veraendert');
+  assert.equal(exdates(), 0, 'ein fremder Aufruf hat eine Ausnahme geschrieben');
+
+  // Die Eigentuemerin des Abos liest ihren Termin.
+  const own = await call('GET', `/${single}`, { actor: MARIA });
+  assert.equal(own.status, 200);
+  assert.equal(own.body.data.title, 'ABO-GEHEIM');
+
+  // Geteilt: derselbe Termin ist fuer alle da.
+  db.prepare('UPDATE ics_subscriptions SET shared = 1 WHERE id = ?').run(subId);
+  assert.equal((await call('GET', `/${single}`, { actor: TOM })).status, 200);
+
+  db.prepare('DELETE FROM calendar_events WHERE subscription_id = ?').run(subId);
+  db.prepare('DELETE FROM ics_subscriptions WHERE id = ?').run(subId);
+});
+
+// ════════════════════════════════════════════════════════════════════════════════
+// #1607 (9): ein Serienende VOR dem Start
+// ════════════════════════════════════════════════════════════════════════════════
+// `rrule()` prueft nur die Form der Regel, und die ist bei UNTIL=20910930 ab dem
+// 2. Oktober einwandfrei. Die Regel "Ende nicht vor dem Start" gehoert trotzdem
+// NICHT in den geteilten Validator: Aufgaben und Budget rufen ihn ebenfalls,
+// und er kennt gar kein Startdatum. Sie steht in den Schreibrouten des
+// Kalenders - und nur dort, wo die Anfrage die Serie anfasst, damit eine
+// eingelesene Fremdserie mit so einer Regel bearbeitbar bleibt.
+
+const ENDET_VORHER = 'FREQ=DAILY;UNTIL=20910930T235959Z';
+
+test('POST / - ein Serienende vor dem Start wird abgelehnt (#1607)', async () => {
+  const r = await call('POST', '/', {
+    body: { title: 'ENDE-VOR-START', start_datetime: '2091-10-02T09:00', recurrence_rule: ENDET_VORHER },
+  });
+  assert.equal(r.status, 400, `erwartet 400, bekommen ${r.status}`);
+  assert.match(String(r.body?.error ?? ''), /ends before the start date/);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM calendar_events WHERE title = 'ENDE-VOR-START'").get().n, 0);
+});
+
+test('POST / - ein Serienende AM Starttag bleibt erlaubt (#1607)', async () => {
+  // Die Grenze: derselbe Tag ist eine Serie mit genau einem Vorkommen.
+  const r = await call('POST', '/', {
+    body: { title: 'ENDE-AM-START', start_datetime: '2091-10-02T09:00', recurrence_rule: 'FREQ=DAILY;UNTIL=20911002T235959Z' },
+  });
+  assert.equal(r.status, 201, `erwartet 201, bekommen ${r.status}`);
+  db.prepare('DELETE FROM calendar_events WHERE id = ?').run(r.body.data.id);
+});
+
+test('PUT /:id - Regel oder Start so aendern, dass das Ende vor dem Start liegt, wird abgelehnt (#1607)', async () => {
+  const angelegt = await call('POST', '/', {
+    body: { title: 'ENDE-PUT', start_datetime: '2091-09-20T09:00', recurrence_rule: ENDET_VORHER },
+  });
+  assert.equal(angelegt.status, 201, 'vom 20. bis zum 30. September ist eine gueltige Serie');
+  const id = angelegt.body.data.id;
+  try {
+    const startDahinter = await call('PUT', `/${id}`, { body: { start_datetime: '2091-10-02T09:00' } });
+    assert.equal(startDahinter.status, 400, 'der Start wandert hinter das Ende');
+    assert.match(String(startDahinter.body?.error ?? ''), /ends before the start date/);
+
+    const endeDavor = await call('PUT', `/${id}`, { body: { recurrence_rule: 'FREQ=DAILY;UNTIL=20910915T235959Z' } });
+    assert.equal(endeDavor.status, 400, 'das Ende wandert vor den Start');
+
+    const zeile = db.prepare('SELECT start_datetime, recurrence_rule FROM calendar_events WHERE id = ?').get(id);
+    assert.match(zeile.start_datetime, /^2091-09-20/);
+    assert.equal(zeile.recurrence_rule, ENDET_VORHER);
+  } finally {
+    db.prepare('DELETE FROM calendar_events WHERE id = ?').run(id);
+  }
+});
+
+test('PUT /:id - eine Bestandsserie mit Ende vor dem Start bleibt bearbeitbar (#1607)', async () => {
+  // Am Guard vorbei in die Zeile, wie es ICS-Import und CalDAV-Sync tun. Das
+  // Formular schickt Start UND Regel bei jedem Speichern mit - geprueft werden
+  // deshalb die Werte, nicht die Anwesenheit der Felder.
+  const id = insertEvent({ title: 'FREMD-ENDE-VOR-START', start_datetime: '2091-10-02T09:00', recurrence_rule: ENDET_VORHER });
+  try {
+    const nurTitel = await call('PUT', `/${id}`, {
+      body: { title: 'Neuer Titel', start_datetime: '2091-10-02T09:00', recurrence_rule: ENDET_VORHER },
+    });
+    assert.equal(nurTitel.status, 200, `ein Titel-Edit darf nicht scheitern, bekommen ${nurTitel.status}`);
+    assert.equal(nurTitel.body.data.title, 'Neuer Titel');
+  } finally {
+    db.prepare('DELETE FROM calendar_events WHERE id = ?').run(id);
+  }
+});
+
+test('PUT /:id - ein Termin mit eigener Zone: geraten wird nicht, aber ein Ende klar vor dem Start faellt auf (#1607)', async () => {
+  // 31. Januar 20:00 in New York steht als 1. Februar 01:00 UTC in der Zeile.
+  // Welcher der beiden Tage "der Starttag" ist, haengt an der Lesart - dazwischen
+  // wird deshalb nicht geurteilt. Ein Ende vor BEIDEN ist in jeder Lesart ein
+  // Widerspruch (Review an PR #1618).
+  const id = insertEvent({ title: 'ZONE-ENDE', start_datetime: '2091-02-01T01:00:00Z', recurrence_rule: 'RRULE:FREQ=DAILY' });
+  db.prepare("UPDATE calendar_events SET tzid = 'America/New_York' WHERE id = ?").run(id);
+  try {
+    const klarDavor = await call('PUT', `/${id}`, { body: { recurrence_rule: 'FREQ=DAILY;UNTIL=20910115T235959Z' } });
+    assert.equal(klarDavor.status, 400, `ein Ende zwei Wochen vor dem Start: ${klarDavor.status}`);
+    assert.match(String(klarDavor.body?.error ?? ''), /ends before the start date/);
+
+    const dazwischen = await call('PUT', `/${id}`, { body: { recurrence_rule: 'FREQ=DAILY;UNTIL=20910131T235959Z' } });
+    assert.equal(dazwischen.status, 200, `zwischen Ortstag und UTC-Tag wird nicht geraten: ${dazwischen.status}`);
+
+    // Und der Bestand: dieselbe Zeile mit einer Regel, die klar vorher endet,
+    // am Guard vorbei geschrieben - ein Titel-Edit geht durch.
+    db.prepare('UPDATE calendar_events SET recurrence_rule = ? WHERE id = ?').run('RRULE:FREQ=DAILY;UNTIL=20910115T235959Z', id);
+    const nurTitel = await call('PUT', `/${id}`, {
+      body: { title: 'Neuer Titel', recurrence_rule: 'RRULE:FREQ=DAILY;UNTIL=20910115T235959Z' },
+    });
+    assert.equal(nurTitel.status, 200, `Titel-Edit am Bestand: ${nurTitel.status}`);
+  } finally {
+    db.prepare('DELETE FROM calendar_events WHERE id = ?').run(id);
+  }
+});
+
+test('PUT /:id - ein Instant ohne eigene Zone: der Tag des Formulars ist keine Startaenderung (#1607)', async () => {
+  // Ein synchronisierter Termin liegt als `...Z` in der Zeile, das Formular
+  // schickt denselben Zeitpunkt als Wanduhrzeit des Haushalts. In Tokio ist
+  // 20:00Z am 1. Oktober der 2. Oktober 05:00 - der rohe Textvergleich hielt
+  // das fuer einen verschobenen Start und wies den Titel-Edit ab.
+  const previousZone = db.prepare("SELECT value FROM sync_config WHERE key = 'household_timezone'").get()?.value;
+  db.prepare(`INSERT INTO sync_config (key, value) VALUES ('household_timezone', 'Asia/Tokyo')
+              ON CONFLICT(key) DO UPDATE SET value = excluded.value`).run();
+  const id = insertEvent({ title: 'INSTANT-ENDE', start_datetime: '2091-10-01T20:00:00Z', recurrence_rule: 'RRULE:FREQ=DAILY;UNTIL=20910930T235959Z' });
+  try {
+    const nurTitel = await call('PUT', `/${id}`, {
+      body: { title: 'Neuer Titel', start_datetime: '2091-10-02T05:00', recurrence_rule: 'RRULE:FREQ=DAILY;UNTIL=20910930T235959Z' },
+    });
+    assert.equal(nurTitel.status, 200, `Titel-Edit: ${nurTitel.status} ${JSON.stringify(nurTitel.body?.error ?? '')}`);
+
+    const verschoben = await call('PUT', `/${id}`, {
+      body: { start_datetime: '2091-10-05T05:00', recurrence_rule: 'RRULE:FREQ=DAILY;UNTIL=20910930T235959Z' },
+    });
+    assert.equal(verschoben.status, 400, `ein wirklich verschobener Start: ${verschoben.status}`);
+  } finally {
+    db.prepare('DELETE FROM calendar_events WHERE id = ?').run(id);
+    if (previousZone === undefined) db.prepare("DELETE FROM sync_config WHERE key = 'household_timezone'").run();
+    else db.prepare("UPDATE sync_config SET value = ? WHERE key = 'household_timezone'").run(previousZone);
+  }
+});
+
+test('POST /import - eine eingelesene Serie mit Ende vor dem Start scheitert nicht (#1607)', async () => {
+  // Fremde Daten sind, wie sie sind. Der Import lehnt nicht ab, was ein anderer
+  // Kalender so geschrieben hat.
+  const ics = [
+    'BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', 'UID:until-before-start@test',
+    'SUMMARY:FREMDSERIE-ENDE-VOR-START', 'DTSTART:20911002T090000Z', 'DTEND:20911002T100000Z',
+    'RRULE:FREQ=DAILY;UNTIL=20910930T235959Z', 'END:VEVENT', 'END:VCALENDAR',
+  ].join('\r\n');
+  const res = await call('POST', '/import', { actor: ADMIN, body: { ics } });
+  assert.equal(res.status, 201, `der Import darf nicht scheitern, bekommen ${res.status}: ${JSON.stringify(res.body)}`);
+  // Der Status allein reicht nicht: ein Import, der den Termin still
+  // ueberspringt, antwortet genauso mit 201.
+  assert.equal(res.body.data.imported, 1, `der Termin muss ankommen: ${JSON.stringify(res.body.data)}`);
+  const zeile = db.prepare("SELECT recurrence_rule FROM calendar_events WHERE title = 'FREMDSERIE-ENDE-VOR-START'").get();
+  assert.match(String(zeile?.recurrence_rule ?? ''), /UNTIL=20910930/, 'die Regel steht in der Zeile, wie sie kam');
+  db.prepare("DELETE FROM calendar_events WHERE title = 'FREMDSERIE-ENDE-VOR-START'").run();
+});
+
+test('following - ein Nachfolger, dessen Regel vor seinem Start endet, wird abgelehnt (#1607)', async () => {
+  const seriesId = insertEvent({ title: 'ENDE-FOLGESERIE', start_datetime: '2091-09-20T09:00:00', recurrence_rule: 'FREQ=DAILY' });
+  try {
+    const response = await call('PUT', `/${seriesId}/occurrences/2091-10-02/following`, {
+      body: { recurrence_rule: ENDET_VORHER },
+    });
+    assert.equal(response.status, 400, `erwartet 400, bekommen ${response.status}: ${JSON.stringify(response.body)}`);
+    assert.equal(db.prepare('SELECT recurrence_rule FROM calendar_events WHERE id = ?').get(seriesId).recurrence_rule, 'FREQ=DAILY');
+  } finally {
+    db.prepare("DELETE FROM calendar_events WHERE title = 'ENDE-FOLGESERIE'").run();
+  }
+});
+
+test('POST /:id/reset: ein Termin, den die Person nicht sieht, ist 404 - nicht 403 oder 400', async () => {
+  // Die Route lud den Termin per Kennung und antwortete je nach Fall anders:
+  // 400 fuer einen fremden PRIVATEN lokalen Termin ("nur ICS"), 403 fuer einen
+  // Termin aus fremdem ungeteiltem Abo. Beides sagt, dass es die Kennung gibt -
+  // und ein Admin konnte den Termin eines Abos zuruecksetzen, das er nicht sieht.
+  const missing = await call('POST', '/999999/reset', { actor: TOM });
+  assert.equal(missing.status, 404);
+
+  const subId = db.prepare(
+    "INSERT INTO ics_subscriptions (name, url, color, created_by, shared) VALUES ('Marias Reset-Abo','https://x/rs.ics','#112233',?,0)",
+  ).run(MARIA.id).lastInsertRowid;
+  const ics = insertEvent({ title: 'RESET-GEHEIM', start_datetime: '2044-02-03T09:00', external_source: 'ics', subscription_id: subId, created_by: MARIA.id, user_modified: 1 });
+  const priv = insertEvent({ title: 'RESET-PRIVAT', start_datetime: '2044-02-03T09:00', created_by: MARIA.id, visibility: 'private' });
+  const flag = () => db.prepare('SELECT user_modified FROM calendar_events WHERE id = ?').get(ics).user_modified;
+
+  for (const viewer of [TOM, ADMIN]) {
+    const who = viewer === ADMIN ? 'Admin' : 'Mitglied';
+    for (const [label, id] of [['ungeteiltes Abo', ics], ['privater lokaler Termin', priv]]) {
+      const r = await call('POST', `/${id}/reset`, { actor: viewer });
+      assert.equal(r.status, 404, `${who}: ${label}`);
+      assert.deepEqual(r.body, missing.body, `${who}: ${label} - die Antwort verraet den Termin`);
+    }
+  }
+  assert.equal(flag(), 1, 'ein fremder Aufruf hat den Termin zurueckgesetzt');
+
+  // Die Eigentuemerin des Abos setzt zurueck, und ihr eigener lokaler Termin
+  // bekommt weiter die ehrliche 400.
+  assert.equal((await call('POST', `/${priv}/reset`, { actor: MARIA })).status, 400);
+  assert.equal((await call('POST', `/${ics}/reset`, { actor: MARIA })).status, 200);
+  assert.equal(flag(), 0);
+
+  // Geteilt: der Admin sieht den Termin und darf zuruecksetzen wie bisher,
+  // ein Mitglied ohne Bezug bekommt die 403.
+  db.prepare('UPDATE ics_subscriptions SET shared = 1 WHERE id = ?').run(subId);
+  db.prepare('UPDATE calendar_events SET user_modified = 1 WHERE id = ?').run(ics);
+  assert.equal((await call('POST', `/${ics}/reset`, { actor: TOM })).status, 403);
+  assert.equal((await call('POST', `/${ics}/reset`, { actor: ADMIN })).status, 200);
+
+  db.prepare('DELETE FROM calendar_events WHERE id IN (?, ?)').run(ics, priv);
+  db.prepare('DELETE FROM ics_subscriptions WHERE id = ?').run(subId);
+});

@@ -257,6 +257,38 @@ test('jeder statisch geschriebene t()-Schlüssel steht auch in der Referenz-Loca
   );
 });
 
+/**
+ * Die Rueckfrage "Aenderungen verwerfen?" hat zwei Knoepfe: links der Abbruch
+ * (`common.cancel`, die Vorgabe von confirmModal), rechts die Handlung. In ko,
+ * it und uk trugen beide dasselbe Wort (#1607 Punkt 7), in tr war das eine der
+ * Anfang des anderen - wer "Abbrechen | Abbrechen" liest, kann nicht wissen,
+ * welcher Knopf die Eingaben wegwirft.
+ *
+ * Geprueft wird jedes Label, das ein Aufrufer als `confirmLabel` NEBEN dem
+ * Vorgabe-Abbruch zeigt. Die Liste ist Handarbeit; ein neues Verwerfen-Label
+ * gehoert dazu. Was der Vergleich NICHT sieht: zwei verschiedene Woerter mit
+ * derselben Bedeutung (ru "Отмена" | "Отменить") - das bleibt Lesearbeit.
+ */
+const DISCARD_LABELS = ['modal.discardChanges', 'settings.permDiscard'];
+
+test('ein Verwerfen-Knopf heisst in keiner Sprache wie der Abbrechen-Knopf daneben', () => {
+  const fold = (value, locale) => String(value ?? '').trim().toLocaleLowerCase(locale);
+  const offenders = [];
+  for (const locale of LOCALES) {
+    const flat = flatten(JSON.parse(readLocale(locale)));
+    const cancel = fold(flat.get('common.cancel'), locale);
+    assert.ok(cancel, `${locale}.json: common.cancel fehlt`);
+    for (const key of DISCARD_LABELS) {
+      const discard = fold(flat.get(key), locale);
+      assert.ok(discard, `${locale}.json: ${key} fehlt`);
+      if (discard === cancel || discard.startsWith(`${cancel} `) || cancel.startsWith(`${discard} `)) {
+        offenders.push(`${locale}.json: ${key} = "${flat.get(key)}" neben common.cancel = "${flat.get('common.cancel')}"`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [], 'beide Knoepfe der Rueckfrage sagen dasselbe');
+});
+
 test('Modulnamen sind in nav und in den API-Token-Scopes wortgleich', () => {
   const drift = [];
   let compared = 0;
@@ -569,5 +601,20 @@ test('dateInputPlaceholder spricht die UI-Sprache, die Reihenfolge bleibt die de
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else delete globalThis[name];
     }
+  }
+});
+
+/* #1607: `calendar.timeSuffix` HAENGT AN EINER ZEIT MIT DOPPELPUNKT.
+ * Die Aufrufer schreiben `${formatTime(...)} ${timeSuffix()}`, also „18:00" +
+ * Zeitwort. Deutsch hat dafuer „Uhr". Koreanisch (시), Japanisch (時) und
+ * Chinesisch (时/點) haben ein Zaehlwort fuer die STUNDE, das an der Zahl klebt
+ * („18시") - hinter „18:00" ergibt es „18:00 시", zwei Schreibweisen in einer.
+ * Der koreanische Wert war genau das. */
+test('timeSuffix: kein Stunden-Zaehlwort hinter einer Uhrzeit mit Doppelpunkt', () => {
+  const HOUR_COUNTERS = /^[시時时點点]$/u;
+  for (const locale of readdirSync(LOCALES_DIR).filter((f) => f.endsWith('.json'))) {
+    const suffix = JSON.parse(readFileSync(new URL(locale, LOCALES_DIR), 'utf8')).calendar.timeSuffix;
+    assert.equal(typeof suffix, 'string', `${locale}: calendar.timeSuffix fehlt`);
+    assert.doesNotMatch(suffix.trim(), HOUR_COUNTERS, `${locale}: "18:00 ${suffix}" mischt zwei Schreibweisen`);
   }
 });

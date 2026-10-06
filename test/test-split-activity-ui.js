@@ -305,6 +305,49 @@ test('Datum: der Tag in der Haushaltszone, nicht der UTC-Tag', () => {
   }
 });
 
+test('geloeschte Ausgabe (#1382): Zeichen am Anlege-Eintrag, Loesch-Eintrag nennt sie ohne Zeichen', () => {
+  const vorher = { ...split.state };
+  const ausgabe = (extra = {}) => ({ id: 9, deleted_at: null, ...extra });
+  // Titel und Betrag stehen seit #1607 in den Metadaten des Eintrags.
+  const metadata = { title: 'Einkauf', amount_minor: 3000, amount: '30.00', currency: 'EUR' };
+  const zeichne = (activity, modus = 'write') => {
+    Object.assign(split.state, { activity, activityCursor: null, groupStatus: 'active' });
+    return withAccess({ budget: modus }, () => split.renderActivity());
+  };
+  try {
+    // Aktiv: die Zeile nennt die Ausgabe, kein Zeichen, nicht durchgestrichen.
+    const aktiv = zeichne([eintrag(1, { entity_id: 9, metadata, expense: ausgabe() })]);
+    const detail = /<span class="split-activity-payment">Einkauf · 30,00\s€<\/span>/;
+    assert.match(aktiv, detail);
+    assert.doesNotMatch(aktiv, /split-activity-item--reversed|split-activity-reversed/);
+
+    // Geloescht: bei jedem Recht das Zeichen und die durchgestrichene Zeile.
+    const weg = ausgabe({ deleted_at: '2026-09-21T08:00:00Z' });
+    for (const modus of ['write', 'read']) {
+      const html = zeichne([
+        eintrag(2, { type: 'expense_deleted', entity_id: 9, metadata, expense: weg }),
+        eintrag(1, { entity_id: 9, metadata, expense: weg }),
+      ], modus);
+      const [loeschung, anlage] = html.split('<div class="split-activity-item').slice(1);
+      assert.match(anlage, /^ split-activity-item--reversed"/, modus);
+      assert.match(anlage, /<span class="split-activity-reversed">splitExpenses\.expenseDeleted<\/span>/, modus);
+      assert.match(loeschung, /^"/, `${modus}: der Loesch-Eintrag ist nicht durchgestrichen`);
+      assert.match(loeschung, detail, modus);
+      assert.doesNotMatch(loeschung, /split-activity-reversed/, modus);
+      assert.doesNotMatch(html, /data-reverse-settlement/, `${modus}: keine Handlung`);
+    }
+
+    // Eine Serienbuchung legt ihre Ausgabe ohne `expense_created` an: ihr
+    // Eintrag traegt das Zeichen und muss deshalb sagen, welche Ausgabe.
+    const serie = zeichne([eintrag(3, { type: 'recurring_generated', entity_id: 9, metadata: { recurring_expense_id: 4, title: 'Miete' }, expense: weg })]);
+    assert.match(serie, /<span class="split-activity-payment">Miete<\/span>/);
+    assert.match(serie, /split-activity-item--reversed"/);
+    assert.match(serie, /<span class="split-activity-reversed">splitExpenses\.expenseDeleted<\/span>/);
+  } finally {
+    Object.assign(split.state, vorher);
+  }
+});
+
 // Migration v226 schreibt 'ledger_restored' ohne Akteur (#1382): der Eintrag
 // traegt den uebersetzten Typ und "System" statt eines Namens - und der Key
 // steht in jeder Sprache, sonst zeigte die Seite den rohen Key.
@@ -398,30 +441,44 @@ test('Buchung entfernt: eigener Typtext, "System", Titel und Betrag maskiert, in
 // Objekt und Betrag, und die Gruppenzahl belegt mobil keine volle Zeile.
 // ---------------------------------------------------------------------------
 
-test('der Verlauf nennt die Ausgabe und ihren Betrag - nicht fuenfmal „Ausgabe erstellt"', () => {
+test('der Verlauf nennt die Ausgabe und den Betrag von damals - nicht fuenfmal „Ausgabe erstellt"', () => {
   const vorher = { ...split.state };
   Object.assign(split.state, {
     activeGroupId: 9, groupStatus: 'active', user: null,
-    expenses: [{ id: 5, title: 'Wocheneinkauf', amount: '142.30', currency: 'EUR' }],
+    // Die geladene Ausgabe traegt den HEUTIGEN Betrag (nach einer Bearbeitung).
+    expenses: [{ id: 5, title: 'Wocheneinkauf', amount: '10.00', currency: 'USD' }],
     activity: [
-      eintrag(5, { metadata: { title: 'Wocheneinkauf' } }),
-      eintrag(6, { type: 'expense_deleted', entity_id: 77, metadata: { title: 'Kino' } }),
-      eintrag(7, { type: 'comment_added', entity_id: 5 }),
+      eintrag(5, { metadata: { title: 'Wocheneinkauf', amount_minor: 14230, amount: '142.30', currency: 'EUR' } }),
+      eintrag(6, { type: 'expense_deleted', entity_id: 77, metadata: { title: 'Kino', amount_minor: 900, amount: '9.00', currency: 'EUR' } }),
+      eintrag(7, { type: 'comment_added', entity_id: 5, metadata: { title: 'Wocheneinkauf' } }),
       eintrag(8, { type: 'group_updated', entity_type: 'group', entity_id: 9 }),
+      // Bestand von vor dem Snapshot (#1607): nur der Titel. Der Betrag der
+      // geladenen Ausgabe waere der heutige, nicht der von damals.
+      eintrag(9, { entity_id: 5, metadata: { title: 'Wocheneinkauf' } }),
+      eintrag(10, { type: 'expense_edited', entity_id: 5, metadata: { title: 'Wocheneinkauf' } }),
+      // Bestands-Kommentar ohne Metadaten: nennt die Ausgabe weiter beim Namen.
+      eintrag(11, { type: 'comment_added', entity_id: 5 }),
     ],
     activityCursor: null,
   });
   try {
     const html = withAccess({ budget: 'write' }, () => split.renderActivity());
     const items = html.split('split-activity-item').slice(1);
-    assert.equal(items.length, 4);
+    assert.equal(items.length, 7);
     assert.match(items[0], /<span class="split-activity-payment">Wocheneinkauf · [^<]*142[.,]30[^<]*<\/span>/,
-      'erstellt: Titel aus den Metadaten, Betrag aus der geladenen Ausgabe');
-    assert.match(items[1], /<span class="split-activity-payment">Kino<\/span>/,
-      'geloescht: der Titel allein - die Ausgabe ist nicht mehr geladen, ein Betrag waere geraten');
-    assert.match(items[2], /<span class="split-activity-payment">Wocheneinkauf · /,
-      'Kommentar: nennt die Ausgabe, an der er haengt');
+      'erstellt: Titel und Betrag aus den Metadaten');
+    assert.doesNotMatch(items[0], /10[.,]00/, 'erstellt: nicht der heutige Betrag der Ausgabe');
+    assert.match(items[1], /<span class="split-activity-payment">Kino · [^<]*9[.,]00[^<]*<\/span>/,
+      'geloescht: der festgehaltene Betrag, auch wenn die Ausgabe nicht mehr geladen ist');
+    assert.match(items[2], /<span class="split-activity-payment">Wocheneinkauf<\/span>/,
+      'Kommentar: nennt die Ausgabe, an der er haengt - ohne Betrag');
     assert.doesNotMatch(items[3], /split-activity-payment/, 'eine Gruppenaenderung hat kein Ausgabenobjekt');
+    assert.match(items[4], /<span class="split-activity-payment">Wocheneinkauf<\/span>/,
+      'erstellt ohne Snapshot: der Titel allein, ein Betrag waere der heutige');
+    assert.match(items[5], /<span class="split-activity-payment">Wocheneinkauf<\/span>/,
+      'bearbeitet ohne Snapshot: der Titel allein');
+    assert.match(items[6], /<span class="split-activity-payment">Wocheneinkauf<\/span>/,
+      'Kommentar ohne Snapshot: Titel der geladenen Ausgabe, kein Betrag');
   } finally {
     Object.assign(split.state, vorher);
   }
@@ -449,5 +506,5 @@ test('die Gruppenzahl steht am Kopf der Liste, mobil entfaellt ihre Kennzahlkart
   assert.ok(regel?.at.includes('@container split-page (max-width: 639px)'), 'nur schmal - am Desktop bleibt die Dreierreihe');
   assert.match(regel.body, /display:\s*none/, 'keine volle Zeile fuer eine Ziffer (59px fuer „2", 390x844)');
   const src = readFileSync(new URL('../public/pages/split-expenses.js', import.meta.url), 'utf8');
-  assert.match(src, /class="split-panel-title">\$\{t\('splitExpenses\.groups'\)\}<span class="list-group__count split-panel-count" id="split-group-count">/);
+  assert.match(src, /class="split-panel-title u-section-title">\$\{t\('splitExpenses\.groups'\)\}<span class="list-group__count split-panel-count" id="split-group-count">/);
 });

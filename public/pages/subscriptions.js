@@ -13,7 +13,7 @@ import {
   parseDateInput,
   t,
 } from '/i18n.js';
-import { esc } from '/utils/html.js';
+import { esc, REQUIRED_MARK } from '/utils/html.js';
 import { renderSkeletonList } from '/utils/skeleton.js';
 import { emptyStateHTML, mountLoadError } from '/utils/empty-state.js';
 import { todayKey } from '/utils/date.js';
@@ -233,12 +233,18 @@ export async function render(target, { user } = {}) {
            Hauptbuch (.section-toolbar): Titel links, Suche mit
            --page-search-width, mobil in der Icon-Form. Kennzahlen stehen
            davor, damit Kopf und Liste zusammen bleiben; der Kopf wird nie neu
-           gebaut, sonst verloere die Suche beim Tippen ihren Fokus. -->
+           gebaut, sonst verloere die Suche beim Tippen ihren Fokus.
+
+           AUF DER BUEHNE, NICHT IN DER KARTE (R16 Schritt 2b, Reiter-Skelett
+           des Budgets): der Kopf stand samt Titel IN der weissen Flaeche der
+           Liste, waehrend "Transaktionen" und "Kategorie-Budgets" nebenan
+           ueber ihrem Traeger stehen. Jetzt h2.u-section-title mit den
+           Werkzeugen rechts, darunter der Zeilentraeger (.row-carrier). -->
       <div class="subscriptions-summary" id="subscriptions-summary"></div>
       <section class="subscriptions-list-section" aria-labelledby="subscriptions-list-title">
         <div class="subscriptions-section-head section-toolbar">
           <div class="subscriptions-section-head__lead">
-            <h2 id="subscriptions-list-title" tabindex="-1">${t('subscriptions.listTitle')}</h2>
+            <h2 class="u-section-title" id="subscriptions-list-title" tabindex="-1">${t('subscriptions.listTitle')}</h2>
             <span class="list-group__count" id="subscriptions-list-count"></span>
           </div>
           <span class="subscriptions-rates-slot" id="subscriptions-rates-slot"></span>
@@ -573,7 +579,7 @@ function renderContent() {
         </button>`);
   }
   setHtml(content, `
-      <div class="subscriptions-list row-divided" id="subscriptions-list">
+      <div class="subscriptions-list row-carrier" id="subscriptions-list">
         ${rows.length ? rows.map(renderCard).join('') : renderEmpty()}
       </div>
   `);
@@ -619,6 +625,12 @@ function renderSummary() {
   // der ersten Abo-Zeile (y=478 bei 390x844). Unter 640px nennt eine Zeile die
   // Monatskosten und daneben Zahl und Budgetstand; ein Tipp klappt die Karten
   // auf (metric-glance.js, dieselbe Form wie die Budget-Uebersicht).
+  //
+  // OHNE MONATSBUDGET DREI KARTEN (#1607). Die Karte „Monatsbudget" zeigte
+  // dann „0,00 €" mit leerem Balken, direkt neben „Kein Budgetlimit -
+  // Unbegrenzt". Wo kein Budget gesetzt ist, gibt es keine Zahl dafuer; den
+  // Zustand nennt die Karte daneben. Drei Karten sind die Grundform der Reihe
+  // (panel.css), `--quad` traegt die Reihe nur mit vier.
   const budgetFlow = hasBudget
     ? { label: t(isOverBudget ? 'subscriptions.overBudget' : 'subscriptions.remainingBudget'),
       amount: money(Math.abs(summary.remaining_budget)), tone: isOverBudget ? 'negative' : '' }
@@ -632,13 +644,13 @@ function renderSummary() {
     value: money(used),
     flows: [{ label: t('subscriptions.activeCount', { count: summary.active_count }) }, budgetFlow],
   })}
-    <section class="metric-grid metric-grid--quad budget-glance-details${state.summaryExpanded ? ' is-expanded' : ''}" id="subscriptions-summary-details">
+    <section class="metric-grid${hasBudget ? ' metric-grid--quad' : ''} budget-glance-details${state.summaryExpanded ? ' is-expanded' : ''}" id="subscriptions-summary-details">
       <article class="metric-card">
         <div class="metric-card__label">${t('subscriptions.monthlyCost')}</div>
         <div class="metric-card__value">${money(used)}</div>
         <div class="metric-card__note">${t('subscriptions.activeCount', { count: summary.active_count })}</div>
       </article>
-      <article class="metric-card">
+      ${hasBudget ? `<article class="metric-card">
         <div class="metric-card__label">${t('subscriptions.monthlyBudget')}</div>
         <div class="metric-card__value">${money(budget)}</div>
         <div class="metric-card__progress${isOverBudget ? ' metric-card__progress--over' : isNearBudget ? ' metric-card__progress--near' : ''}"
@@ -646,7 +658,7 @@ function renderSummary() {
              aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percentage}" aria-valuetext="${realPercentage}%">
           <span style="--fill:${percentage / 100}"></span>
         </div>
-      </article>
+      </article>` : ''}
       <article class="metric-card${isOverBudget ? ' metric-card--over' : ''}">
         <div class="metric-card__label">${isOverBudget ? '<i data-lucide="triangle-alert" class="icon-sm" aria-hidden="true"></i>' : ''}${hasBudget ? (isOverBudget ? t('subscriptions.overBudget') : t('subscriptions.remainingBudget')) : t('subscriptions.noBudgetLimit')}</div>
         <div class="metric-card__value">${hasBudget ? money(Math.abs(summary.remaining_budget)) : t('subscriptions.unlimited')}</div>
@@ -754,13 +766,12 @@ function renderAreaChart(title, rows) {
   const peak = rows.reduce((best, row) => (row.amount > (best?.amount ?? 0) ? row : best), null);
   return `
     <article class="subscriptions-chart subscriptions-chart--area">
-      <div class="subscriptions-chart__head">
-        <h2>${title}</h2>
-        ${peak ? `<p class="subscriptions-chart__figure">
+      <h2 class="u-section-title subscriptions-chart__title">${title}</h2>
+      <div class="subscriptions-chart__card">
+      ${peak ? `<p class="subscriptions-chart__figure">
           <span>${esc(t('subscriptions.forecastPeak', { month: peak.label }))}</span>
           <strong>${money(peak.amount)}</strong>
         </p>` : ''}
-      </div>
       <svg class="subscriptions-area-chart" viewBox="0 0 100 52" preserveAspectRatio="none" aria-hidden="true">
         <polygon points="${areaPoints}"></polygon>
         <polyline points="${points}" vector-effect="non-scaling-stroke"></polyline>
@@ -771,6 +782,7 @@ function renderAreaChart(title, rows) {
       <ul class="sr-only">
         ${rows.map((row) => `<li>${esc(row.label)}: ${money(row.amount)}</li>`).join('')}
       </ul>
+      </div>
     </article>
   `;
 }
@@ -788,9 +800,8 @@ function renderBreakdown(title, rows) {
   const percent = getNumberFormat({ style: 'percent', maximumFractionDigits: 0 });
   return `
     <article class="subscriptions-chart">
-      <div class="subscriptions-chart__head">
-        <h2>${title}</h2>
-      </div>
+      <h2 class="u-section-title subscriptions-chart__title">${title}</h2>
+      <div class="subscriptions-chart__card">
       ${rows.length ? `<ul class="subscriptions-chart-rows">${rows.map((row) => `
         <li class="subscriptions-chart-row">
           <span class="subscriptions-chart-row__label" title="${esc(row.label)}">${esc(row.label)}</span>
@@ -799,6 +810,7 @@ function renderBreakdown(title, rows) {
           <span class="subscriptions-chart-row__share">${percent.format(row.amount / total)}</span>
         </li>
       `).join('')}</ul>` : `<p>${t('subscriptions.noAnalytics')}</p>`}
+      </div>
     </article>
   `;
 }
@@ -897,7 +909,7 @@ function renderCard(subscription) {
           </span>
           <span class="subscription-card__meta">
             <span class="subscription-card__due${overdue ? ' subscription-card__due--overdue' : ''}"><i data-lucide="${overdue ? 'triangle-alert' : 'calendar-clock'}" aria-hidden="true"></i><span>${formatDate(subscription.next_payment_date)} ·</span> <span>${dueLabel(subscription)}</span></span>
-            <span>${cycleLabel(subscription)}</span>
+            <span class="subscription-card__meta-cycle">${cycleLabel(subscription)}</span>
             <span class="subscription-card__meta-extra">${esc(rowPaymentMethodLabel(subscription))}</span>
             <span class="subscription-card__meta-extra"><i data-lucide="bell" aria-hidden="true"></i>${t('subscriptions.reminderMeta', { count: subscription.reminder_days })}</span>
             ${endInfo ? `<span><i data-lucide="${endInfo.icon}" aria-hidden="true"></i>${esc(endInfo.text)}</span>` : ''}
@@ -906,6 +918,7 @@ function renderCard(subscription) {
         <span class="subscription-card__cost">
           <strong>${money(subscription.amount, subscription.currency)}</strong>
           ${converted ? `<span>${converted}</span>` : ''}
+          <span class="subscription-card__cost-cycle">${cycleLabel(subscription)}</span>
         </span>
         ${ro ? '' : `<span class="sr-only">${t('common.edit')}</span>`}
       </button>
@@ -1038,11 +1051,11 @@ function currencyItems() {
 // anderen Feldern, traegt ein sichtbares Label und zeigt den GEWAEHLTEN Wert
 // („EUR · Euro"). Deshalb `type="text"` (die Rolle kommt aus role="combobox")
 // und die Feldform des Formulars, nicht die Suchkapsel (Komponenten-Kanon).
-function comboboxMarkup({ id, label, items, value = '', placeholder }) {
+function comboboxMarkup({ id, label, items, value = '', placeholder, required = false }) {
   const selected = items.find((item) => String(item.value) === String(value));
   return `
     <div class="form-group subscriptions-combobox" data-combobox="${id}">
-      <label class="form-label" for="${id}-search">${label}</label>
+      <label class="form-label" for="${id}-search">${label}${required ? REQUIRED_MARK : ''}</label>
       <div class="subscriptions-combobox__control">
         <i data-lucide="search" aria-hidden="true"></i>
         <input class="form-input" id="${id}-search" type="text" role="combobox"
@@ -1297,7 +1310,7 @@ export function openSubscriptionModal(subscription = null) {
         </div>
         <div class="subscription-form__identity-fields">
           <div class="form-group">
-            <label class="form-label" for="subscription-name">${t('subscriptions.nameLabel')}</label>
+            <label class="form-label" for="subscription-name">${t('subscriptions.nameLabel')}${REQUIRED_MARK}</label>
             <input class="form-input" id="subscription-name" maxlength="200" required value="${esc(initialName)}">
           </div>
           <div class="form-group">
@@ -1311,7 +1324,7 @@ export function openSubscriptionModal(subscription = null) {
         <h3><i data-lucide="receipt-text" aria-hidden="true"></i>${t('subscriptions.billingDetails')}</h3>
         <div class="subscription-form__billing-grid">
           <div class="form-group">
-            <label class="form-label" for="subscription-amount">${t('subscriptions.amountLabel')}</label>
+            <label class="form-label" for="subscription-amount">${t('subscriptions.amountLabel')}${REQUIRED_MARK}</label>
             <input class="form-input" id="subscription-amount" type="number"
                    min="0"
                    step="${amountStep(formCurrency, subscription?.amount ?? '')}"
@@ -1321,6 +1334,7 @@ export function openSubscriptionModal(subscription = null) {
           ${comboboxMarkup({
             id: 'subscription-currency',
             label: t('subscriptions.currencyLabel'),
+            required: true,
             items: currencyItems(),
             value: subscription?.currency || state.settings.base_currency,
             placeholder: t('subscriptions.currencySearchPlaceholder'),
@@ -1343,7 +1357,7 @@ export function openSubscriptionModal(subscription = null) {
         <h3><i data-lucide="calendar-clock" aria-hidden="true"></i>${t('subscriptions.renewalDetails')}</h3>
         <div class="form-grid-2">
           <div class="form-group">
-            <label class="form-label" for="subscription-next-date">${t('subscriptions.nextPaymentLabel')}</label>
+            <label class="form-label" for="subscription-next-date">${t('subscriptions.nextPaymentLabel')}${REQUIRED_MARK}</label>
             <yuvomi-datepicker id="subscription-next-date" type="date"
                    value="${esc(subscription?.next_payment_date || todayKey())}"></yuvomi-datepicker>
           </div>

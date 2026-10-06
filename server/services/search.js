@@ -6,7 +6,7 @@
  * Abhaengigkeiten: server/services/visibility.js, document-access.js und
  *        budget-visibility.js (reine SQL-Bausteine, kein db.js)
  */
-import { visibilityWhere } from './visibility.js';
+import { icsSubscriptionVisibleWhere, visibilityWhere } from './visibility.js';
 import { documentVisibleSql } from './document-access.js';
 import { budgetDetailsVisibleWhere, resolveBudgetMode } from './budget-visibility.js';
 
@@ -14,8 +14,18 @@ import {
   expandRecurringEvents, loadEventExceptions,
 } from './calendar-events.js';
 import { eventProjectionSql, resolveProjectedEventRows } from './calendar-event-reader.js';
+import { notBirthdayEventSql } from './household-modules.js';
+import { shiftDateKey, todayKey } from '../utils/timezone.js';
 
 export const SEARCH_LIMIT = 5;
+// Wie viele Termin-Treffer AUFGELOEST werden, bevor die fuenf fruehesten
+// uebrig bleiben (#1607). Eine Serie steht an ihrem naechsten Termin, ihre
+// Stammzeile aber am Tag ihres Beginns: wer schon in der Abfrage auf fuenf
+// deckelt, waehlt nach einem Datum aus, das er danach gar nicht anzeigt -
+// fuenf alte Jahrestage verdraengten den Termin von morgen. Die Schranke haelt
+// die Expansion klein; die Kalendersuche loest mit derselben Funktion hundert
+// Zeilen auf.
+const EVENT_SEARCH_CANDIDATES = 50;
 
 /**
  * Erzeugt die ß↔ss-Schreibvarianten eines Tokens. Der FTS-Tokenizer faltet
@@ -286,6 +296,28 @@ export function emptySearchResults() {
 }
 
 /**
+ * Das Fenster, in dem ein Serientreffer seinen naechsten Termin sucht: ab heute
+ * (Haushaltszone), zwei Jahre weit.
+ *
+ * EINE Rechnung fuer beide Suchen (#1607). Die Kalendersuche hatte sie in ihrer
+ * Route, die globale Suche hatte gar keine und lieferte den Start der
+ * Stammzeile - ein Geburtstag von 1990 stand in der Palette mit dem Datum von
+ * 1990 und oeffnete den Kalender in jenem Jahr, waehrend dieselbe Serie in der
+ * Kalendersuche an ihrem naechsten Termin stand.
+ *
+ * Zwei Jahre, damit auch eine Serie mit mehrjaehrigem Abstand ihren naechsten
+ * Termin findet. Findet sich keiner, bleibt der Treffer die Stammzeile
+ * (`resolveEventSearchRows`).
+ *
+ * @param {object} database
+ * @returns {{ from: string, to: string }} zwei Tagesschluessel
+ */
+export function eventSearchWindow(database) {
+  const from = todayKey(database);
+  return { from, to: shiftDateKey(from, 730) };
+}
+
+/**
  * Resolves event search hits through the same linked-occurrence contract as
  * calendar reads. When a display window is supplied, recurring master hits are
  * represented by their first occurrence in that window, preserving the
@@ -367,21 +399,23 @@ export function runSearch(database, q, userId, { hiddenModules = null, disabledN
   // Filter müssen vor ORDER/LIMIT greifen, damit verborgene Treffer sichtbare
   // nicht aus dem Ergebnisfenster verdrängen.
   if (allows('events')) {
+    // Serien stehen an ihrem naechsten Termin, wie in der Kalendersuche (#1607).
+    const window = eventSearchWindow(database);
     const eventRows = resolveEventSearchRows(database, database.prepare(`
       SELECT ${eventProjectionSql(database)}
       FROM search_index s
       JOIN calendar_events e ON e.id = s.entity_id
       WHERE s.entity = 'event' AND s.search_index MATCH @match
-        AND (
-          e.external_source <> 'ics'
-          OR e.subscription_id IN (
-            SELECT id FROM ics_subscriptions WHERE shared = 1 OR created_by = @userId
-          )
-        )
-        AND ${visibilityWhere('e', 'event_assignments', 'event_id', '@userId')}
+        AND ${icsSubscriptionVisibleWhere('e', '@userId')}
+        AND ${visibilityWhere('e', 'event_assignments', 'event_id', '@userId')}${
+          // Geburtstagstermine stehen in dieser Trefferart, gehoeren aber dem
+          // Schalter `birthdays` - wie in der Kalendersuche (#1660).
+          disabledNav?.has('birthdays') ? ` AND ${notBirthdayEventSql('e')}` : ''}
       ORDER BY e.start_datetime ASC
       LIMIT @limit
-    `).all({ match, userId, limit }), null, null, { lightweight: true });
+    `).all({ match, userId, limit: EVENT_SEARCH_CANDIDATES }), window.from, window.to, { lightweight: true })
+      // resolveEventSearchRows sortiert nach dem AUFGELOESTEN Start.
+      .slice(0, limit);
     // Preserve the compact global-search payload. The resolver-capable
     // projection supplies linked inheritance without loading attachment bodies
     // or unrelated sync metadata into this result bucket.

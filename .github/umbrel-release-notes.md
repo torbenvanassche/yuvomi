@@ -1,12 +1,12 @@
-<!-- version: 2.71.0 -->
-This update adds Brazilian Portuguese and fixes several things people ran into after 2.70.0.
+<!-- version: 2.73.0 -->
+This update is a round of fixes on top of 2.72.0.
 
-Brazilian Portuguese is now its own language in the app, next to the existing Portuguese. A browser set to Brazilian Portuguese picks it on its own.
+A browser or system that announces Norwegian as `no` or `nn` now gets the Norwegian translation instead of English. Refused requests explain themselves in your language: a locked task, a recipe mirrored from Mealie or Tandoor and an expired page each have their own sentence, and the misleading advice to sign in again is gone.
 
-Changing a recurring budget payment for all future months no longer rewrites its first booking, which could lie years back and move old amounts to another account. Members who may edit the meal plan can now edit and delete recipes that someone else added; before, saving failed with "Not authorized", even for an admin.
+In the budget, a loan created from "New entry" can now say how many installments are already paid, and the suggestion for that number works when the first due month lies in the past. Editing a shared expense shows amounts in your household's number format. Guests of a shared-expense group are no longer stuck behind the back button.
 
-When the weather service cannot be reached, the weather tile now stays on the overview and says the weather is currently unavailable, instead of disappearing without a trace. In the app added to an iPhone home screen, the dark strip below the tab bar is gone. Switches that are off are easier to see, and in Arabic and Persian "on" sits on the left.
+In the calendar, closing an event dialog on a wide screen no longer moves the address to the previous page. A direct link to a module that is switched off opens the overview, and a wrong address below the pairing or invitation page leads to that page instead of the sign-in page. Housekeeping reads the check-in of visits that were imported by hand correctly for "today" and "last visit".
 
-The update runs one database migration on first start. It gives every recurring budget payment a definition of its own, without changing any existing entry. No action is needed; as always, a backup before updating is a good idea.
+There are no database migrations in this update and no action is needed.
 
-Full release notes are available at https://github.com/ulsklyc/yuvomi/releases/tag/v2.71.0
+Full release notes are available at https://github.com/ulsklyc/yuvomi/releases/tag/v2.73.0

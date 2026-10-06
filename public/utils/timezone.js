@@ -53,6 +53,28 @@ export function isValidTimeZone(zone) {
   } catch { return false; }
 }
 
+// Ein Browser, der seine Zone verschweigt (Firefox mit resistFingerprinting,
+// Headless), meldet UTC. Das ist keine Auskunft über den Haushalt: als
+// Haushaltszone gespeichert wäre es eine ausdrückliche Wahl und überstimmte ein
+// gesetztes `TZ` des Containers.
+const UNTELLING_ZONES = new Set(['UTC', 'Etc/UTC', 'Etc/GMT', 'GMT', 'Etc/Unknown']);
+
+/**
+ * Die Zone, in der dieser Browser steht - oder `null`, wenn er keine brauchbare
+ * nennt. Die eine Stelle für diese Frage: die Ersteinrichtung schickt die Zone
+ * mit (pages/setup.js), der Zonen-Hinweis vergleicht sie mit der des Haushalts
+ * (household-zone-hint.js).
+ * @returns {string|null} IANA-Zone
+ */
+export function browserTimeZone() {
+  try {
+    const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return isValidTimeZone(zone) && !UNTELLING_ZONES.has(zone) ? zone : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Die Zone, in der diese Oberfläche Zeiten anzeigt - oder `null` für „die des
  * Browsers", was dem Verhalten vor #829 entspricht.
@@ -225,9 +247,17 @@ export function wallTimeInstant(value, zone, original = null, offsetMinutes = nu
   return (candidates.find((candidate) => candidate.offsetMinutes === preferred) || candidates[0]).instant;
 }
 
-/** Zonen-Offset (ms, Wanduhr minus UTC) an einem Zeitpunkt. */
+/**
+ * Zonen-Offset (ms, Wanduhr minus UTC) an einem Zeitpunkt.
+ *
+ * Gelesen an der ganzen Sekunde: `wallTimeValue` liefert keine Millisekunden,
+ * und gegen einen Zeitpunkt mit Bruchteil abgezogen laege der Offset um diesen
+ * Bruchteil daneben - der Aufrufer rechnete ihn dann ein zweites Mal dazu
+ * (#1658, dieselbe Regel wie `wholeSecondMs` in server/utils/timezone.js).
+ */
 function offsetMsAt(ms, zone) {
-  return wallEpoch(wallTimeValue(ms, zone)) - ms;
+  const whole = Math.floor(ms / 1000) * 1000;
+  return wallEpoch(wallTimeValue(whole, zone)) - whole;
 }
 
 /**

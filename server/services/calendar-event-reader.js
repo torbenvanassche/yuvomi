@@ -13,7 +13,8 @@ import {
   SOURCE_CALENDAR_COLUMNS, SOURCE_CALENDAR_JOIN,
 } from './calendar-events.js';
 import { resolveEventRows } from './calendar-occurrence-overrides.js';
-import { visibilityWhere } from './visibility.js';
+import { icsSubscriptionVisibleWhere, visibilityWhere } from './visibility.js';
+import { birthdaysSwitchedOff, notBirthdayEventSql } from './household-modules.js';
 import {
   householdTimeZone, localToUTC, shiftDateKey, storedToInstantMs, todayKey,
 } from '../utils/timezone.js';
@@ -151,14 +152,39 @@ function isAssignedTo(event, assignedTo) {
 }
 
 /**
+ * Laufen die Geburtstage in dieser Liste mit? Zwei Gruende fuer NEIN, eine
+ * Antwort: der Aufrufer hat sie abgewaehlt (#927), oder der Haushalt hat das
+ * Modul abgeschaltet (#1660, docs/DECISIONS.md 11).
+ *
+ * DER SCHALTER STEHT HIER UND NICHT BEI DEN AUFRUFERN: die Uebersicht, die
+ * Kalender-Route und das MCP-Werkzeug lesen alle ueber diese Datei, und ein
+ * Aufrufer, der die Frage vergisst, lieferte die Geburtstage weiter aus - so
+ * geschehen mit `list_upcoming_events` (Codex-Befund in #1664).
+ *
+ * UND ALS SQL, NICHT NUR AM `birthday_name`: der Join erkennt die Stammzeile.
+ * Eine abgeloeste Einzelinstanz der Serie ist eine eigene Zeile, auf die
+ * `birthdays` nicht zeigt; sie traegt keinen `birthday_name` und kam durch den
+ * JS-Filter weiter unten. Das galt auch schon fuer das Abwaehlen aus #927.
+ */
+function birthdayFilter(d, wantsBirthdays) {
+  const includeBirthdays = Boolean(wantsBirthdays) && !birthdaysSwitchedOff(d);
+  return {
+    includeBirthdays,
+    birthdaySql: includeBirthdays ? '' : `
+    AND ${notBirthdayEventSql('e')}`,
+  };
+}
+
+/**
  * Loads upcoming calendar rows for the dashboard, calendar route, and MCP.
  * windowDays defaults to the dashboard's 90 days; null keeps the future open.
  * Each series contributes at most limit eligible occurrences before merging.
  */
 export function getUpcomingEvents(d, {
   userId = null, limit = 5, windowDays = 90, fromToday = false, assignedTo = null,
-  includeBirthdays = true, now = new Date(), keepEndedToday = 0,
+  includeBirthdays: wantsBirthdays = true, now = new Date(), keepEndedToday = 0,
 } = {}) {
+  const { includeBirthdays, birthdaySql } = birthdayFilter(d, wantsBirthdays);
   const tz      = householdTimeZone(d);
   const nowDate = todayKey(d, now);
   // fromToday: ganztägige Sichtbarkeit heutiger Termine (Dashboard-Widget) -
@@ -221,13 +247,8 @@ export function getUpcomingEvents(d, {
       OR
       (e.recurrence_rule IS NOT NULL AND DATE(e.start_datetime) <= ?)
     )
-    AND (
-      e.external_source <> 'ics'
-      OR e.subscription_id IN (
-        SELECT id FROM ics_subscriptions WHERE shared = 1 OR created_by = ?
-      )
-    )
-    AND ${visibilityWhere('e', 'event_assignments', 'event_id')}
+    AND ${icsSubscriptionVisibleWhere('e')}
+    AND ${visibilityWhere('e', 'event_assignments', 'event_id')}${birthdaySql}
     ORDER BY e.start_datetime ASC
   `).all(...singleParams, future, userId, userId, userId);
 
@@ -360,8 +381,9 @@ export function getUpcomingEvents(d, {
  * @returns {object[]} aufgeloeste Zeilen, nach Beginn sortiert
  */
 export function getEventsOverlappingDays(d, {
-  userId = null, fromKey, days, assignedTo = null, includeBirthdays = true, limit = 300,
+  userId = null, fromKey, days, assignedTo = null, includeBirthdays: wantsBirthdays = true, limit = 300,
 } = {}) {
+  const { includeBirthdays, birthdaySql } = birthdayFilter(d, wantsBirthdays);
   const tz = householdTimeZone(d);
   const toKey = shiftDateKey(fromKey, days);          // exklusiv
   const windowStartMs = new Date(localToUTC(`${fromKey}T00:00:00`, tz)).getTime();
@@ -400,13 +422,8 @@ export function getEventsOverlappingDays(d, {
       OR
       (e.recurrence_rule IS NOT NULL AND DATE(e.start_datetime) <= ?)
     )
-    AND (
-      e.external_source <> 'ics'
-      OR e.subscription_id IN (
-        SELECT id FROM ics_subscriptions WHERE shared = 1 OR created_by = ?
-      )
-    )
-    AND ${visibilityWhere('e', 'event_assignments', 'event_id')}
+    AND ${icsSubscriptionVisibleWhere('e')}
+    AND ${visibilityWhere('e', 'event_assignments', 'event_id')}${birthdaySql}
     ORDER BY e.start_datetime ASC
   `).all(sqlTo, sqlFrom, sqlTo, userId, userId, userId);
 

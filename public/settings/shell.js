@@ -14,6 +14,7 @@ import {
   settingsOptionUrl,
   settingsOverviewUrl,
   settingsSectionUrl,
+  settingsSheetJumpTargets,
   settingsSheetSections,
   settingsSheetsForDomain,
 } from './registry.js';
@@ -283,17 +284,30 @@ function createNavigation(domains, user, activeLeaf) {
  * ihr sichtbar sein, sonst zeigte ein Deep-Link auf "Gesundheit" rechts das
  * Blatt und links nur Konto und Haushalt. Nur die Leiste scrollt, nie die
  * Seite - `scrollIntoView` zoege den ganzen Port mit.
+ *
+ * SICHTBAR HEISST UNTER DER SUCHE (#1509). Die Suche klebt an der Oberkante
+ * der Leiste (settings.css) und verdeckt dort ihre eigene Hoehe. Die Vorfassung
+ * rechnete mit der Oberkante der Leiste, als laege dort nichts: nach einem
+ * Sprung zu einem Blatt OBERHALB des Ausschnitts (Zurueck, Palette, Deep-Link)
+ * stand der aktive Link bei 32-72 unter der Suche bei 32-100 - alle 40px
+ * verdeckt. Gemessen wird deshalb an den Rechtecken, wie sie stehen: was die
+ * Suche gerade verdeckt, ist ihre Unterkante minus die Oberkante der Leiste.
+ * Eine Suche, die nicht klebt, verdeckt nichts.
  */
 function revealActiveNavigationLink(navigation) {
   const link = navigation?.querySelector('.settings-shell__navigation-link--active');
   if (!link || navigation.scrollHeight <= navigation.clientHeight) return;
-  // Die klebende Leiste ist positioniert und damit der offsetParent der Links.
-  const top = link.offsetParent === navigation ? link.offsetTop : link.offsetTop - navigation.offsetTop;
-  const bottom = top + link.offsetHeight;
-  if (top < navigation.scrollTop) navigation.scrollTop = top;
-  else if (bottom > navigation.scrollTop + navigation.clientHeight) {
-    navigation.scrollTop = bottom - navigation.clientHeight;
-  }
+  const view = navigation.getBoundingClientRect();
+  const box = link.getBoundingClientRect();
+  const search = navigation.querySelector('.settings-shell__navigation-search');
+  const sticks = search && globalThis.getComputedStyle?.(search)?.position === 'sticky';
+  const covered = sticks ? Math.max(0, search.getBoundingClientRect().bottom - view.top) : 0;
+  // Rechtecke stehen in Bildschirmpixeln, scrollTop in Layoutpixeln: waehrend
+  // einer skalierenden Eintrittsanimation weichen die beiden voneinander ab.
+  const scale = (view.height > 0 && navigation.offsetHeight > 0) ? view.height / navigation.offsetHeight : 1;
+  const top = view.top + covered;
+  if (box.top < top) navigation.scrollTop -= (top - box.top) / scale;
+  else if (box.bottom > view.bottom) navigation.scrollTop += (box.bottom - view.bottom) / scale;
 }
 
 // Aktualisiert nur den Aktivzustand der bestehenden Navigation, ohne die Links
@@ -523,6 +537,7 @@ function renderToolbar(toolbar, content, { activeLeaf, domain }) {
     label.textContent = t('settings.title');
     back.append(createIcon('chevron-left', 'settings-toolbar__back-icon'), label);
     toolbar.dataset.mode = 'leaf';
+    toolbar.classList.remove('page-toolbar--title-tools');
     toolbar.replaceChildren(back);
     hydrateIcons(toolbar);
     return;
@@ -537,6 +552,9 @@ function renderToolbar(toolbar, content, { activeLeaf, domain }) {
   title.className = 'page-toolbar__title';
   title.textContent = t('settings.title');
   toolbar.dataset.mode = 'root';
+  // Die Wurzel traegt nur das Such-Icon: es steht mobil am Ende der
+  // Titelzeile statt auf einer eigenen (Kopfregel mobil 1a, layout.css).
+  toolbar.classList.add('page-toolbar--title-tools');
   toolbar.replaceChildren(title);
   toolbar.insertAdjacentHTML('beforeend', renderPageSearch({
     id: 'settings-search',
@@ -785,6 +803,50 @@ function revealSheetSection(leafContainer, sectionId) {
 }
 
 /**
+ * Sprungmarken am Blattanfang (Critique 2026-10-05, R16) - oder `null`, wenn
+ * das Blatt kurz ist (`settingsSheetJumpTargets`, registry.js).
+ *
+ * Echte Links auf `?section=`: Mittelklick und "Adresse kopieren" fuehren an
+ * den Abschnitt, und ohne Skript liefe der Weg ueber die Adresse. Der Klick
+ * springt im STEHENDEN Blatt - derselbe Sprung wie nach einer Umleitung
+ * (`revealSheetSection`: Abschnitt an die Kante, Fokus auf seine Ueberschrift)
+ * -, statt das Blatt ueber den Router neu zu bauen. Die Adresse zieht mit,
+ * damit ein Neuladen dort ankommt, wo man stand.
+ *
+ * Die `<nav>` heisst wie das Blatt (`aria-labelledby` auf seinen Titel): eine
+ * eigene Beschriftung waere ein neuer Text fuer etwas, das der Titel schon sagt.
+ */
+function createSheetJump(leaf, user, leafContainer, headingId) {
+  const targets = settingsSheetJumpTargets(leaf, user);
+  if (!targets.length) return null;
+  const nav = document.createElement('nav');
+  nav.className = 'settings-sheet-jump';
+  nav.setAttribute('aria-labelledby', headingId);
+  const list = document.createElement('ul');
+  list.className = 'settings-sheet-jump__list';
+  list.setAttribute('role', 'list');
+  for (const target of targets) {
+    const item = document.createElement('li');
+    const link = document.createElement('a');
+    link.className = 'filter-chip filter-chip--sm settings-sheet-jump__link';
+    link.href = target.url;
+    link.textContent = t(target.labelKey);
+    link.addEventListener('click', (event) => {
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0) return;
+      event.preventDefault();
+      revealSheetSection(leafContainer, target.id);
+      // `path` zieht mit: Zurueck liest den Eintrag vor der Adresse (router.js,
+      // popstate) und kaeme sonst am alten Abschnitt an.
+      window.history?.replaceState?.({ ...window.history.state, path: target.url }, '', target.url);
+    });
+    item.appendChild(link);
+    list.appendChild(item);
+  }
+  nav.appendChild(list);
+  return nav;
+}
+
+/**
  * Rendert EINEN Abschnitt in seinen Traeger. Ein Fehler bleibt im Abschnitt:
  * scheitert die Kalender-Synchronisation, stehen die Termin-Vorgaben darueber
  * trotzdem (vorher war ein Blatt ein Abschnitt, und der Fehler nahm das Blatt).
@@ -857,6 +919,15 @@ async function renderLeafContent(content, leaf, domain, user, query) {
   const scoped = Boolean(leaf.module);
   const status = createModuleStatus(leaf, user);
   if (status) leafContainer.appendChild(status);
+  // Sprungmarken (R16): nur in Blaettern mit mehr als drei Abschnitten.
+  if (!heading.id) heading.id = `settings-sheet-title-${leaf.id}`;
+  const jump = createSheetJump(leaf, user, leafContainer, heading.id);
+  if (jump) {
+    leafContainer.appendChild(jump);
+    // Die Marken nennen, was im Blatt steht - mobil ersetzen sie die
+    // Beschreibung im Bild (settings.css, `.settings-leaf-header--jump`).
+    header.classList.add('settings-leaf-header--jump');
+  }
 
   const hosts = [];
   for (const scope of ['mine', 'household']) {
@@ -904,6 +975,7 @@ async function renderLeafContent(content, leaf, domain, user, query) {
     // dann weder Fokus noch Formularwache fuer ein abgehaengtes Blatt.
     if (!leafContainer.isConnected) return;
     leafContainer.removeAttribute('aria-busy');
+    levelScopedHeadings(leafContainer);
     watchLeafForms(leafContainer);
     hydrateIcons(content);
 
@@ -924,6 +996,38 @@ async function renderLeafContent(content, leaf, domain, user, query) {
     hosts.map(([host, section]) => renderSheetSection(host, section, user, query)),
     finishLeaf,
   );
+}
+
+/**
+ * DIE EBENE FOLGT DER TIEFE (R16, Stufenleiter des Einstellungsblatts).
+ *
+ * Die Abschnitte eines Blatts bringen ihre Titel als <h2>/<h3> mit - richtig,
+ * solange sie direkt unter dem Blatt stehen. In einem Blatt MIT Reichweiten
+ * ("Fuer mich" / "Fuer den Haushalt", je eine <h2>) stehen sie eine Ebene
+ * tiefer: im Kalender-Blatt gab es "Termine" zweimal als <h2>, auf derselben
+ * Ebene wie die Reichweite, die sie unterscheidet. `aria-level` setzt die
+ * Ebene im Baum, ohne dass 65 Abschnitts-Vorlagen ihren Tag kennen muessen;
+ * die Groesse dazu steht in typography.css. Abschnitte bauen sich nach dem
+ * Speichern neu - der Beobachter zieht nach.
+ */
+let scopedHeadingObserver = null;
+
+function levelScopedHeadings(leafContainer) {
+  scopedHeadingObserver?.disconnect();
+  scopedHeadingObserver = null;
+  if (!leafContainer?.querySelector?.('.settings-scope')) return;
+  const apply = () => {
+    for (const el of leafContainer.querySelectorAll('.settings-scope .settings-section__title:not([aria-level])')) {
+      el.setAttribute('aria-level', '3');
+    }
+    for (const el of leafContainer.querySelectorAll('.settings-scope .settings-card__title:not([aria-level])')) {
+      el.setAttribute('aria-level', '4');
+    }
+  };
+  apply();
+  if (typeof MutationObserver !== 'function') return;
+  scopedHeadingObserver = new MutationObserver(apply);
+  scopedHeadingObserver.observe(leafContainer, { childList: true, subtree: true });
 }
 
 /**
@@ -1066,4 +1170,4 @@ export async function renderSettingsShell(container, {
 }
 
 /** Nur fuer Tests (test-settings-navigation.js). */
-export const __test = { awaitSections, SECTION_WAIT_MS };
+export const __test = { awaitSections, SECTION_WAIT_MS, revealActiveNavigationLink };

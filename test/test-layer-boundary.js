@@ -53,6 +53,13 @@ const SHARED_ISOMORPHIC = new Set([
   'public/utils/ingredient-match-key.js',
   'public/utils/contact-name.js',
   'public/utils/pantry-units.js',
+  // #1680: Wie viele Termine die Kalender-Kachel listet - 5, 8 oder 12. Die
+  // Route klemmt den Parameter mit derselben Allowlist, mit der die Kachel
+  // schneidet und der Dialog seine drei Radios baut. Zwei Listen liefen nicht
+  // bei einem Randfall auseinander, sondern bei der naechsten Stufe: der Server
+  // lieferte sie, und der Browser zeigte weiter fuenf. Rein: eine eingefrorene
+  // Liste und ein Vergleich, kein DOM und kein Node.
+  'public/utils/dashboard-event-limit.js',
   // #1074: Ziffern fremder Systeme nach ASCII. Client und Server lesen dieselben
   // Mengentexte („۲۵۰ g") - der Client, um eine Zutat zu skalieren, der Server,
   // um sie beim Uebertrag in die Einkaufsliste zusammenzuzaehlen. Zwei Fassungen
@@ -125,6 +132,15 @@ const SHARED_ISOMORPHIC = new Set([
   // anderen Tag nennt als der Ring zeigt. Rein, ohne DOM/Node - der einzige
   // Import (date.js) steht selbst schon in dieser Liste.
   'public/utils/health-cycle.js',
+  // #1607: Welche Form einer koreanischen Partikel hinter einem eingesetzten
+  // Wort gilt (`{{name}}이(가)` -> 이 oder 가). t() im Browser und translate()
+  // auf dem Server lesen dieselbe ko.json - der Server fuer Push-Texte,
+  // ICS-Feeds und gespeicherte Kalendertitel. Zwei Fassungen hiessen: derselbe
+  // Satz steht in der Oberflaeche richtig und in der Benachrichtigung mit
+  // beiden Formen, und eine neue Schreibweise in ko.json muesste an zwei
+  // Stellen nachgezogen werden. Rein: Zeichencodes und ein Muster, kein DOM,
+  // kein Node.
+  'public/utils/korean-particles.js',
 ]);
 
 const SOURCE_EXT = /\.(js|mjs)$/;

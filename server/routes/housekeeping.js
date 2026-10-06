@@ -37,6 +37,7 @@ import {
   configuredHouseholdTimeZone,
   householdTimeZone,
   daysBetweenDateKeys,
+  hasExplicitZone,
   isValidTimeZone,
   localToUTCPrecise,
   shiftDateKey,
@@ -47,7 +48,14 @@ import {
 } from '../utils/timezone.js';
 import { addMonthsClamped } from '../utils/interval-date.js';
 import { recordLocalColorChoice } from '../services/legacy-color-snapshot.js';
-import { householdMonthOf as householdMonthOfIn, householdMonthRange as householdMonthRangeIn } from '../services/housekeeping-month.js';
+import {
+  byCheckInDesc,
+  checkInInstantMs,
+  householdMonthOf as householdMonthOfIn,
+  householdMonthWindow,
+  latestVisit,
+  widenedWindow,
+} from '../services/housekeeping-month.js';
 
 const log = createLogger('Housekeeping');
 const router = express.Router();
@@ -95,7 +103,7 @@ function currentMonth() {
 }
 
 /**
- * Monat eines Besuchs und Monatsgrenzen in der Haushaltszone - die Regel steht
+ * Monat eines Besuchs in der Haushaltszone - die Regel steht
  * in services/housekeeping-month.js, weil die Uebersicht dieselbe Frage stellt
  * (#1451). Hier nur mit der Zone des Haushalts als Vorgabe.
  */
@@ -103,8 +111,20 @@ function householdMonthOf(value, tz = householdTimeZone(db.get())) {
   return householdMonthOfIn(value, tz);
 }
 
-function householdMonthRange(monthValue, tz = householdTimeZone(db.get())) {
-  return householdMonthRangeIn(monthValue, tz);
+/**
+ * Die Besuche EINES Haushaltsmonats lesen: `start`/`end` sind das SQL-Fenster
+ * mit Rand, `keep` siebt danach auf den Monat aus. Die genauen Grenzen als
+ * Textvergleich tragen nur die Instant-Form von `check_in` - eine zonenlose
+ * Zeile stand in den Monatslisten im Nachbarmonat, waehrend Monatsgrafik und
+ * Uebersicht sie richtig einordneten (services/housekeeping-month.js).
+ */
+function monthVisits(monthValue, tz = householdTimeZone(db.get())) {
+  return {
+    ...householdMonthWindow(monthValue, tz),
+    keep: (row) => householdMonthOfIn(row.check_in, tz) === monthValue,
+    // Die Reihenfolge der Listen: nach Zeitpunkt, nicht nach Text.
+    order: byCheckInDesc(tz),
+  };
 }
 
 /**
@@ -149,7 +169,8 @@ function localDayContext(source = {}, now = new Date()) {
 
 /**
  * Mitternacht eines Tages in einer Zone als Zeitpunkt, in der Form von
- * `check_in` (`toISOString()`) - verglichen wird als Text.
+ * `check_in` (`toISOString()`). Als Text taugt sie nur fuer das Vorsieb in SQL,
+ * entschieden wird am Zeitpunkt (`loadTodaySession`).
  */
 function dayStartIso(dateKey, timeZone) {
   return new Date(localToUTCPrecise(`${dateKey}T00:00:00`, timeZone)).toISOString();
@@ -292,31 +313,57 @@ function validatePhotoUrl(value) {
   return { value: trimmed, error: null };
 }
 
+// "Die spaeteste" ist ueberall der spaeteste ZEITPUNKT (`latestVisit`), nicht
+// der groesste Text: in `check_in` stehen Schreibweisen nebeneinander, die als
+// Text anders sortieren als auf der Uhr (services/housekeeping-month.js).
 function loadOpenSession(workerId = null) {
-  if (workerId) {
-    return db.get().prepare(`
-      SELECT * FROM housekeeping_work_sessions
-      WHERE check_out IS NULL AND worker_id = ?
-      ORDER BY check_in DESC
-      LIMIT 1
-    `).get(workerId);
-  }
-  return db.get().prepare(`
-    SELECT * FROM housekeeping_work_sessions
-    WHERE check_out IS NULL
-    ORDER BY check_in DESC
-    LIMIT 1
-  `).get();
+  const tz = householdTimeZone(db.get());
+  if (workerId) return latestVisit(db.get(), tz, 'check_out IS NULL AND worker_id = ?', [workerId]);
+  return latestVisit(db.get(), tz, 'check_out IS NULL');
 }
 
+/**
+ * Die letzte Sitzung des heutigen Haushaltstags.
+ *
+ * Die Tagesgrenzen als Textvergleich tragen nur die Instant-Form mit
+ * Millisekunden. Eine zonenlose Zeile ('2026-07-15T23:30:00', 23:30 in Berlin)
+ * sortiert hinter das Tagesende '2026-07-15T22:00:00.000Z' und fehlte "heute",
+ * die vom Vorabend stand dafuer drin. SQL holt deshalb den Tag mit einem Tag
+ * Rand, und Grenzen wie Reihenfolge entscheidet der Zeitpunkt - dieselbe Bauart
+ * wie bei den Monatslisten (`monthVisits`).
+ *
+ * Gelesen wird eine zonenlose Zeile auf DERSELBEN Uhr, die den Tag bestimmt
+ * (`localDayContext`): ohne eingestellte Haushaltszone ist das die Zone der
+ * Oberflaeche bzw. der Offset eines aelteren Clients, nicht `TZ` des Servers -
+ * sonst laege 00:30 in Los Angeles bei einem UTC-Server vor dem Tagesanfang.
+ */
 function loadTodaySession(workerId, context = localDayContext()) {
-  const { start, end } = localDayRange(context);
+  const day = context && typeof context === 'object' && typeof context.localDate === 'string'
+    ? context
+    : localDayContext();
+  const range = localDayRange(day);
+  const [startMs, endMs] = [Date.parse(range.start), Date.parse(range.end)];
+  const window = widenedWindow(range);
+  const at = (row) => dayClockInstantMs(row.check_in, day);
   return db.get().prepare(`
     SELECT * FROM housekeeping_work_sessions
     WHERE worker_id = ? AND check_in >= ? AND check_in < ?
-    ORDER BY check_in DESC
-    LIMIT 1
-  `).get(workerId, start, end);
+  `).all(workerId, window.start, window.end)
+    .filter((row) => {
+      const ms = at(row);
+      return ms !== null && ms >= startMs && ms < endMs;
+    })
+    .sort((a, b) => (at(b) - at(a)) || (b.id - a.id))[0];
+}
+
+// Ein gespeicherter `check_in` als Zeitpunkt, auf der Uhr eines Tageskontexts:
+// in dessen Zone, oder - aelterer Client ohne Zone - mit dessen Offset.
+function dayClockInstantMs(value, context) {
+  if (context.timeZone) return checkInInstantMs(value, context.timeZone);
+  // In UTC gelesen ist eine zonenlose Zeile ihre eigene Ziffernfolge.
+  const wallMs = checkInInstantMs(value, 'UTC');
+  if (wallMs === null || hasExplicitZone(String(value ?? '').trim())) return wallMs;
+  return wallMs + (context.timezoneOffsetMinutes * 60_000);
 }
 
 function housekeepingPaymentTasksEnabled(database = db.get()) {
@@ -327,11 +374,7 @@ function housekeepingPaymentTasksEnabled(database = db.get()) {
 function defaultDailyRate() {
   const worker = loadWorker();
   if (worker) return Number(worker.daily_rate || 0);
-  const row = db.get().prepare(`
-    SELECT daily_rate FROM housekeeping_work_sessions
-    ORDER BY check_in DESC
-    LIMIT 1
-  `).get();
+  const row = latestVisit(db.get(), householdTimeZone(db.get()));
   return Number(row?.daily_rate || 0);
 }
 
@@ -421,7 +464,7 @@ function createPaymentTask(database, worker, checkIn, amount, actorId, title = n
  * UTC-Tag: ein Besuch um 00:30 in Berlin stand sonst am Vortag (#1540).
  */
 function householdWallOf(checkIn, tz) {
-  const ms = storedToInstantMs(checkIn, tz);
+  const ms = checkInInstantMs(checkIn, tz);
   return ms === null ? null : utcToWall(new Date(ms).toISOString(), tz);
 }
 
@@ -546,23 +589,21 @@ function loadWorkerById(workerId) {
 }
 
 function monthlySummary(monthValue = currentMonth()) {
-  const { start, end } = householdMonthRange(monthValue);
-  const row = db.get().prepare(`
-    SELECT
-      COUNT(*) AS session_count,
-      COALESCE(SUM(daily_rate), 0) AS daily_total,
-      COALESCE(SUM(extras), 0) AS extras_total,
-      COALESCE(SUM(daily_rate + extras), 0) AS total_amount
+  const { start, end, keep } = monthVisits(monthValue);
+  const rows = db.get().prepare(`
+    SELECT check_in, daily_rate, extras
     FROM housekeeping_work_sessions
     WHERE check_in >= ? AND check_in < ?
-  `).get(start, end);
+  `).all(start, end).filter(keep);
+  const dailyTotal = rows.reduce((sum, row) => sum + Number(row.daily_rate || 0), 0);
+  const extrasTotal = rows.reduce((sum, row) => sum + Number(row.extras || 0), 0);
 
   return {
     month: monthValue,
-    session_count: row.session_count,
-    daily_total: Number(row.daily_total || 0),
-    extras_total: Number(row.extras_total || 0),
-    total_amount: Number(row.total_amount || 0),
+    session_count: rows.length,
+    daily_total: dailyTotal,
+    extras_total: extrasTotal,
+    total_amount: dailyTotal + extrasTotal,
   };
 }
 
@@ -571,28 +612,28 @@ function housekeepingDashboard(receipts = MASKED_RECEIPTS, daySource = {}) {
   reconcilePaymentTasks();
   const tz = householdTimeZone(db.get());
   const monthValue = currentMonth();
-  const monthRange = householdMonthRange(monthValue, tz);
+  const monthWindow = monthVisits(monthValue, tz);
   const context = localDayContext(daySource);
   const workers = loadWorkers().map((row) => publicWorker(row, context, receipts));
   const worker = workers[0] ?? null;
   const summary = monthlySummary(monthValue);
-  const lastVisit = db.get().prepare(`
-    SELECT * FROM housekeeping_work_sessions
-    ORDER BY check_in DESC
-    LIMIT 1
-  `).get();
+  const lastVisit = latestVisit(db.get(), tz);
   const payment = db.get().prepare(`
-    SELECT
-      COALESCE(SUM(CASE WHEN paid_at IS NULL THEN daily_rate + extras ELSE 0 END), 0) AS pending,
-      COALESCE(SUM(CASE WHEN paid_at IS NOT NULL THEN daily_rate + extras ELSE 0 END), 0) AS paid
+    SELECT check_in, daily_rate, extras, paid_at
     FROM housekeeping_work_sessions
     WHERE check_in >= ? AND check_in < ?
-  `).get(monthRange.start, monthRange.end);
+  `).all(monthWindow.start, monthWindow.end).filter(monthWindow.keep).reduce((acc, row) => {
+    acc[row.paid_at ? 'paid' : 'pending'] += Number(row.daily_rate || 0) + Number(row.extras || 0);
+    return acc;
+  }, { pending: 0, paid: 0 });
   const taskRows = db.get().prepare('SELECT * FROM housekeeping_decay_tasks').all();
   const tasks = taskRows.map((row) => publicDecayTask(row, tz));
   // Gruppiert wird in JS statt per `substr(check_in, 1, 7)`: der Monat eines
   // Besuchs ist der des Haushalts, und den kennt SQLite nicht.
-  const chartStart = householdMonthRange(addMonthsClamped(`${monthValue}-01`, -5).slice(0, 7), tz).start;
+  // Das Fenster hat einen Tag Rand (zonenlose Zeilen am Ersten), der Monat
+  // davor bleibt ueber `chartFirstMonth` draussen.
+  const chartFirstMonth = addMonthsClamped(`${monthValue}-01`, -5).slice(0, 7);
+  const chartStart = householdMonthWindow(chartFirstMonth, tz).start;
   const chartByMonth = new Map();
   for (const row of db.get().prepare(`
     SELECT check_in, daily_rate, extras, paid_at
@@ -600,7 +641,7 @@ function housekeepingDashboard(receipts = MASKED_RECEIPTS, daySource = {}) {
     WHERE check_in >= ?
   `).all(chartStart)) {
     const key = householdMonthOf(row.check_in, tz);
-    if (!key) continue;
+    if (!key || key < chartFirstMonth) continue;
     const bucket = chartByMonth.get(key) ?? { month: key, total: 0, pending: 0 };
     const amount = Number(row.daily_rate || 0) + Number(row.extras || 0);
     bucket.total += amount;
@@ -947,12 +988,11 @@ router.get('/work-sessions', (req, res) => {
     reconcilePaymentTasks();
     const vMonth = month(req.query.month, 'month');
     if (vMonth.error) return res.status(400).json({ error: vMonth.error, code: 400 });
-    const { start, end } = householdMonthRange(vMonth.value || currentMonth());
+    const { start, end, keep, order } = monthVisits(vMonth.value || currentMonth());
     const rows = db.get().prepare(`
       SELECT * FROM housekeeping_work_sessions
       WHERE check_in >= ? AND check_in < ?
-      ORDER BY check_in DESC
-    `).all(start, end);
+    `).all(start, end).filter(keep).sort(order);
     const receipts = receiptAccess(req).preload(rows);
     res.json({ data: rows.map((row) => publicSession(row, receipts)) });
   } catch (err) {
@@ -971,7 +1011,7 @@ router.get('/visits', (req, res) => {
       : { value: null, error: null };
     if (vWorkerId.error) return res.status(400).json({ error: vWorkerId.error, code: 400 });
     const selectedMonth = vMonth.value || currentMonth();
-    const { start, end } = householdMonthRange(selectedMonth);
+    const { start, end, keep, order } = monthVisits(selectedMonth);
     const rows = db.get().prepare(`
       SELECT hws.*,
              hw.payment_schedule,
@@ -986,8 +1026,7 @@ router.get('/visits', (req, res) => {
       LEFT JOIN tasks t ON t.id = hws.payment_task_id
       WHERE hws.check_in >= ? AND hws.check_in < ?
         AND (? IS NULL OR hws.worker_id = ?)
-      ORDER BY hws.check_in DESC
-    `).all(start, end, vWorkerId.value, vWorkerId.value);
+    `).all(start, end, vWorkerId.value, vWorkerId.value).filter(keep).sort(order);
     const receipts = receiptAccess(req).preload(rows);
     const visits = rows.map((row) => ({
       ...publicSession(row, receipts),
@@ -1456,7 +1495,7 @@ router.post('/supply-requests', (req, res) => {
     // Als Erstes, vor Validierung und Transaktion: eine Antwort darf einem
     // Gesperrten nichts ueber den Einkauf verraten, und angelegt wird nichts.
     if (!mayWriteModule(req, 'shopping')) {
-      return res.status(403).json({ error: 'Write access to the shopping list is required.', code: 403 });
+      return res.status(403).json({ error: 'Write access to the shopping list is required.', code: 403, reason: 'cross_module_access' });
     }
 
     const vName = str(req.body.name, 'name', { max: MAX_TITLE });

@@ -206,7 +206,9 @@
   background: none;
   color: var(--color-text-secondary);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  /* Was wirklich wechselt (Hover, Aktiv-Pille) - `all` nahm jede kuenftige
+   * Eigenschaft mit, auch Layout. */
+  transition: color var(--transition-fast), background-color var(--transition-fast), box-shadow var(--transition-fast);
   min-height: var(--target-lg);
   white-space: nowrap;
 }
@@ -431,7 +433,7 @@
 }
 
 .month-day {
-  border-right: var(--space-px) solid var(--color-border-subtle);
+  border-inline-end: var(--space-px) solid var(--color-border-subtle);
   border-bottom: var(--space-px) solid var(--color-border-subtle);
   background-color: var(--color-surface-work);
   padding: var(--space-1);
@@ -442,7 +444,7 @@
 }
 
 .month-day:nth-child(7n) {
-  border-right: none;
+  border-inline-end: none;
 }
 
 .month-day:hover {
@@ -594,7 +596,7 @@
 .cal-chip__assigned {
   display: inline-flex;
   align-items: center;
-  margin-left: auto;
+  margin-inline-start: auto;
   flex-shrink: 0;
 }
 
@@ -691,7 +693,7 @@
   gap: var(--space-1h);
   padding: var(--space-1h) var(--space-1);
   text-align: center;
-  border-left: 1px solid var(--color-border-subtle);
+  border-inline-start: 1px solid var(--color-border-subtle);
   cursor: pointer;
 }
 
@@ -747,7 +749,7 @@
 
 .week-view__time-slot {
   height: var(--cal-hour-height);
-  padding-right: var(--space-2);
+  padding-inline-end: var(--space-2);
   display: flex;
   align-items: flex-start;
   justify-content: flex-end;
@@ -768,7 +770,7 @@
 }
 
 .week-view__col {
-  border-left: 1px solid var(--color-border-subtle);
+  border-inline-start: 1px solid var(--color-border-subtle);
   position: relative;
 }
 
@@ -855,7 +857,7 @@
 .week-view__now-line::before {
   content: '';
   position: absolute;
-  left: -4px;
+  inset-inline-start: -4px;
   top: -4px;
   width: 10px;
   height: 10px;
@@ -1096,6 +1098,49 @@
   box-shadow: var(--shadow-sm);
 }
 
+/* TAG | FOLGETAGE (Critique R16, 2026-10-05). Die Tagesansicht war am Desktop
+ * eine einzelne 932px breite Spalte. Ab der Split-Schwelle der Modulflaeche
+ * (`--layout-split-threshold`, PAGE-019; Container ist die Seitenwurzel mit
+ * `app-page--columns`, die calendar.js nur in dieser Ansicht setzt) steht
+ * rechts eine Seitenspalte in `--layout-rail-min` mit den Folgetagen als
+ * Agenda-Zeilen. Darunter gibt es sie nicht: die Huelle ist dann nur die
+ * Flex-Spalte, die `.day-view` schon war. Die Spalte scrollt fuer sich, damit
+ * das Stundenraster seine Position behaelt. */
+.day-layout {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.day-rail {
+  display: none;
+}
+
+@container module-surface (min-width: 65rem) {
+  .day-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) var(--layout-rail-min);
+    grid-template-rows: minmax(0, 1fr);
+    column-gap: var(--space-6);
+  }
+
+  .day-rail {
+    display: block;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    /* Luft fuer den Fokusring der Zeilen an der Scrollkante. */
+    padding-inline: var(--space-1);
+  }
+}
+
+.day-rail__title {
+  margin: 0 0 var(--space-2);
+}
+
+/* Der Titel ist der Weg in die Agenda: `.section-title-link` (layout.css). */
+
 /* #cal-body ist mobil randbündig (das Monatsraster ist ein Vollbreiten-Canvas);
  * eine Karte braucht dort ihren eigenen Rand. Ab 1024px stellt ihn
  * --page-inline-pad am #cal-body, ein Margin hier addierte sich dazu. */
@@ -1163,7 +1208,7 @@
 
 .day-view__col {
   flex: 1;
-  border-left: 1px solid var(--color-border-subtle);
+  border-inline-start: 1px solid var(--color-border-subtle);
   position: relative;
 }
 
@@ -1301,8 +1346,7 @@
  * position:relative OHNE z-index und öffnet deshalb keinen eigenen). */
 .day-view__now-line {
   position: absolute;
-  left: var(--cal-gutter-width);
-  right: 0;
+  inset-inline: var(--cal-gutter-width) 0;
   height: 2px;
   background-color: var(--color-danger);
   z-index: 0;
@@ -1311,7 +1355,7 @@
 
 .day-view__now-dot {
   position: absolute;
-  left: calc(var(--cal-gutter-width) - 5px);
+  inset-inline-start: calc(var(--cal-gutter-width) - 5px);
   width: 10px;
   height: 10px;
   margin-top: -4px;
@@ -1724,7 +1768,7 @@
   gap: var(--space-3);
   max-height: min(60vh, 520px);
   overflow-y: auto;
-  padding-right: var(--space-1);
+  padding-inline-end: var(--space-1);
 }
 
 /* Das Feld ist die geteilte Suchkapsel (renderPageSearch); hier nur der Abstand. */
@@ -1992,10 +2036,10 @@
 
 /* Die Beschriftung füllt die Zeitspalte, statt 48px in einer 64px-Spur zu
  * stehen. #920 hat die SPUR auf --cal-gutter-width gebracht, die Beschriftung
- * darin blieb auf --space-12: sie ist rechtsbündig, endete also 16px zu früh
+ * darin blieb auf --space-12: sie ist endbündig, endete also 16px zu früh
  * und stand damit weiter neben den Stundenzahlen, die genau darunter beginnen.
- * Ihr padding-right ist deshalb dasselbe wie in .week-view__time-slot - beide
- * Texte enden auf derselben senkrechten Kante.
+ * Ihr padding-inline-end ist deshalb dasselbe wie in .week-view__time-slot -
+ * beide Texte enden auf derselben senkrechten Kante, in RTL auf der linken.
  *
  * DIE BESCHRIFTUNG DARF UMBRECHEN (Critique 2026-09-24). „ganztg." war 42,5px
  * breit und stand in der 44px-Spalte des Telefons buendig an der
@@ -2009,10 +2053,11 @@
  * Balken daneben. */
 .calendar-all-day-label {
   width: var(--cal-gutter-width);
-  padding: var(--space-1h) var(--space-2) var(--space-1h) var(--space-1);
+  padding-block: var(--space-1h);
+  padding-inline: var(--space-1) var(--space-2);
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
-  text-align: right;
+  text-align: end;
   line-height: var(--line-height-tight);
   overflow-wrap: anywhere;
 }
@@ -2020,7 +2065,7 @@
 /* In der 44px-Spalte (mobil) rueckt die Beschriftung 4px vom Raster ab statt
  * 8px: „08:00" braucht 34px, und mit 8px Abstand klebte die Ziffer 2px an der
  * Bildschirmkante. Stundenzahl und Ganztags-Beschriftung behalten dieselbe
- * rechte Kante (test-calendar.js), also aendern sich beide zusammen. Die
+ * Endkante (test-calendar.js), also aendern sich beide zusammen. Die
  * Beschriftung haelt zusaetzlich 2px Abstand zur Bildschirmkante: ein Wort,
  * das die Spalte fuellt, bricht vorher um (am Desktop 4px, hier 2px). */
 @media (max-width: 639px) {
@@ -2035,7 +2080,7 @@
 }
 
 .allday-cell {
-  border-left: var(--space-px) solid var(--color-border-subtle);
+  border-inline-start: var(--space-px) solid var(--color-border-subtle);
   padding: var(--space-0h);
   min-width: 0;
   overflow: hidden;
@@ -2193,8 +2238,7 @@
 /* Steht das „bis" in der Zeile, schiebt ES ans Ende; die Zugewiesenen folgen
  * ihm, statt mit einem zweiten auto-Rand den freien Platz zu teilen. */
 .cal-band__until + .cal-chip__assigned {
-  margin-left: 0;
-  margin-right: 0;
+  margin-inline: 0;
 }
 
 [dir="rtl"] .cal-band__cont {
@@ -2210,7 +2254,7 @@
 }
 
 .allday-row--week .allday-cell {
-  border-left: 0;
+  border-inline-start: 0;
 }
 
 .allday-row--week > .cal-band {
@@ -2560,7 +2604,8 @@
     height: var(--space-2h);
     min-width: var(--space-2h);
     padding: 0;
-    margin: 0 var(--space-0h) var(--space-0h) 0;
+    margin-block: 0 var(--space-0h);
+    margin-inline: 0 var(--space-0h);
     border: none;
     box-shadow: none;
     border-radius: var(--radius-full);
@@ -3043,7 +3088,7 @@
    traegt die Beziehung, keine eigene Umrandung - sonst saehe es aus wie eine
    zweite eigene Gruppe statt einer Unterliste EINER Zeile. */
 .cal-filters__nested {
-  margin-left: var(--space-5);
+  margin-inline-start: var(--space-5);
   margin-top: var(--space-1);
   display: flex;
   flex-direction: column;

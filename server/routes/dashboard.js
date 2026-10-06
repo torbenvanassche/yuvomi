@@ -16,19 +16,21 @@ import { listQuickLinksFor } from './quick-links.js';
 import { visibilityWhere } from '../services/visibility.js';
 import { resolveBudgetMode } from '../services/budget-visibility.js';
 import { hiddenModulesFor } from '../permissions.js';
+import { birthdaysSwitchedOff, modulesLeftOut } from '../services/household-modules.js';
 import { documentViewer } from '../services/document-links.js';
 import { householdMemberSql } from '../services/household-members.js';
 import { FastingError, getFastingDashboardState } from '../services/fasting.js';
 import { openBalancesForUser } from '../services/split-expenses.js';
 import { NUTRIENT_KEYS, nutritionSummaryFor } from '../services/health-nutrition.js';
 import { emptyPantryExpiring, pantryExpiringSlice } from '../services/pantry-expiring.js';
-import { finishedVisitsInMonth } from '../services/housekeeping-month.js';
+import { finishedVisitsInMonth, latestVisit } from '../services/housekeeping-month.js';
 import { householdTimeZone, utcToWall, todayKey, shiftDateKey } from '../utils/timezone.js';
 import { isAdminUser, serializeEvents } from './calendar/helpers.js';
 import { getOccurrences as getWasteOccurrences } from '../services/waste-store.js';
 import { scheduleData } from '../services/schedule.js';
 import { isAdminRequest } from '../middleware/require-admin.js';
 import { activeCatalog } from '../services/rewards.js';
+import { clampEventLimit } from '../../public/utils/dashboard-event-limit.js';
 
 const log = createLogger('Dashboard');
 
@@ -64,7 +66,7 @@ const log = createLogger('Dashboard');
 const DENIED_PAYLOAD = Object.freeze({
   // Geburtstage gehören zum Kalender-Modul, nicht zu einem eigenen — dieselbe
   // Zuordnung wie in PERMISSION_MODULES (navIds) und im Client (NAV_TO_MODULE).
-  calendar: () => ({ upcomingEvents: [], familyEvents: [], weekEvents: [], birthdays: [], birthdayCount: 0, birthdayTotal: 0, birthdaySoonCount: 0 }),
+  calendar: () => ({ upcomingEvents: [], familyEvents: [], weekEvents: [], ...emptyBirthdays() }),
   tasks: () => ({
     urgentTasks: [], openTaskCount: 0, overdueTaskCount: 0,
     memberTodayTasks: [], tasksDoneToday: 0,
@@ -101,6 +103,15 @@ const DENIED_PAYLOAD = Object.freeze({
   // Vorrat „läuft bald ab": Chargennamen sind Haushaltsdaten des Moduls pantry.
   pantry: () => ({ pantryExpiring: emptyPantryExpiring() }),
 });
+
+/**
+ * Die leere Fassung der Geburtstags-Kachel. Eigene Funktion, weil sie zwei
+ * Wege hat: das entzogene Kalender-RECHT nimmt sie mit (oben), der
+ * Haushaltsschalter `birthdays` nimmt sie allein (#1660, siehe die Route).
+ */
+function emptyBirthdays() {
+  return { birthdays: [], birthdayCount: 0, birthdayTotal: 0, birthdaySoonCount: 0 };
+}
 
 /** Wie viele beendete Termine von heute ausserhalb des Deckels mitkommen (#1449). */
 const ENDED_TODAY_POOL = 20;
@@ -198,7 +209,7 @@ const router = express.Router();
  * so bricht ein fehlerhaftes Widget nicht das gesamte Dashboard.
  *
  * Response: {
- *   upcomingEvents: CalendarEvent[],   // Nächste 5 Termine
+ *   upcomingEvents: CalendarEvent[],   // Nächste 5 Termine (`events_limit`: 8 oder 12)
  *   familyEvents:   CalendarEvent[],   // Termine je Mitglied fuer die Familienkarte (#1449)
  *   weekEvents:     WeekEvent[],       // Termine, die die Woche ab heute berühren (schlank)
  *   urgentTasks:    Task[],            // High/Urgent mit Fälligkeit ≤ 48h
@@ -276,7 +287,13 @@ router.get('/', (req, res) => {
    *
    * Der Standard bleibt „mit Geburtstagen": ein Filter wirkt nur, wo jemand ihn
    * gesetzt hat. Der Parameter reist deshalb nur in seiner einen Richtung. */
+  // Den Haushaltsschalter (#1660) kennt der geteilte Leser selbst: sind die
+  // Geburtstage abgeschaltet, laufen sie nicht mit, was immer hier steht.
   const includeBirthdays = req.query.events_birthdays !== 'hide';
+  // Wie viele Kommende die Kachel listet (#1680): 5, 8 oder 12 aus einer
+  // Allowlist, die der Browser mit dieser Route teilt. Alles andere - fehlend,
+  // leer, `7`, `500`, `abc`, doppelt angegeben - ist die Vorgabe fuenf.
+  const eventsLimit = clampEventLimit(req.query.events_limit);
 
   const now = new Date();
 
@@ -318,19 +335,36 @@ router.get('/', (req, res) => {
   // nicht die Module darin. Eine Kachel, deren Modul das Token nicht lesen darf,
   // kommt in derselben leeren Fassung wie bei einer Rollensperre.
   const denied = hiddenModulesFor(req, Object.keys(DENIED_PAYLOAD));
-  for (const key of denied) Object.assign(result, DENIED_PAYLOAD[key]?.({ month: currentMonth }));
-  const allows = (moduleKey) => !denied.has(moduleKey);
+  // UND DER HAUSHALTSSCHALTER (#1660, docs/DECISIONS.md 11). Bis dahin fragte
+  // diese Stelle nur nach Rechten und Scopes: ein haushaltsweit abgeschaltetes
+  // Modul lieferte seine Termine, Aufgaben, Buchungen und Medikamente weiter
+  // aus, und nur der Browser liess die Kachel weg. Abschalten ist keine Sperre -
+  // die eigenen Routen des Moduls bleiben offen -, aber was der Server
+  // ungefragt in eine gemischte Antwort legt, folgt dem Schalter. Beide Achsen
+  // in EINEM Set, damit jede Abfrage unten dieselbe Frage stellt; die leere
+  // Fassung ist dieselbe wie bei einer Sperre, die Form der Antwort bleibt.
+  const leftOut = modulesLeftOut(d, denied);
+  for (const key of leftOut) Object.assign(result, DENIED_PAYLOAD[key]?.({ month: currentMonth }));
+  const allows = (moduleKey) => !leftOut.has(moduleKey);
+  // GEBURTSTAGE HABEN ZWEI WEGE. Als RECHT gehoeren sie zum Kalender (siehe
+  // DENIED_PAYLOAD), als SCHALTER sind sie ein eigenes Modul - dieselbe
+  // Unterscheidung wie bei den Erinnerungen (reminder-origins.js). Ein
+  // abgeschalteter Kalender nimmt einem Haushalt mit eingeschalteten
+  // Geburtstagen die Kachel deshalb nicht weg; die leere Fassung, die der
+  // Kalender-Eintrag oben eben geschrieben hat, ueberschreibt der Block unten.
+  const birthdaysLeftOut = denied.has('calendar') || birthdaysSwitchedOff(d);
+  if (birthdaysLeftOut) Object.assign(result, emptyBirthdays());
 
-  // Anstehende Termine (nächste 5, ab jetzt).
+  // Anstehende Termine (nächste 5, 8 oder 12, ab jetzt).
   // Geteilte Logik mit /calendar/upcoming: expandiert wiederkehrende Serien,
   // sodass auch Termine erscheinen, deren Master-Start in der Vergangenheit liegt.
   if (allows('calendar')) try {
-    // Der Deckel von fuenf zaehlt nur, was noch kommt (#1449); beendete Termine
+    // Der Deckel (fuenf, auf Wunsch 8 oder 12, #1680) zaehlt nur, was noch kommt (#1449); beendete Termine
     // von heute kommen ausserhalb mit - die Kachel zeigt sie zurueckgetreten,
     // das Heute-Blatt laesst sie weg. Welche beendet sind, entscheidet der
     // Browser an der Uhr: ein Termin endet auch zwischen zwei Abrufen.
     result.upcomingEvents = serializeEvents(getUpcomingEvents(d, {
-      userId, limit: 5, fromToday: true, assignedTo: eventsAssignedTo, includeBirthdays,
+      userId, limit: eventsLimit, fromToday: true, assignedTo: eventsAssignedTo, includeBirthdays,
       keepEndedToday: ENDED_TODAY_POOL,
     }), { database: d, viewer: documentViewer(req), actorId: userId, isAdmin: isAdminUser(req) });
   } catch (err) {
@@ -602,7 +636,7 @@ router.get('/', (req, res) => {
     result.familyEvents = [];
   }
 
-  if (allows('calendar')) try {
+  if (!birthdaysLeftOut) try {
     // family_user_color: die Identitaetsfarbe des verknuepften Mitglieds. Das
     // Widget zeigt Familien-Geburtstage damit in derselben Farbsprache wie die
     // Familien-Kachel; Kontakte ohne Verknuepfung bleiben NULL und behalten im
@@ -823,10 +857,20 @@ router.get('/', (req, res) => {
         : 0;
     // Wer selbst sammelt, sieht seine letzten Gutschriften - verdient oder
     // geschenkt. Einloesungen und Rueckbuchungen sind kein "verdient".
+    //
+    // UND EINE ZURUECKGENOMMENE GUTSCHRIFT AUCH NICHT (#1607). Seit das
+    // Wiederoeffnen gegenbucht statt zu loeschen, bleibt die earn-Zeile im
+    // Ledger stehen. Hier stuende sie sonst weiter als "zuletzt verdient",
+    // obwohl die Aufgabe wieder offen ist - der vollstaendige Verlauf mit
+    // beiden Zeilen gehoert auf die Belohnungsseite, diese Liste zeigt nur,
+    // was gilt. Die Gegenbuchung zeigt auf ihre Gutschrift (`reverses_id`) und
+    // nicht nur auf dieselbe Aufgabe: wird die Aufgabe geloescht, verlieren
+    // beide Zeilen ihre task_id, und ein Vergleich darueber traefe nie mehr.
     const ownRecent = own && (view === 'self' || members.length === 1)
       ? d.prepare(`
-          SELECT delta, type, reason, created_at FROM reward_ledger
+          SELECT delta, type, reason, created_at FROM reward_ledger l
           WHERE user_id = ? AND delta > 0 AND type IN ('earn', 'bonus')
+            AND NOT EXISTS (SELECT 1 FROM reward_ledger r WHERE r.reverses_id = l.id)
           ORDER BY created_at DESC, id DESC
           LIMIT 3
         `).all(userId)
@@ -928,29 +972,30 @@ router.get('/', (req, res) => {
   // Haushaltshilfe: Anwesenheitsstatus (offene Sitzung), Besuche im laufenden Monat,
   // offener Zahlbetrag und letzter Besuch — ein kompakter Status statt einer Liste.
   if (allows('housekeeping')) try {
-    const openSession = d.prepare(`
-      SELECT hws.check_in, u.display_name AS worker_name
-      FROM housekeeping_work_sessions hws
-      LEFT JOIN housekeeping_workers hw ON hw.id = hws.worker_id
+    // "Die zuletzt begonnene" und "der letzte Besuch" sind der spaeteste
+    // ZEITPUNKT, nicht der groesste Text von `check_in` - dieselbe Regel wie im
+    // Modul (`latestVisit`), sonst nennt die Kachel einen anderen Besuch als
+    // die Modulseite.
+    const hkZone = householdTimeZone(d);
+    const openSession = latestVisit(d, hkZone, 'check_out IS NULL');
+    const openWorker = openSession?.worker_id ? d.prepare(`
+      SELECT u.display_name AS worker_name
+      FROM housekeeping_workers hw
       LEFT JOIN users u ON u.id = hw.user_id
-      WHERE hws.check_out IS NULL
-      ORDER BY hws.check_in DESC LIMIT 1
-    `).get();
+      WHERE hw.id = ?
+    `).get(openSession.worker_id) : null;
     // Der Monat des HAUSHALTS, nicht der UTC-Monat von `check_in` (#1451):
     // `substr(check_in, 1, 7)` zaehlte einen Besuch am Ersten um 00:30 in
     // Berlin in den Vormonat - dieselbe Regel wie im Modul (#1387).
-    const month = finishedVisitsInMonth(d, currentMonth, householdTimeZone(d));
-    const lastRow = d.prepare(`
-      SELECT check_in FROM housekeeping_work_sessions
-      WHERE check_out IS NOT NULL ORDER BY check_in DESC LIMIT 1
-    `).get();
+    const month = finishedVisitsInMonth(d, currentMonth, hkZone);
+    const lastRow = latestVisit(d, hkZone, 'check_out IS NOT NULL');
     const anyRow = d.prepare('SELECT 1 FROM housekeeping_work_sessions LIMIT 1').get()
       || d.prepare('SELECT 1 FROM housekeeping_workers LIMIT 1').get();
     result.housekeeping = {
       configured: Boolean(anyRow),
       present: Boolean(openSession),
       presentSince: openSession?.check_in || null,
-      workerName: openSession?.worker_name || null,
+      workerName: openWorker?.worker_name || null,
       visitsThisMonth: month.visits,
       unpaidAmount: month.unpaid,
       lastVisit: lastRow?.check_in || null,

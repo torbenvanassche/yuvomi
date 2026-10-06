@@ -1021,8 +1021,14 @@ test('keine Seite schreibt einen Dezimaltrenner von Hand um', () => {
   // Ohne useGrouping:false schriebe das Feld "1.234,56" - und genau das weist
   // toDecimalString beim naechsten Speichern ab. Der Wert kaeme also nicht
   // wieder herein, den das Feld selbst gezeigt hat.
+  // Die Schreibweise selbst steht in amountToInput (Dezimalbetrag -> Feld);
+  // centsToAmountInput rechnet nur vorher um und darf keine zweite Fassung der
+  // Formatoptionen daneben fuehren.
   const raus = clean.match(/export function centsToAmountInput[\s\S]*?\n\}/)[0];
-  assert.match(raus, /useGrouping:\s*false/, 'der Ausgabewert darf nicht gruppiert sein');
+  assert.match(raus, /amountToInput\(/, 'centsToAmountInput muss ueber amountToInput laufen');
+  assert.doesNotMatch(raus, /getNumberFormat\(/, 'centsToAmountInput formatiert wieder selbst');
+  const feld = clean.match(/export function amountToInput[\s\S]*?\n\}/)[0];
+  assert.match(feld, /useGrouping:\s*false/, 'der Ausgabewert darf nicht gruppiert sein');
 
   // Gemessen wird die GANZE Datei, nicht mehr nur der Preispfad. Die Einschraenkung
   // stand bis 09.09.2026 hier, weil shopping.js daneben Mengenangaben zerlegt
@@ -1402,6 +1408,50 @@ test('die Übersicht wird ab 960px Container zweispaltig: Buchungen links, Bilan
   assert.ok(aside > 0 && list > aside, 'Seitenleiste muss im Markup vor der Liste stehen');
 });
 
+// Critique R16 (2026-10-05): der Kopf endete am Lesemass (Knopf bei x=972),
+// waehrend sechs von sieben Reitern bis zur Bahn liefen (1248 bei 1280, 1376
+// bei 1440); der Plan stand als einziger auf 720px, die Darlehen fuehrten vier
+// Kanten, und das Nettovermoegen stand als 232px-Kachel allein in seiner Zeile.
+test('Kopf und alle Reiter enden an der Bahn: Kopfmass, Plan, Darlehen und Konten', () => {
+  const rules = [...eachRule(budgetCss)];
+  const rule = (sel, pred = () => true) => rules.find(({ selector, at }) => selector.trim() === sel && pred(at));
+  const wide = (at) => at.some((a) => /@container\s+budget-page\s*\(\s*min-width:\s*960px\s*\)/.test(a));
+  const flat = (at) => at.length === 0;
+
+  // Die Bahn steht an der Seite, damit Kopf UND Koerper sie lesen.
+  const page = rule('.budget-page', (at) => flat(at) && true);
+  const lanes = rules.filter(({ selector, body }) => selector.trim() === '.budget-page' && /--budget-lane:/.test(body));
+  assert.equal(lanes.length, 1, 'die Bahn (--budget-lane) steht genau einmal, an .budget-page');
+  assert.ok(page);
+  assert.doesNotMatch(rule('#budget-body', flat)?.body ?? '', /--budget-lane:/, 'nicht mehr am Koerper - dort las sie der Kopf nicht');
+  assert.match(rule('.budget-page > .page-toolbar', flat)?.body ?? '', /--page-measure:\s*var\(--budget-lane\)/,
+    'der Kopf endet an der Bahn, in jedem Reiter an derselben Stelle');
+
+  // Plan: Kategorien links, Sparziel in der Seitenleiste.
+  const columns = /grid-template-columns:[^;]*var\(--page-measure[^;]*var\(--budget-rail-max\)/;
+  assert.match(rule('.budget-tab-panel--plan > .budget-plan', wide)?.body ?? '', /max-width:\s*var\(--budget-lane\)/,
+    'der Plan nimmt ab 960px die Bahn statt des Lesemasses');
+  const plan = rule('#budget-plan-body', wide);
+  assert.match(plan?.body ?? '', columns, 'dieselben Spaltenmasse wie die Uebersicht');
+  assert.match(plan?.body ?? '', /grid-auto-flow:\s*row dense/, 'die Liste rueckt NEBEN das Sparziel, das im Markup vor ihr steht');
+  assert.match(rule('#budget-plan-body > .budget-plan-savings', wide)?.body ?? '', /grid-column:\s*2/);
+  assert.match(rule('#budget-plan-body > .budget-plan__section', wide)?.body ?? '', /grid-column:\s*1/);
+
+  // Darlehen: Filter, Karten und Transaktionen links, Kennzahlen rechts.
+  const loans = rule('.budget-loans', wide);
+  assert.match(loans?.body ?? '', columns, 'die Darlehen stehen auf derselben Zweispalte');
+  assert.match(loans?.body ?? '', /grid-template-rows:[^;]*minmax\(0,\s*1fr\)/,
+    'die letzte Zeile ist flexibel - eine hoehere Seitenleiste zieht die linke Spalte nicht auseinander');
+  const loanMetrics = rule('.budget-loans > .metric-grid', wide);
+  assert.match(loanMetrics?.body ?? '', /grid-column:\s*2/);
+  assert.match(loanMetrics?.body ?? '', /--summary-cards:\s*1/, 'in der Seitenleiste stehen die Kennzahlen untereinander');
+
+  // Konten: die eine Kennzahl traegt die Zeile bis zur Bahn.
+  const net = rule('#budget-body .budget-tab-panel--accounts > .metric-grid', flat);
+  assert.match(net?.body ?? '', /--summary-cards:\s*1/);
+  assert.match(net?.body ?? '', /max-width:\s*var\(--budget-lane\)/);
+});
+
 test('alle Tabs teilen EINE Bahn: gleiche linke Kante, gleiches Mass, der Plan nicht zentriert', () => {
   // Drei Bahnen vorher: Übersicht 720 links, Plan 640 ZENTRIERT, Rest 1156.
   const lane = [...eachRule(budgetCss)].find(({ selector, at }) => selector.trim() === '.budget-tab-panel > *' && at.length === 0);
@@ -1571,11 +1621,51 @@ test('der „Nur Ausgaben"-Umschalter nutzt Tokens, keine Farbliterale', () => {
 test('Filterzustand überlebt den Modulwechsel nicht', () => {
   // `state` ist ein Modul-Singleton: ohne Reset zeigt das Budget beim nächsten
   // Besuch noch den Kontoauszug von damals.
+  //
+  // #1593: Dieser Test las bis dahin nur den Quelltext von render() nach vier
+  // Zuweisungen ab - und war gruen, waehrend der Zustaendigen-Filter den
+  // Seitenwechsel ueberlebte (gemessen: 23 Buchungen, Filter gesetzt, Seite
+  // verlassen und zurueck, 1 Buchung). Jetzt laeuft der Reset als Programm, und
+  // die Liste der Filter kommt aus dem Zustand selbst: ein neuer Filter, den
+  // der Reset nicht kennt, faellt hier auf.
+  const dirty = {
+    accountFilterId: 7, responsibleFilterId: 3, responsibleFilterCachedName: 'Clara',
+    loanFilterId: 9, loanStatusFilter: 'paid', accountsShowArchived: true,
+  };
+  const target = { ...dirty, activeTab: 'loans', month: '2026-03', groupByResponsible: true };
+  budgetUi.resetSessionFilters(target);
+  assert.deepEqual(target, {
+    accountFilterId: null, responsibleFilterId: null, responsibleFilterCachedName: '',
+    loanFilterId: null, loanStatusFilter: 'active', accountsShowArchived: false,
+    // Bleibt bewusst: der Reiter, der Monat (render setzt ihn selbst) und die
+    // Gruppierung, die eine gespeicherte Anzeige-Einstellung ist.
+    activeTab: 'loans', month: '2026-03', groupByResponsible: true,
+  });
+  // Die Liste wird danach wieder ganz gezeigt - gemessen an der Funktion, die
+  // die Buchungen fuer die Liste auswaehlt.
+  const entries = [
+    { id: 1, responsible_users: [{ id: 3, display_name: 'Clara' }] },
+    { id: 2, responsible_users: [] },
+  ];
+  const before = { ...budgetUi.state };
+  try {
+    Object.assign(budgetUi.state, { entries, responsibleFilterId: 3, responsibleFilterCachedName: 'Clara' });
+    assert.deepEqual(budgetUi.visibleEntries().map((e) => e.id), [1], 'Vorbedingung: der Filter kuerzt die Liste');
+    budgetUi.resetSessionFilters(budgetUi.state);
+    assert.deepEqual(budgetUi.visibleEntries().map((e) => e.id), [1, 2]);
+  } finally { Object.assign(budgetUi.state, before); }
+  // Jeder Filter des Zustands ist gefuehrt: was im Zustand "Filter" heisst,
+  // setzt der Reset zurueck.
+  const inState = Object.keys(budgetUi.state).filter((key) => /Filter/.test(key));
+  assert.ok(inState.length >= 4, `Vorbedingung: Filter im Zustand gefunden (${inState})`);
+  const probe = Object.fromEntries(inState.map((key) => [key, 'gesetzt']));
+  budgetUi.resetSessionFilters(probe);
+  assert.deepEqual(inState.filter((key) => probe[key] === 'gesetzt'), [], 'ein Filter ueberlebt das Betreten der Seite');
+  // Und render() ruft ihn, bevor es zum ersten Mal wartet.
   const enter = budget.match(/export async function render\([\s\S]*?renderBody\(\);/);
   assert.ok(enter);
-  for (const field of ['accountFilterId', 'loanFilterId', 'loanStatusFilter', 'accountsShowArchived']) {
-    assert.match(enter[0], new RegExp(`state\\.${field} = `), `${field} wird beim Betreten nicht zurückgesetzt`);
-  }
+  const call = enter[0].indexOf('resetSessionFilters(state);');
+  assert.ok(call !== -1 && call < enter[0].indexOf('await '), 'render() setzt die Filter nicht zurueck, bevor es wartet');
 });
 
 test('der Konto-Drilldown verliert den Fokus nicht', () => {
@@ -1591,7 +1681,9 @@ test('das Inline-Kategorie-Overlay ist ein vollwertiger Dialog', () => {
 });
 
 test('Berichte und Plan zeigen beim Laden ein Skelett', () => {
-  assert.match(stats, /renderSkeletonList/);
+  // Berichte laden in Diagrammform (R16): renderSkeletonChart statt der Liste.
+  assert.match(stats, /renderSkeletonChart\(/);
+  assert.doesNotMatch(stats, /renderSkeletonList/, 'kein Listen-Skelett vor Diagrammen');
   assert.match(plans, /renderSkeletonList/);
 });
 
@@ -1972,7 +2064,7 @@ test('eingebettete Split-Ausgaben gliedern Gruppe und Karten eine Stufe tiefer',
     'die Karten stehen eingebettet unter dem Gruppennamen, also <h4>');
   assert.match(src, /<\$\{GroupTag\} class="split-group-name">/,
     'der Gruppenname muss über GroupTag gerendert werden');
-  assert.equal((src.match(/<\$\{SectionTag\} class="split-card-title">/g) ?? []).length, 3,
+  assert.equal((src.match(/<\$\{SectionTag\} class="split-section-title u-section-title">/g) ?? []).length, 3,
     'Salden, letzte Ausgaben und Verlauf müssen über SectionTag gerendert werden');
   // Fest geschriebene Ueberschriften nur im Kopf von render(), und dort je
   // Zweig genau passend: eingebettet die sr-only-<h2>, eigenstaendig die <h1>.
@@ -2217,8 +2309,9 @@ test('Uebersicht mobil: EINE Kopfzeile, Karten und Diagramm eingeklappt, das Hau
   assert.match(zukunft, /budget-glance__label">budget\.summaryTitleForecast<\/span>\s*<span class="budget-glance__value budget-glance__value--forecast">/);
 
   // CSS: den Traeger gibt es nur unter 640px; dort ist eingeklappt nichts
-  // davon zu sehen, der zweite Diagramm-Knopf entfaellt.
-  const rules = [...eachRule(budgetCss)];
+  // davon zu sehen, der zweite Diagramm-Knopf entfaellt. Der Traeger selbst
+  // steht seit R16 in panel.css (Inventar und Haushaltshilfe nutzen ihn auch).
+  const rules = [...eachRule(budgetCss), ...eachRule(read('../public/styles/panel.css'))];
   const phone = (r) => r.at.some((a) => /max-width:\s*639px/.test(a));
   const base = rules.find((r) => r.at.length === 0 && r.selector.trim() === '.budget-glance');
   assert(base && /display:\s*none/.test(base.body), 'ab 640px gibt es keinen Traeger');
@@ -2558,7 +2651,7 @@ test('die Statistik steht ab 960px Container auf der Budget-Bahn: Verlauf und Ve
     assert.ok(stats.indexOf(`id="${id}"`) > gridAt, `#${id} steht nicht im Raster`);
   }
   assert.equal(cellOf('budget-stats-trend'), 'budget-stats__main');
-  assert.equal(cellOf('budget-stats-cat'), 'budget-stats__main');
+  assert.equal(cellOf('budget-stats-cat'), 'budget-stats__main budget-stats__main--wide');
   assert.equal(cellOf('budget-stats-donut'), 'budget-stats__aside');
 
   const rules = [...eachRule(budgetCss)];
@@ -2575,6 +2668,36 @@ test('die Statistik steht ab 960px Container auf der Budget-Bahn: Verlauf und Ve
   assert.ok(aside, 'die Ausgaben-Anteile stehen ab 960px nicht in der zweiten Spalte');
   const main = inQuery('.budget-stats__main', /grid-column:\s*1/);
   assert.ok(main, 'Verlauf und Vergleich stehen ab 960px nicht in der ersten Spalte');
+});
+
+/* R16 Schritt 2b (Critique 2026-10-05): der Ring stand im Markup hinter den
+ * Balken (mobil 874px entfernt, daneben 198px leer) und am Desktop in einer
+ * Leiste ueber beide Zeilen, die unter ihm leer blieb. Dazu "0 EUR" 3px neben
+ * dem ersten Datum und eine unbeschriftete Marke am letzten Datenpunkt.
+ * Gegen den Stand davor rot gelaufen. */
+test('R16: der Anteilsring ist der Kopf der Kategorieliste - keine leere Leiste, kein Anheften', () => {
+  const order = ['budget-stats-trend', 'budget-stats-donut', 'budget-stats-cat'].map((id) => stats.indexOf(`id="${id}"`));
+  assert.ok(order[0] > 0 && order[0] < order[1] && order[1] < order[2], 'Markup: Verlauf, Ring, Balken');
+  const rules = [...eachRule(budgetCss)];
+  const wide = (sel) => rules.filter(({ selector, at }) => selector.trim() === sel
+    && at.some((a) => /@container\s+budget-page\s*\(\s*min-width:\s*960px\s*\)/.test(a))).map((r) => r.body).join(';');
+  assert.match(wide('.budget-stats__aside'), /grid-row:\s*1\s*;/, 'der Ring endet mit der ersten Zeile');
+  assert.doesNotMatch(wide('.budget-stats__aside'), /position:\s*sticky|span 2/, 'keine Leiste ueber beide Zeilen');
+  assert.match(wide('.budget-stats__main--wide'), /grid-column:\s*1\s*\/\s*-1/, 'die Balken nehmen die ganze Bahn');
+  assert.match(wide('.budget-stats__main--wide .budget-chart-section'), /max-width:\s*none/);
+  // Der Satz zum Ring steht sichtbar daneben, nicht nur im Baum.
+  assert.match(stats, /<p class="budget-stats__donut-note">\$\{view\.ctx\.esc\(summary\)\}<\/p>/);
+  // Die Marke erscheint erst auf Zeigen, Tippen oder Tastatur.
+  assert.match(stats, /show\(initial, \{ mark: false \}\);/);
+  assert.match(stats, /classList\.toggle\('is-active', mark && i === index\)/);
+});
+
+test('R16: der unterste Achsenwert sitzt auf seiner Linie statt in der Zeile der X-Beschriftung', async () => {
+  const { chartGridMarkup, CHART } = await import('../public/utils/chart.js');
+  const ticks = [...chartGridMarkup(0, 6000, (v) => String(v), CHART, 3).matchAll(/<text[^>]*class="chart__axis chart__axis--y"[^>]*>/g)].map((m) => m[0]);
+  assert.equal(ticks.length, 4);
+  assert.match(ticks.at(-1), /dy="-0\.6em"/, 'der Grundwert ist um eine halbe Schrifthoehe gehoben');
+  for (const tick of ticks.slice(0, -1)) assert.doesNotMatch(tick, /dy=/, 'die uebrigen Werte bleiben mittig auf ihrer Linie');
 });
 
 // --------------------------------------------------------
@@ -2765,7 +2888,7 @@ test('der Budget-Tab steht in der Adresse, ohne neuen Verlaufseintrag (R8 H5, A5
   // Verdrahtung: der Wechsel der Hauptleiste schreibt die Adresse.
   const wire = budgetCode.slice(budgetCode.indexOf("_tablist = wireTablist(_container.querySelector('.budget-tabs')"));
   const onChange = wire.slice(0, wire.indexOf('attachSegmentIndicator'));
-  assert.match(onChange, /onChange:\s*async \(id\) => \{[^}]*writeTabToUrl\(id\)/, 'der Tabwechsel schreibt nicht in die Adresse');
+  assert.match(onChange, /onChange:\s*async \(id[^\n]*\) => \{[^}]*writeTabToUrl\(id\)/, 'der Tabwechsel schreibt nicht in die Adresse');
 });
 
 test('die Bilanz rechnet eine geloeschte Buchung sofort heraus und beim Undo wieder hinein (R8 H6, A5 P3)', () => {
@@ -3094,7 +3217,11 @@ test('Abos, Darlehen, Aufteilung mobil: EINE Glance-Zeile, die Karten klappen au
     Object.assign(budgetUi.state, { loans: vorher.loans, loanStatusFilter: vorher.filter });
   }
 
-  const abos = abosGlance.renderSummary();
+  // Mit Monatsbudget: vier Karten. Ohne sind es drei (#1607, eigener Test unten).
+  const abosVorher = abosGlance.state.summary;
+  abosGlance.state.summary = { active_count: 2, monthly_total: 40, monthly_budget: 100, remaining_budget: 60, base_currency: 'EUR' };
+  let abos;
+  try { abos = abosGlance.renderSummary(); } finally { abosGlance.state.summary = abosVorher; }
   const abosRest = glanceVorDetails(abos, 'subscriptions-glance-more', 'subscriptions-summary-details');
   assert.match(abosRest, /class="metric-grid metric-grid--quad/, 'Abos: die vier Karten im aufklappbaren Bereich');
   assert.match(abos, /budget-glance__label">subscriptions\.monthlyCost</, 'Leitwert sind die Monatskosten');
@@ -3117,12 +3244,44 @@ test('Abos, Darlehen, Aufteilung mobil: EINE Glance-Zeile, die Karten klappen au
   assert.match(slot.html, /budget-glance__label">splitExpenses\.youAreOwed</);
   assert.match(splitExpenses, /<section class="metric-grid budget-glance-details" id="split-summary">/, 'Aufteilung: die Kennzahl-Zeile ist der aufklappbare Bereich');
 
-  // CSS: eingeklappt ist der Bereich unter 640px weg, ab 640px bleibt er.
-  const rules = [...eachRule(budgetCss)];
+  // CSS: eingeklappt ist der Bereich unter 640px weg, ab 640px bleibt er
+  // (panel.css, seit R16 geteilt).
+  const rules = [...eachRule(read('../public/styles/panel.css'))];
+  assert.equal([...eachRule(budgetCss)].filter((r) => /\.budget-glance(?:__|-details|\b)/.test(r.selector)).length, 0,
+    'budget.css fuehrt keine zweite Fassung der Kurzzeile - sie laedt nur im Budget');
   const phone = (r) => r.at.some((a) => /max-width:\s*639px/.test(a));
   assert(rules.some((r) => phone(r) && /display:\s*none/.test(r.body) && /\.budget-glance-details:not\(\.is-expanded\)/.test(r.selector)),
     'unter 640px ist der eingeklappte Bereich weg');
   assert(!rules.some((r) => !phone(r) && /budget-glance-details:not/.test(r.selector)), 'ab 640px bleiben die Karten');
+});
+
+/* #1607: OHNE MONATSBUDGET STEHT KEINE BUDGET-KARTE MIT „0".
+ * Die Reihe zeigte „Monatsbudget 0,00 €" samt leerem Balken und gleich daneben
+ * „Kein Budgetlimit - Unbegrenzt": zwei Karten, die einander widersprechen. Wo
+ * kein Budget gesetzt ist, gibt es keine Zahl dafuer; es bleibt die eine Karte,
+ * die den Zustand nennt. Drei Karten sind die Grundform der Reihe (panel.css,
+ * `--summary-cards` Standard 3), `--quad` gilt nur fuer vier. */
+test('Abo-Kennzahlen ohne Monatsbudget: keine Karte „Monatsbudget 0", drei Karten in der Dreier-Reihe', () => {
+  const vorher = abosGlance.state.summary;
+  const karten = (html) => (html.match(/<article class="metric-card/g) ?? []).length;
+  try {
+    abosGlance.state.summary = { active_count: 1, monthly_total: 12.99, monthly_budget: 0, remaining_budget: 0, base_currency: 'EUR' };
+    const ohne = abosGlance.renderSummary();
+    assert.doesNotMatch(ohne, /metric-card__label">subscriptions\.monthlyBudget</, 'die Karte „Monatsbudget" entfaellt');
+    assert.doesNotMatch(ohne, /role="progressbar"/, 'ohne Budget gibt es nichts, was ein Balken messen koennte');
+    assert.match(ohne, /subscriptions\.noBudgetLimit/, 'der Zustand bleibt benannt');
+    assert.match(ohne, /subscriptions\.unlimited/);
+    assert.equal(karten(ohne), 3);
+    assert.doesNotMatch(ohne, /metric-grid--quad/, 'drei Karten in einer Vierer-Reihe liessen eine Leerzelle');
+    assert.match(ohne, /class="metric-grid budget-glance-details/, 'der aufklappbare Bereich bleibt derselbe');
+
+    abosGlance.state.summary = { active_count: 1, monthly_total: 12.99, monthly_budget: 50, remaining_budget: 37.01, base_currency: 'EUR' };
+    const mit = abosGlance.renderSummary();
+    assert.match(mit, /metric-card__label">subscriptions\.monthlyBudget</, 'Gegenfall: mit Budget steht die Karte');
+    assert.match(mit, /role="progressbar"/);
+    assert.equal(karten(mit), 4);
+    assert.match(mit, /metric-grid--quad/);
+  } finally { abosGlance.state.summary = vorher; }
 });
 
 /* DER KOPF SPRINGT NICHT (Re-Critique 2026-09-28, A5 P2-9). Mobil 162 <-> 135px
@@ -3157,22 +3316,21 @@ test('Abos- und Gruppensuche stehen im Listenkopf (.section-toolbar), ohne eigen
   assert.match(gruppen[1].split('class="segmented')[0], /renderPageSearch\(\{\s*id: 'split-group-search'/, 'Aufteilung: die Suche steht im Gruppenkopf, vor dem Statusfilter');
 });
 
-/* R14 P11 (A5 P3): die Budget-Untertabs wechselten per hartem Schnitt, die
- * Seiten per View Transition. Der neue Reiter blendet jetzt ein - nur beim
- * Reiterwechsel, nicht bei jedem Neuaufbau (Filter, Monat). */
-test('Budget-Untertabs blenden beim Wechsel ein, mit Tokens (R14 P11)', () => {
-  const klassen = new Set();
-  let ende = null;
-  const panel = { classList: { add: (c) => klassen.add(c), remove: (c) => klassen.delete(c) }, addEventListener: (typ, fn) => { if (typ === 'animationend') ende = fn; } };
-  budgetUi.markTabEnteringForTest({ querySelector: (sel) => (sel === '#budget-body > .budget-tab-panel' ? panel : null) });
-  assert.ok(klassen.has('budget-tab-panel--entering'), 'der neue Reiter traegt die Einblendung');
-  ende?.();
-  assert.ok(!klassen.has('budget-tab-panel--entering'), 'nach der Blende faellt die Klasse, ein Neuaufbau blendet nicht erneut');
+/* R14 P11 (A5 P3) / R16 (Bewegung): die Budget-Untertabs wechselten per
+ * hartem Schnitt, dann mit einer eigenen CSS-Klasse. Jetzt laeuft der Wechsel
+ * ueber den geteilten Helfer swapContent() - nur beim Reiterwechsel, nicht bei
+ * jedem Neuaufbau - und das Blaettern ueber swapPeriod(), gerichtet. Die
+ * Regeln des Helfers (Tokens, reduzierte Bewegung, Abbruch) haelt test:motion. */
+test('Budget: Reiterwechsel und Blaettern tauschen ueber die geteilten Helfer (R16)', () => {
   const onChange = budget.slice(budget.indexOf('_tablist = wireTablist('), budget.indexOf('_tablist = wireTablist(') + 1500);
-  assert.match(onChange, /renderBody\(\);\s*markTabEntering\(\);/, 'nur der Reiterwechsel blendet');
-  const regel = [...eachRule(budgetCss)].find((r) => r.selector.trim() === '.budget-tab-panel--entering' && !r.at.length);
-  assert.ok(regel, '.budget-tab-panel--entering fehlt');
-  assert.match(regel.body, /animation:\s*fade-in var\(--duration-[a-z0-9]+\) var\(--ease-[a-z-]+\)/, 'Blende aus Tokens');
+  assert.match(onChange, /onChange: async \(id, \{ direction = 0 \} = \{\}\)/, 'die Leiste reicht die Richtung durch');
+  assert.match(onChange, /swapContent\(_container\.querySelector\('#budget-body'\), renderBody, \{ direction \}\)/, 'der Reiterwechsel blendet in Schrittrichtung');
+  const nav = budget.slice(budget.indexOf('function wireNav()'), budget.indexOf('function wireNav()') + 2600);
+  assert.match(nav, /swapPeriod\(bodyEl\(\), dir, renderBody\)/, 'Berichte: Blaettern ist gerichtet');
+  assert.match(nav, /swapPeriod\(bodyEl\(\), dir, \(\) => \{ renderBody\(\); updateLabel\(\); \}\)/, 'Monat: Blaettern ist gerichtet');
+  assert.match(nav, /swapPeriod\(bodyEl\(\), back,/, '"Aktuell" kommt aus der Richtung des laufenden Zeitraums');
+  assert.doesNotMatch(budget, /markTabEntering/, 'die eigene Einblendung ist weg');
+  assert.ok(![...eachRule(budgetCss)].some((r) => /budget-tab-panel--entering/.test(r.selector)), 'und ihre Klasse auch');
 });
 
 /* STATISTIK OHNE DOPPELUNG (R14 P8, A5 P2-8). „Nach Kategorie" (Balken, alle
@@ -3286,4 +3444,780 @@ test('Darlehenskarte: ein fokussierbarer Knopf oeffnet den Bericht, die Karte bl
   const code = withoutHtmlComments(budget);
   const wire = code.slice(code.indexOf('function wireLoansPage('), code.indexOf('\n}\n', code.indexOf('function wireLoansPage(')));
   assert.match(wire, /wireLoanCards\(_container\)/, 'die Seite ruft die Verdrahtung wirklich auf');
+});
+
+// --------------------------------------------------------
+// Darlehen anlegen: EINE Feldliste fuer beide Einstiege (#1648)
+// --------------------------------------------------------
+//
+// Ein Darlehen entsteht an zwei Stellen: in der Uebersicht ueber "Neuer Eintrag"
+// mit dem Typ "Kredit" (openBudgetModal) und im Darlehen-Tab (openLoanModal).
+// Die Feldliste stand zweimal im Quelltext. "Bereits gezahlte Raten" (#813) kam
+// nur in die zweite, der Vorschlag dazu wurde nur an der ersten verdrahtet -
+// dort gab es das Feld nicht, die Verdrahtung kehrte sofort um, und ihr
+// ReferenceError (`todayMonth` aus einem fremden Geltungsbereich) lief nie.
+// Die Browser-Sonde test:budget-loan-dialogs-browser misst beide Dialoge am
+// gerenderten Dokument, laeuft aber nicht in der CI; diese drei Tests halten
+// dieselbe Regel in `npm test`.
+
+/** Rumpf einer Top-Level-Funktion aus budget.js, ohne Kommentare. */
+const budgetFunction = (name) => {
+  const code = withoutComments(budget);
+  const start = code.search(new RegExp(`\\n(?:async )?function ${name}\\(`));
+  assert.notEqual(start, -1, `${name} fehlt in budget.js`);
+  const end = code.slice(start + 1).search(/\n(?:async )?function |\nexport /);
+  return code.slice(start, end === -1 ? undefined : start + 1 + end);
+};
+
+test('#1648: jedes Darlehensfeld steht genau einmal im Quelltext, und beide Dialoge bauen aus derselben Liste', () => {
+  const code = withoutComments(budget);
+  const counts = new Map();
+  for (const [, id] of code.matchAll(/id="(lm-[a-z-]+)"/g)) counts.set(id, (counts.get(id) ?? 0) + 1);
+  assert.ok(counts.has('lm-paid') && counts.has('lm-start'), 'Vorbedingung: die Darlehensfelder werden gefunden');
+  const doppelt = [...counts].filter(([, n]) => n > 1).map(([id]) => id);
+  assert.deepEqual(doppelt, [], 'ein zweimal geschriebenes Feld ist eine zweite Feldliste');
+
+  for (const dialog of ['openBudgetModal', 'openLoanModal']) {
+    const body = budgetFunction(dialog);
+    assert.match(body, /\$\{loanFormFieldsHtml\(/, `${dialog} baut die Darlehensfelder aus loanFormFieldsHtml()`);
+    assert.match(body, /wireLoanFormFields\(panel\)/, `${dialog} verdrahtet sie ueber wireLoanFormFields()`);
+    assert.doesNotMatch(body, /wireLoan(?:Direction|Currency|Interest|PaidInstallments)Fields?\(/,
+      `${dialog} verdrahtet keinen Teil der Liste an wireLoanFormFields() vorbei`);
+  }
+});
+
+test('#1648: die Feldliste traegt "Bereits gezahlte Raten" bei der Neuanlage, nicht beim Bearbeiten', () => {
+  const neu = budgetUi.loanFormFieldsHtml(null, { startMonth: '2026-03' });
+  const ids = [...neu.matchAll(/<(?:input|select|textarea)[^>]*\sid="(lm-[a-z-]+)"/g)].map((m) => m[1]);
+  assert.equal(ids[ids.indexOf('lm-start') + 1], 'lm-paid', 'direkt unter dem ersten Faelligkeitsmonat');
+  assert.match(neu, /id="lm-start" value="2026-03"/, 'der Aufrufer bestimmt die Vorbelegung des Startmonats');
+
+  const bestehend = budgetUi.loanFormFieldsHtml(
+    { id: 1, title: 'Auto', borrower: 'Bank', total_amount: 1200, installment_count: 12, start_month: '2025-01' },
+    { startMonth: '2026-03' },
+  );
+  assert.doesNotMatch(bestehend, /id="lm-paid"/, 'ein bestehendes Darlehen traegt keine Raten nach');
+  assert.match(bestehend, /id="lm-start" value="2025-01"/, 'und behaelt seinen eigenen Startmonat');
+});
+
+test('#1648: die Verdrahtung schlaegt die gezahlten Raten wirklich vor', () => {
+  const feld = (value = '') => {
+    const el = { value, hidden: false, textContent: '', on: {}, style: {}, dataset: {},
+      setAttribute() {}, removeAttribute() {}, replaceChildren() {},
+      classList: { add() {}, remove() {}, toggle() {} } };
+    el.addEventListener = (type, fn) => { (el.on[type] ??= []).push(fn); };
+    el.fire = (type) => (el.on[type] ?? []).forEach((fn) => fn({ target: el }));
+    return el;
+  };
+  const [jahr, monat] = todayKey().slice(0, 7).split('-').map(Number);
+  const vorVierMonaten = (() => {
+    const total = jahr * 12 + (monat - 1) - 4;
+    return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`;
+  })();
+  const felder = {
+    '#lm-paid': feld('0'),
+    '#lm-start': feld(vorVierMonaten),
+    '#lm-installments': feld(''),
+  };
+  // Alles ausser den drei Feldern fehlt: die uebrigen Verdrahtungen kehren an
+  // einem fehlenden Feld um, gemessen wird nur der Vorschlag.
+  const panel = { querySelector: (sel) => felder[sel] ?? null, querySelectorAll: () => [] };
+
+  budgetUi.wireLoanFormFields(panel);
+  assert.equal(felder['#lm-paid'].value, '4', 'vier Monate zurueck: vier Raten vorgeschlagen, schon beim Oeffnen');
+
+  felder['#lm-installments'].value = '3';
+  felder['#lm-installments'].fire('input');
+  assert.equal(felder['#lm-paid'].value, '3', 'nie mehr als die Ratenanzahl');
+
+  felder['#lm-paid'].value = '1';
+  felder['#lm-paid'].fire('input');
+  felder['#lm-installments'].value = '24';
+  felder['#lm-installments'].fire('input');
+  felder['#lm-start'].fire('change');
+  assert.equal(felder['#lm-paid'].value, '1', 'eine selbst gesetzte Zahl bleibt stehen');
+});
+
+test('#1648: bei einem Zins-Darlehen deckelt der Vorschlag an der Laufzeit der Server-Vorschau und laeuft nie in ein 400', async () => {
+  // POST /loans lehnt mehr gezahlte Raten ab, als das Darlehen hat. Mit Zins
+  // leitet der Server die Laufzeit ab; der Dialog kennt sie nur aus der Vorschau
+  // (POST /loans/preview, total_months - dieselbe Zahl, die als
+  // installment_count gespeichert wird). Der Vorschlag blieb dort ungedeckelt:
+  // ein Startmonat 30 Monate zurueck schlug bei 12 Monaten Laufzeit 30 Raten vor
+  // (Codex-Review auf #1651). Gemessen wird am Aufrufer wireLoanFormFields(),
+  // mit der echten Vorschau-Verdrahtung und einer gestellten Server-Antwort.
+  const feld = (value = '') => {
+    const el = { value, hidden: false, textContent: '', placeholder: '', on: {}, style: {}, dataset: {},
+      setAttribute() {}, removeAttribute() {}, replaceChildren() {},
+      classList: { add() {}, remove() {}, toggle() {} } };
+    el.addEventListener = (type, fn) => { (el.on[type] ??= []).push(fn); };
+    el.fire = (type) => (el.on[type] ?? []).forEach((fn) => fn({ target: el }));
+    return el;
+  };
+  const [jahr, monat] = todayKey().slice(0, 7).split('-').map(Number);
+  const total = jahr * 12 + (monat - 1) - 30;
+  const vorDreissigMonaten = `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`;
+  const felder = {
+    '#lm-paid': feld('0'),
+    '#lm-start': feld(vorDreissigMonaten),
+    '#lm-installments': feld(''),
+    '#lm-interest-mode': feld('fixed'),
+    '#lm-interest-fields': feld(),
+    '#lm-variable-fields': feld(),
+    '#lm-manual-fields': feld(),
+    '#lm-interest-preview': feld(),
+    '#lm-principal': feld('10000'),
+    '#lm-fixed-rate': feld('3'),
+    '#lm-initial-repayment': feld('90'),
+    '#lm-fixed-period': feld(''),
+    '#lm-followup-rate': feld(''),
+  };
+  const panel = { querySelector: (sel) => felder[sel] ?? null, querySelectorAll: () => [] };
+  const paid = felder['#lm-paid'];
+  const nachDerVorschau = () => new Promise((resolve) => setTimeout(resolve, 400));
+
+  const vorher = globalThis.__apiStub;
+  const anfragen = [];
+  let antwort = () => ({ data: { ok: true, total_months: 12, monthly_payment: 850, total_interest: 200 } });
+  globalThis.__apiStub = {
+    post: (path, body) => { anfragen.push({ path, body }); return antwort(); },
+  };
+  try {
+    budgetUi.wireLoanFormFields(panel);
+    assert.equal(paid.value, '0', 'solange die Laufzeit unbekannt ist, wird keine ungepruefte Zahl vorgeschlagen');
+
+    await nachDerVorschau();
+    assert.equal(anfragen.at(-1)?.path, '/budget/loans/preview', 'Vorbedingung: die Vorschau wurde wirklich gefragt');
+    assert.equal(paid.value, '12', '30 Monate zurueck, 12 Monate Laufzeit: hoechstens 12 Raten');
+
+    // Neue Angaben machen die bekannte Laufzeit sofort ungueltig.
+    antwort = () => ({ data: { ok: true, total_months: 240, monthly_payment: 50, total_interest: 2000 } });
+    felder['#lm-initial-repayment'].value = '2';
+    felder['#lm-initial-repayment'].fire('input');
+    assert.equal(paid.value, '0', 'zwischen Eingabe und Antwort steht keine veraltete Deckelung');
+    await nachDerVorschau();
+    assert.equal(paid.value, '30', 'eine Laufzeit ueber dem Abstand laesst den Abstand stehen');
+
+    // Angaben, aus denen der Server keine Laufzeit ableitet.
+    antwort = () => ({ data: { ok: false } });
+    felder['#lm-fixed-rate'].fire('input');
+    await nachDerVorschau();
+    assert.equal(paid.value, '0', 'ohne ableitbare Laufzeit kein Vorschlag');
+
+    // Eine ueberholte Antwort setzt keine Laufzeit: die erste Anfrage haengt,
+    // die zweite antwortet, dann erst kommt die erste zurueck.
+    let ersteAufloesen;
+    antwort = () => new Promise((resolve) => { ersteAufloesen = resolve; });
+    felder['#lm-fixed-rate'].fire('input');
+    await nachDerVorschau();
+    antwort = () => ({ data: { ok: true, total_months: 240, monthly_payment: 50, total_interest: 2000 } });
+    felder['#lm-fixed-rate'].fire('input');
+    await nachDerVorschau();
+    assert.equal(paid.value, '30');
+    ersteAufloesen({ data: { ok: true, total_months: 6, monthly_payment: 1700, total_interest: 50 } });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.equal(paid.value, '30', 'die spaete Antwort der vorigen Angaben deckelt nicht nach');
+
+    // Zurueck auf "ohne Zins": die abgeleitete Laufzeit gilt dort nicht mehr.
+    felder['#lm-interest-mode'].value = 'none';
+    felder['#lm-interest-mode'].fire('change');
+    assert.equal(paid.value, '30', 'ohne Zins und ohne Ratenanzahl bleibt der Abstand');
+  } finally { globalThis.__apiStub = vorher; }
+});
+
+// ─── #1656: Absage des Darlehens-Dialogs -> Feld und Satz ───────────────────
+// saveLoanFromPanel() zeigte `err.data.error` als Toast: den englischen Satz des
+// Servers, in jeder Sprache und an keinem Feld. Der Server nennt jetzt zu jeder
+// 400 des Formulars einen `reason`, LOAN_REFUSALS ordnet ihm Feld und Satz zu.
+// Den Klick selbst misst test-budget-loan-dialogs-browser.js.
+
+test('#1656: eine Absage des Darlehens-Dialogs wird nie zum Satz des Servers', () => {
+  const raw = 'A sentence this client has never seen.';
+  const online = globalThis.navigator;
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true, writable: true });
+  try {
+    // Der Test-Loader liefert fuer t(key) den Schluessel selbst.
+    assert.deepEqual(
+      budgetUi.loanSaveError({ status: 400, message: raw, data: { error: raw, code: 400, reason: 'loan_paid_installments_exceed' } }),
+      { fields: '#lm-paid', message: 'budget.loanPaidInstallmentsTooMany' },
+    );
+    assert.deepEqual(
+      budgetUi.loanSaveError({ status: 400, message: raw, data: { error: raw, code: 400, reason: 'loan_paid_installments_invalid' } }),
+      { fields: '#lm-paid', message: 'budget.loanPaidInstallmentsInvalid' },
+    );
+    // Bearbeiten: ohne Zins steht die Ratenanzahl da, mit Zins die Tilgung.
+    assert.deepEqual(
+      budgetUi.loanSaveError({ status: 400, data: { error: raw, reason: 'loan_term_below_paid' } }),
+      { fields: '#lm-installments, #lm-initial-repayment', message: 'budget.loanTermBelowPaid' },
+    );
+    // Kein, ein unbekannter oder ein boesartiger Grund: der allgemeine Satz des Dialogs.
+    for (const reason of [undefined, null, '', 'some_future_reason', '__proto__', 'constructor', 'toString', 7]) {
+      assert.deepEqual(
+        budgetUi.loanSaveError({ status: 400, message: raw, data: { error: raw, code: 400, reason } }),
+        { fields: null, message: 'budget.loanSaveFailed' }, String(reason),
+      );
+    }
+    // Andere Antworten: der Satz der App, wo sie einen hat - sonst der des Dialogs.
+    for (const [err, key] of [
+      [{ status: 403, message: raw, data: { error: raw } }, 'common.errorNoPermission'],
+      [{ status: 404, message: raw, data: { error: raw } }, 'common.errorNotFound'],
+      [{ status: 500, message: raw, data: { error: raw } }, 'common.errorServer'],
+      [{ status: 0, message: raw }, 'common.errorOfflineMutation'],
+      [{ status: 409, message: raw, data: { error: raw } }, 'budget.loanSaveFailed'],
+      [{ status: 429, message: raw, data: { error: raw } }, 'budget.loanSaveFailed'],
+      [{ message: raw }, 'budget.loanSaveFailed'],
+      [undefined, 'budget.loanSaveFailed'],
+    ]) {
+      assert.deepEqual(budgetUi.loanSaveError(err), { fields: null, message: key }, JSON.stringify(err));
+    }
+    // Ein Grund zaehlt nur an einer 400.
+    assert.deepEqual(
+      budgetUi.loanSaveError({ status: 500, data: { error: raw, reason: 'loan_paid_installments_exceed' } }),
+      { fields: null, message: 'common.errorServer' },
+    );
+  } finally {
+    Object.defineProperty(globalThis, 'navigator', { value: online, configurable: true, writable: true });
+  }
+});
+
+test('#1656: jeder Grund des Servers ist eingeordnet, jedes Feld gibt es, jeder Satz steht in jeder Sprache', () => {
+  const server = read('../server/routes/budget/loans.js');
+  // Bis zu den Raten: was danach kommt (Rate abhaken), ist kein Formular und
+  // steht seit #1668 in BUDGET_REFUSALS.
+  const formPart = server.slice(0, server.indexOf("router.post('/loans/:id/payments'"));
+  assert.ok(formPart.length > 1000, 'Vorbedingung: der Teil vor den Raten wurde gefunden');
+  const atServer = new Set([...formPart.matchAll(/\brefusals?\('(loan_[a-z_]+)'/g)].map((m) => m[1]));
+  assert.ok(atServer.size >= 20, `zu wenige Gruende gelesen (${atServer.size}) - das Muster greift nicht mehr`);
+  const known = new Set(budgetUi.LOAN_REFUSALS.keys());
+  assert.deepEqual([...atServer].filter((r) => !known.has(r)), [], 'ein Grund des Servers ohne Feld und Satz im Dialog');
+  assert.deepEqual([...known].filter((r) => !atServer.has(r)), [], 'der Dialog fuehrt einen Grund, den der Server nicht mehr schickt');
+  // Kein Formular-400 ohne Grund: jede Absage von POST/PUT /loans laeuft ueber refuse().
+  const form = server.slice(server.indexOf("router.post('/loans', "), server.indexOf("router.post('/loans/:id/payments'"));
+  assert.ok(form.length > 1000, 'Vorbedingung: der Abschnitt der beiden Formular-Routen wurde gefunden');
+  assert.doesNotMatch(form, /status\(400\)/, 'eine 400 des Formulars geht am Grund vorbei');
+
+  // Jedes genannte Feld steht im Formular - sonst landete die Absage still im Toast.
+  const html = budgetUi.loanFormFieldsHtml(null, { startMonth: '2026-01' })
+    + budgetUi.loanFormFieldsHtml({ id: 1, title: 'T', borrower: 'B', total_amount: 100, installment_count: 2, start_month: '2026-01' }, { startMonth: '2026-01' });
+  const dir = new URL('../public/locales/', import.meta.url);
+  const files = readdirSync(dir).filter((name) => name.endsWith('.json'));
+  assert.ok(files.length >= 26, `zu wenige Sprachdateien gelesen (${files.length})`);
+  const locales = files.map((name) => [name, JSON.parse(readFileSync(new URL(name, dir), 'utf8'))]);
+  const NEW = new Set(['budget.loanPaidInstallmentsInvalid', 'budget.loanPaidInstallmentsTooMany', 'budget.loanTermBelowPaid', 'budget.loanSaveFailed']);
+  const keys = new Set();
+  for (const [reason, [fields, key, keyWithMax]] of budgetUi.LOAN_REFUSALS) {
+    keys.add(key);
+    if (keyWithMax) keys.add(keyWithMax);
+    for (const selector of (fields ?? '').split(',').map((s) => s.trim()).filter(Boolean)) {
+      assert.match(selector, /^#lm-[a-z-]+$/, `${reason}: ${selector}`);
+      // #lm-account gibt es nur, wenn ein Konto angelegt ist.
+      if (selector === '#lm-account') continue;
+      assert.ok(html.includes(`id="${selector.slice(1)}"`), `${reason}: das Feld ${selector} steht nicht im Formular`);
+    }
+  }
+  for (const key of new Set([...keys, ...NEW])) {
+    const seen = new Map();
+    for (const [name, data] of locales) {
+      const text = key.split('.').reduce((node, part) => node?.[part], data);
+      assert.ok(typeof text === 'string' && text.trim().length > 0, `${name}: ${key} fehlt`);
+      if (NEW.has(key)) {
+        assert.doesNotMatch(text, /[\u2013\u2014]/, `${name}: ${key} traegt einen Gedankenstrich`);
+        seen.set(name, text);
+      }
+    }
+    // Kein deutscher oder englischer Satz in einer dritten Sprache.
+    for (const [name, text] of seen) {
+      if (name === 'de.json' || name === 'en.json') continue;
+      assert.notEqual(text, seen.get('de.json'), `${name}: ${key} ist der deutsche Satz`);
+      assert.notEqual(text, seen.get('en.json'), `${name}: ${key} ist der englische Satz`);
+    }
+  }
+});
+
+test('#1656: die Textfelder des Darlehens lassen nicht mehr zu, als der Server annimmt', () => {
+  const html = budgetUi.loanFormFieldsHtml(null, { startMonth: '2026-01' });
+  for (const [id, max] of [['lm-borrower', 100], ['lm-title', 200], ['lm-notes', 1000]]) {
+    const tag = html.match(new RegExp(`<(?:input|textarea)[^>]*id="${id}"[^>]*>`))?.[0] ?? '';
+    assert.match(tag, new RegExp(`maxlength="${max}"`), `${id}: ${tag}`);
+  }
+});
+
+// ─── #1668: die uebrigen Saetze des Servers, und genauere im Darlehens-Dialog ─
+// Nach #1656 zeigte nur der Darlehens-Dialog seine Absagen uebersetzt und am
+// Feld. 13 weitere Stellen dieser Seite schrieben `err.data.error` in einen
+// Toast - englisch oder, fuer das Konto, deutsch. Und vier Saetze des Dialogs
+// waren ungenau: "tilgt nicht" fuer ein Darlehen, das zu lange laeuft, "Anzahl
+// eingeben" fuer 361 Raten, "zu viele" ohne Zahl, und der allgemeine Satz an
+// Titel, Notizen, Waehrung und Konto.
+
+const SERVER_SENTENCE = 'A sentence this client has never seen.';
+
+function withOnline(fn) {
+  const before = globalThis.navigator;
+  Object.defineProperty(globalThis, 'navigator', { value: { onLine: true }, configurable: true, writable: true });
+  try { return fn(); } finally {
+    Object.defineProperty(globalThis, 'navigator', { value: before, configurable: true, writable: true });
+  }
+}
+
+test('#1668: der Darlehens-Dialog nennt die Grenze und hat fuer jedes Feld einen eigenen Satz', () => withOnline(() => {
+  const refusal = (reason, extra = {}) => ({ status: 400, message: SERVER_SENTENCE, data: { error: SERVER_SENTENCE, code: 400, reason, ...extra } });
+  for (const [reason, extra, fields, message] of [
+    // Laeuft zu lange: ein eigener Satz mit der Grenze, nicht mehr "tilgt nicht".
+    ['loan_term_too_long', { max: 600 }, '#lm-initial-repayment', 'budget.loanTermTooLong{"max":600}'],
+    ['loan_not_amortizing', {}, '#lm-initial-repayment', 'budget.loanPreviewInvalid'],
+    // 361 Raten: der Satz nennt 360.
+    ['loan_installments_invalid', { max: 360 }, '#lm-installments', 'budget.loanInstallmentsRange{"max":360}'],
+    // Zu viele gezahlte Raten: mit dem Maximum, wo der Server es kennt.
+    ['loan_paid_installments_exceed', { max: 12 }, '#lm-paid', 'budget.loanPaidInstallmentsMax{"max":12}'],
+    ['loan_paid_installments_exceed', { max: 0 }, '#lm-paid', 'budget.loanPaidInstallmentsMax{"max":0}'],
+    // Ohne (lesbare) Grenze bleibt der Satz ohne Zahl - nie "undefined" oder "NaN".
+    ['loan_paid_installments_exceed', {}, '#lm-paid', 'budget.loanPaidInstallmentsTooMany'],
+    ['loan_paid_installments_exceed', { max: '12' }, '#lm-paid', 'budget.loanPaidInstallmentsTooMany'],
+    ['loan_paid_installments_exceed', { max: -1 }, '#lm-paid', 'budget.loanPaidInstallmentsTooMany'],
+    ['loan_paid_installments_exceed', { max: 1.5 }, '#lm-paid', 'budget.loanPaidInstallmentsTooMany'],
+    ['loan_installments_invalid', { max: null }, '#lm-installments', 'budget.loanInstallmentsRequired'],
+    ['loan_term_too_long', {}, '#lm-initial-repayment', 'budget.loanPreviewInvalid'],
+    // Ein Satz ohne Grenze nimmt keine an, auch wenn eine mitkommt.
+    ['loan_not_amortizing', { max: 600 }, '#lm-initial-repayment', 'budget.loanPreviewInvalid'],
+    // Eigene Saetze statt des allgemeinen.
+    ['loan_title_invalid', {}, '#lm-title', 'budget.loanTitleInvalid'],
+    ['loan_notes_invalid', {}, '#lm-notes', 'budget.loanNotesInvalid'],
+    ['loan_currency_invalid', {}, '#lm-currency', 'budget.loanCurrencyInvalid'],
+    ['loan_account_invalid', {}, '#lm-account', 'budget.accountNotFound'],
+  ]) {
+    assert.deepEqual(budgetUi.loanSaveError(refusal(reason, extra)), { fields, message }, `${reason} ${JSON.stringify(extra)}`);
+  }
+  // Kein Feld des Formulars traegt mehr den allgemeinen Satz.
+  for (const [reason, [fields, key]] of budgetUi.LOAN_REFUSALS) {
+    if (fields) assert.notEqual(key, 'budget.loanSaveFailed', `${reason}: der allgemeine Satz steht an ${fields}`);
+  }
+}));
+
+test('#1668: eine Absage der Budget-Seite wird nie zum Satz des Servers', () => withOnline(() => {
+  const at = (status, reason, extra = {}) => ({ status, message: SERVER_SENTENCE, data: { error: SERVER_SENTENCE, code: status, reason, ...extra } });
+  // Jeder gefuehrte Grund: sein Feld, sein Satz - an einer 400 und an einer 409.
+  assert.ok(budgetUi.BUDGET_REFUSALS.size >= 30, `Vorbedingung: die Liste ist gefuellt (${budgetUi.BUDGET_REFUSALS.size})`);
+  for (const [reason, [fields, key]] of budgetUi.BUDGET_REFUSALS) {
+    for (const status of [400, 409]) {
+      const got = budgetUi.budgetError(at(status, reason));
+      assert.deepEqual(got, { fields, message: key }, `${reason} an ${status}`);
+      assert.notEqual(got.message, SERVER_SENTENCE);
+    }
+  }
+  // Einzeln gepinnt, was der Auftrag nennt: Feld und Satz je Grund.
+  for (const [reason, fields, key] of [
+    ['entry_account_invalid', '#bm-account', 'budget.accountNotFound'],
+    ['entry_amount_invalid', '#bm-amount, #cb-amount', 'budget.validAmountRequired'],
+    ['entry_amount_exceeds_loan', '#bm-amount', 'budget.amountExceedsLoanRemaining'],
+    ['entry_date_invalid', '#bm-date, #cb-date', 'calendar.invalidDate'],
+    ['entry_subcategory_invalid', '#bm-subcategory', 'budget.subcategoryRequired'],
+    ['series_start_too_early', '#bm-date', 'budget.seriesStartTooEarly'],
+    ['entry_responsible_invalid', null, 'budget.responsibleNotMember'],
+    ['account_name_invalid', '#am-name', 'common.titleRequired'],
+    ['account_credit_limit_invalid', '#am-credit-limit', 'budget.validAmountRequired'],
+    ['category_exists', null, 'category.errorExists'],
+    ['subcategory_exists', null, 'category.errorSubExists'],
+    ['loan_settled', null, 'budget.loanAlreadyPaid'],
+    ['loan_installment_paid', null, 'budget.loanInstallmentAlreadyPaid'],
+    ['loan_payment_amount_exceeds', null, 'budget.amountExceedsLoanRemaining'],
+  ]) {
+    assert.deepEqual(budgetUi.budgetError(at(400, reason)), { fields, message: key }, reason);
+  }
+  // Kein, ein unbekannter oder ein boesartiger Grund: der allgemeine Satz der
+  // Stelle - beim Speichern der eine, sonst der andere.
+  for (const reason of [undefined, null, '', 'some_future_reason', '__proto__', 'constructor', 'toString', 7]) {
+    for (const status of [400, 409]) {
+      assert.deepEqual(budgetUi.budgetError(at(status, reason)), { fields: null, message: 'common.errorOccurred' }, String(reason));
+      assert.deepEqual(
+        budgetUi.budgetError(at(status, reason), 'budget.saveFailed'), { fields: null, message: 'budget.saveFailed' }, String(reason),
+      );
+    }
+  }
+  // Ein Grund des Darlehens-Formulars gehoert dem Dialog, nicht dieser Liste.
+  assert.deepEqual(budgetUi.budgetError(at(400, 'loan_title_invalid')), { fields: null, message: 'common.errorOccurred' });
+  // Andere Antworten: der Satz der App, wo sie einen hat - sonst der allgemeine.
+  for (const [err, key] of [
+    [{ status: 403, message: SERVER_SENTENCE, data: { error: SERVER_SENTENCE } }, 'common.errorNoPermission'],
+    [{ status: 403, data: { error: SERVER_SENTENCE, reason: 'module_read_only' } }, 'settings.permReadOnlyBanner'],
+    [{ status: 404, message: SERVER_SENTENCE, data: { error: SERVER_SENTENCE } }, 'common.errorNotFound'],
+    [{ status: 500, message: SERVER_SENTENCE, data: { error: SERVER_SENTENCE } }, 'common.errorServer'],
+    [{ status: 0, message: SERVER_SENTENCE }, 'common.errorOfflineMutation'],
+    [{ status: 429, message: SERVER_SENTENCE, data: { error: SERVER_SENTENCE } }, 'common.errorOccurred'],
+    [{ message: SERVER_SENTENCE }, 'common.errorOccurred'],
+    [new TypeError(SERVER_SENTENCE), 'common.errorOccurred'],
+    [undefined, 'common.errorOccurred'],
+  ]) {
+    assert.deepEqual(budgetUi.budgetError(err), { fields: null, message: key }, JSON.stringify(err));
+  }
+  // Ein Grund zaehlt nur an einer Absage, nicht an einem Serverfehler.
+  assert.deepEqual(budgetUi.budgetError(at(500, 'entry_account_invalid')), { fields: null, message: 'common.errorServer' });
+}));
+
+test('#1668: die Absage steht am Feld des offenen Dialogs, sonst im Toast', () => withOnline(() => {
+  const toasts = [];
+  const marks = [];
+  const yuvomi = global.window.yuvomi;
+  global.window.yuvomi = { ...yuvomi, showToast: (...args) => toasts.push(args) };
+  globalThis.__reportFieldError = (input, message) => marks.push([input.id, message]);
+  const field = (id, { hidden = false, isConnected = true } = {}) => ({ id, isConnected, closest: (sel) => (sel === '[hidden]' && hidden ? {} : null) });
+  const panelWith = (fields) => ({
+    querySelectorAll: (selector) => selector.split(',').map((s) => s.trim().slice(1)).map((id) => fields[id]).filter(Boolean),
+  });
+  const refusal = (reason, status = 400) => ({ status, message: SERVER_SENTENCE, data: { error: SERVER_SENTENCE, code: status, reason } });
+  const shown = (fn) => { toasts.length = 0; marks.length = 0; fn(); return { toasts: [...toasts], marks: [...marks] }; };
+  try {
+    // Buchungsdialog: das Konto gibt es nicht mehr -> am Konto-Feld, kein Toast.
+    const entryPanel = panelWith({ 'bm-account': field('bm-account'), 'bm-amount': field('bm-amount'), 'bm-date': field('bm-date') });
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('entry_account_invalid'), { panel: entryPanel, fallback: 'budget.saveFailed' })),
+      { toasts: [], marks: [['bm-account', 'budget.accountNotFound']] },
+    );
+    // Derselbe Grund in zwei Dialogen: gezeigt wird am Feld, das der offene hat.
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('entry_amount_invalid'), { panel: entryPanel })),
+      { toasts: [], marks: [['bm-amount', 'budget.validAmountRequired']] },
+    );
+    const confirmPanel = panelWith({ 'cb-amount': field('cb-amount'), 'cb-date': field('cb-date') });
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('entry_amount_invalid'), { panel: confirmPanel })),
+      { toasts: [], marks: [['cb-amount', 'budget.validAmountRequired']] },
+    );
+    // Kontodialog.
+    const accountPanel = panelWith({ 'am-name': field('am-name'), 'am-credit-limit': field('am-credit-limit', { hidden: true }) });
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('account_name_invalid'), { panel: accountPanel })),
+      { toasts: [], marks: [['am-name', 'common.titleRequired']] },
+    );
+    // Ein verstecktes Feld (Kreditlimit bei einem Girokonto) kann nichts zeigen: Toast.
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('account_credit_limit_invalid'), { panel: accountPanel })),
+      { toasts: [['budget.validAmountRequired', 'danger']], marks: [] },
+    );
+    // Ebenso ein Feld, dessen Dialog inzwischen zu ist.
+    const closed = panelWith({ 'bm-account': field('bm-account', { isConnected: false }) });
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('entry_account_invalid'), { panel: closed })),
+      { toasts: [['budget.accountNotFound', 'danger']], marks: [] },
+    );
+    // Ohne Dialog (Rate abhaken, Loeschen): immer der Toast, mit dem Satz der App.
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('loan_installment_paid', 409))),
+      { toasts: [['budget.loanInstallmentAlreadyPaid', 'danger']], marks: [] },
+    );
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('entry_account_invalid'))),
+      { toasts: [['budget.accountNotFound', 'danger']], marks: [] },
+    );
+    // Ein Grund ohne Feld bleibt auch im Dialog ein Toast.
+    assert.deepEqual(
+      shown(() => budgetUi.showBudgetError(refusal('entry_responsible_invalid'), { panel: entryPanel })),
+      { toasts: [['budget.responsibleNotMember', 'danger']], marks: [] },
+    );
+    // Nichts davon ist der Satz des Servers.
+    for (const reason of [...budgetUi.BUDGET_REFUSALS.keys(), 'unknown_reason', undefined]) {
+      const out = shown(() => budgetUi.showBudgetError(refusal(reason), { panel: entryPanel }));
+      const texts = [...out.toasts.map((t) => t[0]), ...out.marks.map((m) => m[1])];
+      assert.equal(texts.length, 1, String(reason));
+      assert.notEqual(texts[0], SERVER_SENTENCE, String(reason));
+    }
+  } finally {
+    global.window.yuvomi = yuvomi;
+    delete globalThis.__reportFieldError;
+  }
+}));
+
+/** Jeder Grund, den eine Datei des Servers einer Absage mitgibt. */
+function serverReasons(file) {
+  const src = read(`../server/routes/budget/${file}`);
+  return new Set([
+    // refusal('x', ...), refusals('x', ...) - auch ueber einen Zeilenumbruch.
+    ...[...src.matchAll(/\brefusals?\(\s*'([a-z]+(?:_[a-z]+)+)'/g)].map((m) => m[1]),
+    // ['x', str(...)] - die Pruefungen, die eine Route nur bei gesetztem Feld faehrt.
+    ...[...src.matchAll(/\['([a-z]+(?:_[a-z]+)+)', (?:str|num|oneOf|rrule|validateDate|validateColor|intervalCountCheck)\(/g)].map((m) => m[1]),
+    // reason: 'x' an einer ausgeschriebenen Antwort.
+    ...[...src.matchAll(/\breason: '([a-z]+(?:_[a-z]+)+)'/g)].map((m) => m[1]),
+  ]);
+}
+
+test('#1668: jeder Grund der Budget-Routen ist eingeordnet, jedes Feld gibt es, jeder Satz steht in jeder Sprache', () => {
+  const atServer = new Set(['entries.js', 'accounts.js', 'categories.js', 'loans.js'].flatMap((file) => [...serverReasons(file)]));
+  assert.ok(atServer.size >= 55, `zu wenige Gruende gelesen (${atServer.size}) - das Muster greift nicht mehr`);
+  for (const probe of ['entry_account_invalid', 'series_end_refused', 'series_start_too_early', 'entry_start_date_invalid', 'account_credit_limit_invalid', 'loan_settled', 'category_exists']) {
+    assert.ok(atServer.has(probe), `Vorbedingung: der Leser sieht ${probe}`);
+  }
+  // Wer welchen Grund liest: der Darlehens-Dialog seine, die Verwaltung der
+  // Kategorien ihre (category-manager.js), alles andere diese Seite.
+  const loanForm = new Set(budgetUi.LOAN_REFUSALS.keys());
+  const READ_BY_CATEGORY_MANAGER = ['category_in_use', 'category_last', 'subcategory_in_use', 'subcategory_last'];
+  const manager = read('../public/components/category-manager.js');
+  for (const reason of READ_BY_CATEGORY_MANAGER) {
+    assert.ok(atServer.has(reason), `${reason} schickt der Server nicht mehr`);
+    assert.ok(manager.includes(`'${reason}'`), `${reason} liest die Kategorien-Verwaltung nicht mehr`);
+  }
+  const elsewhere = new Set([...loanForm, ...READ_BY_CATEGORY_MANAGER]);
+  const known = new Set(budgetUi.BUDGET_REFUSALS.keys());
+  assert.deepEqual(
+    [...atServer].filter((r) => !known.has(r) && !elsewhere.has(r)), [],
+    'ein Grund des Servers ohne Feld und Satz auf der Seite',
+  );
+  assert.deepEqual([...known].filter((r) => !atServer.has(r)), [], 'die Seite fuehrt einen Grund, den der Server nicht mehr schickt');
+  assert.deepEqual([...known].filter((r) => loanForm.has(r)), [], 'ein Grund steht in beiden Listen');
+
+  // Keine Absage der Schreibrouten geht am Grund vorbei. Uebrig bleiben die
+  // Lesewege (month, q, range, anchor) - die fragt kein Dialog.
+  for (const [file, allowed] of [['entries.js', 3], ['accounts.js', 0], ['categories.js', 0], ['loans.js', 0]]) {
+    const src = read(`../server/routes/budget/${file}`);
+    const bare = [...src.matchAll(/status\((400|409)\)\.json\(\{(?:(?!\}\);)[\s\S])*?\}\)/g)].filter((m) => !/reason:/.test(m[0]));
+    assert.equal(bare.length, allowed, `${file}: ${bare.map((m) => m[0].slice(0, 70)).join(' | ')}`);
+  }
+
+  // Jedes genannte Feld steht in einem Dialog der Seite.
+  for (const [reason, [fields]] of budgetUi.BUDGET_REFUSALS) {
+    for (const selector of (fields ?? '').split(',').map((part) => part.trim()).filter(Boolean)) {
+      assert.match(selector, /^#(bm|am|cb)-[a-z-]+$/, `${reason}: ${selector}`);
+      assert.ok(budget.includes(`id="${selector.slice(1)}"`), `${reason}: das Feld ${selector} steht in keinem Dialog`);
+    }
+  }
+
+  // Jeder Satz steht in jeder Sprache; die neuen ohne Gedankenstrich, nicht
+  // deutsch und nicht englisch in einer dritten Sprache, mit ihrem Platzhalter.
+  const dir = new URL('../public/locales/', import.meta.url);
+  const files = readdirSync(dir).filter((name) => name.endsWith('.json'));
+  assert.ok(files.length >= 26, `zu wenige Sprachdateien gelesen (${files.length})`);
+  const locales = files.map((name) => [name, JSON.parse(readFileSync(new URL(name, dir), 'utf8'))]);
+  const NEW = new Map([
+    ['budget.loanTermTooLong', true], ['budget.loanInstallmentsRange', true], ['budget.loanPaidInstallmentsMax', true],
+    ['budget.loanTitleInvalid', false], ['budget.loanNotesInvalid', false], ['budget.loanCurrencyInvalid', false],
+    ['budget.accountNotFound', false], ['budget.saveFailed', false], ['budget.loanAlreadyPaid', false],
+    ['budget.loanInstallmentAlreadyPaid', false], ['budget.amountExceedsLoanRemaining', false],
+    ['budget.responsibleNotMember', false], ['budget.seriesStartTooEarly', false],
+  ]);
+  const keys = new Set(['common.errorOccurred', ...NEW.keys()]);
+  for (const list of [budgetUi.BUDGET_REFUSALS, budgetUi.LOAN_REFUSALS]) {
+    for (const [, [, key, keyWithMax]] of list) { keys.add(key); if (keyWithMax) keys.add(keyWithMax); }
+  }
+  // Jeder neue Satz wird auch gebraucht - sonst stuende er nur in den Dateien.
+  for (const key of NEW.keys()) assert.ok(budget.includes(`'${key}'`), `${key} benutzt die Seite nicht`);
+  for (const key of keys) {
+    const seen = new Map();
+    for (const [name, data] of locales) {
+      const text = key.split('.').reduce((node, part) => node?.[part], data);
+      assert.ok(typeof text === 'string' && text.trim().length > 0, `${name}: ${key} fehlt`);
+      if (!NEW.has(key)) continue;
+      assert.doesNotMatch(text, /[\u2013\u2014]/, `${name}: ${key} traegt einen Gedankenstrich`);
+      // Die Grenze ist ein Platzhalter, keine feste Zahl im Text.
+      assert.equal(text.includes('{{max}}'), NEW.get(key), `${name}: ${key} und {{max}}`);
+      assert.doesNotMatch(text, /360|600/, `${name}: ${key} nennt die Grenze fest`);
+      seen.set(name, text);
+    }
+    for (const [name, text] of seen) {
+      if (name === 'de.json' || name === 'en.json') continue;
+      assert.notEqual(text, seen.get('de.json'), `${name}: ${key} ist der deutsche Satz`);
+      assert.notEqual(text, seen.get('en.json'), `${name}: ${key} ist der englische Satz`);
+    }
+  }
+});
+
+test('#1668: keine Stelle der Budget-Seite schreibt den Satz des Servers in einen Toast', () => {
+  // Ohne Kommentare: die Erklaerung, was hier frueher stand, darf es nennen.
+  const code = budget.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(code, /showToast\([^;]*err(?:or)?\??\.(?:data\??\.error|message)/, 'ein Toast zeigt den Text des Fehlers');
+  assert.doesNotMatch(code, /err(?:or)?\??\.data\??\.error/, 'die Seite liest den Satz des Servers');
+  // Die 13 Stellen von damals und der Verbuchen-Dialog laufen ueber eine Funktion.
+  const calls = [...code.matchAll(/(?<!function )\bshowBudgetError\(err\b/g)].length;
+  assert.equal(calls, 14, `showBudgetError(err, ...) steht ${calls}x`);
+  // Die drei Dialoge geben sich selbst mit, damit die Absage am Feld landet.
+  assert.equal([...code.matchAll(/showBudgetError\(err, \{ panel, fallback: BUDGET_SAVE_FAILED \}\)/g)].length, 3);
+});
+
+test('#1668: der Dialog nennt beim Pruefen am Feld, wie viele Raten das Darlehen hat', () => {
+  const save = budget.slice(budget.indexOf('async function saveLoanFromPanel('), budget.indexOf('function openLoanModal('));
+  assert.ok(save.length > 1000, 'Vorbedingung: saveLoanFromPanel gefunden');
+  assert.match(save, /t\('budget\.loanPaidInstallmentsMax', \{ max: installment_count \}\)/, 'ohne Zins: die Ratenanzahl des Formulars');
+  assert.match(save, /t\('budget\.loanPaidInstallmentsMax', \{ max: term \}\)/, 'mit Zins: die Laufzeit aus der Vorschau');
+  assert.doesNotMatch(save, /loanPaidInstallmentsTooMany/, 'eine Pruefung am Feld sagt noch "zu viele" ohne Zahl');
+});
+
+/* R16 (Critique 2026-10-05, P1 mobil): TITEL UND ZEITRAUM TEILEN SICH ZEILE 1.
+ * Der Budgetkopf stand mobil auf allen sieben Reitern bei 162px - drei Zeilen,
+ * und auf vier Reitern trug die mittlere nur eine Bildunterschrift. Mit
+ * `page-toolbar--period-inline` gibt der Titel nach, der Stepper steht am
+ * Zeilenende; gemessen 117px auf jedem Reiter. Der Guard haelt die drei
+ * Stuecke, ohne die die Zeile wieder aufgeht: die Klasse im Markup, die
+ * nachgebende Titelbasis und den Center-Slot ohne volle Zeile. */
+test('R16: der Budgetkopf fuehrt den Zeitraum mobil in der Titelzeile', () => {
+  assert.match(budget, /<div class="page-toolbar[^"]*\bpage-toolbar--period-inline\b[^"]*\bbudget-nav\b[^"]*">/,
+    'der Budgetkopf traegt `page-toolbar--period-inline`');
+  const mobile = [...eachRule(layoutCss)].filter((r) => r.at.some((a) => /max-width:\s*767px/.test(a))
+    && r.selector.includes('.page-toolbar--period-inline'));
+  const of = (tail) => mobile.filter((r) => r.selector.trim().endsWith(tail)).map((r) => r.body).join(';');
+  assert.match(of(':not(.page-toolbar--in-group) > .page-toolbar__title'), /flex:\s*1 1 0/,
+    'der Titel gibt nach (Basis 0) - mit der Basis der Large-Title-Regel nimmt er die ganze Zeile');
+  assert.match(of('> .page-toolbar__center'), /flex:\s*0 0 auto/,
+    'der Center-Slot beansprucht keine eigene Zeile und gibt selbst nicht nach');
+  // Der Ruecksprung haelt hier keinen Platz frei und nimmt ihn auch nicht vom
+  // Titel (R16 Schritt 2b): er liegt durchsichtig UEBER dem Wert, zwischen den
+  // Pfeilen. Ein Tipp aufs Monatslabel springt zum laufenden Monat, der Knopf
+  // behaelt Namen und Platz in der Tab-Folge, und kein Pfeil bewegt sich (#1200).
+  assert.match(of('> .page-toolbar__center > .period-stepper__reset.is-current'), /display:\s*none/);
+  const ueber = of('> .page-toolbar__center > .period-stepper__reset');
+  assert.match(ueber, /position:\s*absolute/);
+  assert.match(ueber, /inset-inline:\s*var\(--target-base\)/, 'zwischen den Pfeilen, nicht darueber');
+  assert.match(ueber, /color:\s*transparent/);
+  assert.doesNotMatch(ueber, /order:|opacity:|visibility:|display:\s*none/, 'kein Umsortieren, und der Knopf bleibt fokussierbar samt Ring');
+  assert.match(of('> .page-toolbar__center > .period-stepper__value--away'), /color:\s*var\(--module-accent\)/,
+    'der Wert sagt im Modulton, dass man neben dem laufenden Zeitraum steht');
+  assert.equal(mobile.filter((r) => /:has\(> \.page-toolbar__center > \.btn--secondary/.test(r.selector)).length, 0,
+    'der Titel verlaesst das Bild nicht mehr, solange der Ruecksprung steht');
+  // Das Label traegt die Kurzform des Monats und eine feste Breite.
+  assert.match(budget, /lbl\.setAttribute\('data-short', ym \? formatMonthYear\(y, m, \{ month: 'short' \}\)/);
+  const label = [...eachRule(budgetCss)].filter((r) => r.at.some((a) => /max-width:\s*767px/.test(a))
+    && r.selector.trim() === '.page-toolbar--period-inline .budget-nav__label');
+  assert.ok(label.some((r) => /inline-size:/.test(r.body)), 'feste Labelbreite - sonst wandern die Pfeile beim Blaettern');
+});
+
+test('R16: formatMonthYear kennt die Kurzform des Monats', async () => {
+  const i18n = await import('../public/i18n.js');
+  const long = i18n.formatMonthYear(2026, 9);
+  const short = i18n.formatMonthYear(2026, 9, { month: 'short' });
+  assert.ok(long.length > 0 && short.length > 0);
+  assert.ok(short.length <= long.length, `${short} ist nicht laenger als ${long}`);
+  assert.match(short, /2026/);
+});
+
+/* R16 (Critique 2026-10-05, P1 mobil): VERWALTUNG VOR INHALT IN DER AUFTEILUNG.
+ * Gemessen 390x844: Gruppen-Panel 284px + Gruppenkopf 197px + Salden 145px,
+ * erste Ausgabe y=975. Schmal ist die Gruppenwahl jetzt EINE Zeile, die die
+ * Liste aufklappt, und der Gruppenkopf nur noch die Aktionszeile (y=499). */
+test('R16 Aufteilung: schmal ist die Gruppenwahl eine Zeile, die die Liste aufklappt', () => {
+  const src = read('../public/pages/split-expenses.js');
+  const css = read('../public/styles/split-expenses.css');
+  assert.match(src, /<button type="button" class="split-group-switch" id="split-group-switch"\s+aria-expanded="false" aria-controls="split-groups-body">/);
+  assert.match(src, /<div class="split-groups-body" id="split-groups-body">[\s\S]*id="split-status-filter"[\s\S]*id="split-groups"/,
+    'Suche, Aktiv/Archiviert und die Liste stehen IM aufklappbaren Teil');
+  // Ohne aktive Gruppe steht die Liste offen - sonst laegen Leerzustand und „+" hinter einem namenlosen Knopf.
+  assert.match(src, /const open = _groupPickerOpen \|\| !group;/);
+  assert.match(src, /btn\.setAttribute\('aria-expanded', String\(open\)\)/);
+  const all = [...eachRule(css)].map((r) => ({ ...r, selector: r.selector.trim() }));
+  const narrow = all.filter((r) => r.at.some((a) => /@container split-page \(max-width:\s*639px\)/.test(a)));
+  const base = all.find((r) => r.at.length === 0 && r.selector === '.split-group-switch');
+  assert.match(base?.body ?? '', /display:\s*none/, 'breit steht die Liste als Spalte - die Zeile ist dort ausgeblendet');
+  assert.ok(narrow.some((r) => r.selector === '.split-group-switch' && /display:\s*flex/.test(r.body)));
+  assert.ok(narrow.some((r) => r.selector === '.split-groups-panel:not(.split-groups-panel--open) > .split-groups-body'
+    && /display:\s*none/.test(r.body)), 'zugeklappt ist die Liste aus dem Fluss');
+  // Der Gruppenkopf wiederholt den Namen nicht: geclippt, nicht entfernt.
+  const clipped = narrow.find((r) => r.selector.includes('.split-group-header .split-group-name'));
+  assert.match(clipped?.body ?? '', /clip-path:\s*inset\(50%\)/);
+  assert.doesNotMatch(clipped?.body ?? '', /display:\s*none/, 'die Ueberschrift der Gruppe bleibt im Baum');
+});
+
+/* R16 Schritt 2 (Critique 2026-10-05, P1 Bausteine): das Budget sprach in
+ * seinen Reitern Dialekt. Drei Regeln, je gegen den Stand davor rot gelaufen. */
+test('R16 Budget: Gewichte kommen aus den Tokens, ohne !important - und der Betrag hat EIN Gewicht', () => {
+  const funde = [];
+  for (const file of ['budget.css', 'split-expenses.css', 'subscriptions.css']) {
+    for (const rule of eachRule(read(`../public/styles/${file}`))) {
+      const w = rule.body.match(/font-weight:\s*([^;]+)/);
+      if (!w) continue;
+      if (/^\d+/.test(w[1].trim()) || /!important/.test(w[1])) funde.push(`${file}: ${rule.selector.trim()} { font-weight: ${w[1].trim()} }`);
+    }
+  }
+  assert.deepStrictEqual(funde, [], 'Gewicht als Literal oder mit !important');
+
+  const body = (file, sel) => [...eachRule(read(`../public/styles/${file}`))]
+    .filter((r) => r.selector.split(',').map((s) => s.trim()).includes(sel)).map((r) => r.body).join(';');
+  for (const [file, sel] of [
+    ['budget.css', '.budget-entry__amount'],
+    ['budget.css', '.budget-account__balance'],
+    ['budget.css', '.budget-plan-row__amounts strong'],
+    ['split-expenses.css', '.split-expense__amount'],
+  ]) {
+    assert.match(body(file, sel), /font-weight:\s*var\(--font-weight-semibold\)/, `${sel}: ein Betrag steht semibold`);
+  }
+});
+
+test('R16 Budget: "Darlehenstransaktionen" ist eine Ueberschrift auf der Buehne, kein div', () => {
+  const src = read('../public/pages/budget.js');
+  assert.match(src, /<h2 class="budget-loan-transactions__title u-section-title">\$\{t\('budget\.loanTransactions'\)\}<\/h2>/);
+  assert.doesNotMatch(src, /<div class="budget-loan-transactions__title"/);
+});
+
+test('R16 Aufteilung: null ist weder Gewinn noch Schuld - der Ton haengt am Betrag', () => {
+  const src = read('../public/pages/split-expenses.js');
+  assert.match(src, /class="metric-card\$\{owed\.length \? ' metric-card--positive' : ''\}"/);
+  assert.match(src, /class="metric-card\$\{owing\.length \? ' metric-card--negative' : ''\}"/);
+  assert.doesNotMatch(src, /class="metric-card metric-card--(?:positive|negative)">\s*<div class="metric-card__label">\$\{t\('splitExpenses\.you/);
+});
+
+/* R16 Schritt 2b - EIN ZEITRAUM-KOPF (Critique 2026-10-05, P1 Bausteine): fuenf
+ * Module bauten den Stepper je selbst, vier kopierten die Reset-Regel, der
+ * Schichtplan hatte sie nicht. Verhalten am Baustein, nicht am Quelltext.
+ * Gegen den Stand davor rot gelaufen (Baustein fehlte). */
+test('R16: der Zeitraum-Stepper ist ein Baustein - Reihenfolge, Namen, Reset-Regel', async () => {
+  const { periodStepperHtml, syncPeriodReset } = await import('../public/utils/period-stepper.js');
+  const html = periodStepperHtml({
+    prev: { id: 'p', label: 'Vorheriger Monat' },
+    value: { id: 'v', className: 'x__label', text: 'Mai <2026>', live: true },
+    next: { id: 'n', label: 'Nächster Monat', keys: 'j' },
+    reset: { id: 'r', className: 'x__today', label: 'Aktuell', current: true },
+  });
+  const at = (needle) => html.indexOf(needle);
+  assert.ok(at('id="p"') > 0 && at('id="p"') < at('id="v"') && at('id="v"') < at('id="n"') && at('id="n"') < at('id="r"'),
+    'Markup = Tab-Folge: zurueck, Wert, vor, dahinter der Reset');
+  assert.match(html, /<button type="button" class="btn btn--icon period-stepper__prev" id="p" aria-label="Vorheriger Monat">/);
+  assert.match(html, /class="btn btn--icon period-stepper__next" id="n" aria-label="Nächster Monat" aria-keyshortcuts="j"/);
+  assert.match(html, /<span class="period-stepper__value x__label" id="v" aria-live="polite">Mai &lt;2026&gt;<\/span>/, 'der Wert ist Klartext und wird escaped');
+  assert.match(html, /class="btn btn--secondary period-stepper__reset x__today is-current" id="r" inert>Aktuell</,
+    'im laufenden Zeitraum verborgen per .is-current + inert, nie per hidden');
+  assert.doesNotMatch(html, /\shidden[\s>]/);
+  assert.throws(() => periodStepperHtml({ prev: {}, next: { label: 'x' } }), /braucht einen Namen/, 'ein Pfeil ohne Objekt-Namen wird nicht ausgeliefert');
+
+  // Reset-Regel: Fokus zuerst zum Zurueck-Pfeil, dann inert; der Wert merkt "daneben".
+  const classes = () => { const set = new Set(); return { toggle: (c, on) => (on ? set.add(c) : set.delete(c)), contains: (c) => set.has(c) }; };
+  const valueEl = { classList: classes() };
+  const btn = { classList: classes(), inert: false, parentElement: { querySelector: () => valueEl } };
+  let focused = false;
+  const prevBtn = { focus: () => { focused = true; } };
+  const root = { querySelector: (sel) => (sel === '#r' ? btn : sel === '#p' ? prevBtn : null) };
+  const zuvor = global.document;
+  try {
+    global.document = { ...zuvor, activeElement: btn };
+    syncPeriodReset(root, { reset: '#r', isCurrent: false, prev: '#p' });
+    assert.equal(btn.inert, false);
+    assert.equal(focused, false);
+    assert.equal(valueEl.classList.contains('period-stepper__value--away'), true);
+    syncPeriodReset(root, { reset: '#r', isCurrent: true, prev: '#p' });
+    assert.equal(focused, true, 'der Fokus wandert VOR dem inert-Werden');
+    assert.equal(btn.inert, true);
+    assert.equal(btn.classList.contains('is-current'), true);
+    assert.equal(valueEl.classList.contains('period-stepper__value--away'), false);
+  } finally {
+    global.document = zuvor;
+  }
+});
+
+test('R16: Kalender, Essensplan, Budget, Haushaltshilfe und Schichtplan bauen ihren Stepper nicht selbst', () => {
+  const seiten = { calendar: 4, meals: 4, budget: 4, housekeeping: 4, schedule: 4 };
+  for (const name of Object.keys(seiten)) {
+    const src = withoutHtmlComments(withoutComments(read(`../public/pages/${name}.js`)));
+    assert.match(src, /import \{ periodStepperHtml(?:, syncPeriodReset)?(?:, swapPeriod)? \} from '\/utils\/period-stepper\.js';/, `${name}.js nimmt den Baustein`);
+    assert.match(src, /periodStepperHtml\(\{\s*prev: \{[^}]*label:[\s\S]*?value: \{[\s\S]*?next: \{[^}]*label:[\s\S]*?reset: \{/, `${name}.js: prev, value, next, reset`);
+    assert.doesNotMatch(src, /classList\.toggle\('is-current'/, `${name}.js fuehrt keine eigene Fassung der Reset-Regel`);
+    assert.doesNotMatch(src, /\.inert = isCurrent/, `${name}.js setzt inert nicht selbst`);
+  }
+});
+
+// Critique 2026-10-05 (R16): bei 390px waren vier von sechs Kontonamen gekappt
+// ("Gemeinsames Gi..."): 118px Namensspalte, einzeilig mit Ellipse. Der Name
+// ist die Identitaet der Zeile; er darf auf zwei Zeilen umbrechen. Der Saldo
+// daneben bleibt unzerbrechlich (Re-Critique 2026-09-28 P1-2).
+test('R16: ein Kontoname bricht auf zwei Zeilen um, statt gekappt zu werden', () => {
+  const rule = [...eachRule(budgetCss)].find((r) => r.selector.trim() === '.budget-account__name-text' && !r.at.length);
+  assert.ok(rule, 'die Regel ist nicht auffindbar - der Guard misst dann nichts');
+  assert.match(rule.body, /-webkit-line-clamp:\s*2/);
+  assert.doesNotMatch(rule.body, /white-space:\s*nowrap/, 'einzeilig mit Ellipse war der Befund');
+  assert.match(rule.body, /overflow-wrap:\s*anywhere/, 'ein langes Wort ohne Leerzeichen laeuft sonst unter den Saldo');
+  const figures = [...eachRule(budgetCss)].find((r) => r.selector.trim() === '.budget-account__figures' && !r.at.length);
+  assert.match(figures?.body ?? '', /flex:\s*0 0 auto/, 'die Saldo-Spalte schrumpft weiter nie');
 });

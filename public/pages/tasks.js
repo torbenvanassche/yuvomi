@@ -10,7 +10,7 @@ import { openModal as openSharedModal, closeModal, wireBlurValidation, validateA
 import { stagger, vibrate, scheduleUndoableDelete, animationSettled, collapseOut, expandIn, wireScrollFade } from '/utils/ux.js';
 import { wireSwipeRows, maybeShowSwipeHint } from '/utils/swipe-row.js';
 import { t, getLocale, formatDate, formatTime, timeSuffix, formatDateInput, parseDateInput, isDateInputValid, formatTimeInput, parseTimeInput } from '/i18n.js';
-import { esc } from '/utils/html.js';
+import { esc, REQUIRED_MARK } from '/utils/html.js';
 import { rowActionHtml } from '/utils/row-action.js';
 import { renderMarkdownToolbar, wireMarkdownToolbar } from '/utils/markdown-toolbar.js';
 import { refresh as refreshReminders } from '/reminders.js';
@@ -27,7 +27,7 @@ import { findPageFab } from '/utils/fab.js';
 import { setBulkPill, clearBulkPill } from '/utils/bulk-pill.js';
 import { isNavModuleReadOnly } from '/permissions.js';
 import { isSoloHousehold, hidesPrivacyControls } from '/utils/household.js';
-import { popoverMenuHtml, installPopoverMenus, pageToolsMenuHtml, syncPopoverMenuItem } from '/utils/popover-menu.js';
+import { popoverMenuHtml, installPopoverMenus, pageToolsMenuHtml, pageToolsActionEl, syncPopoverMenuItem } from '/utils/popover-menu.js';
 import { filterButtonHtml, syncFilterButton, openFilterSheet } from '/utils/filter-sheet.js';
 import { toggleRowHtml } from '/settings/components.js';
 import { wireTablist } from '/utils/tablist.js';
@@ -39,7 +39,7 @@ import { zonedDateKey, zonedTimeKey } from '/utils/timezone.js';
 import { historyDayLabel } from '/utils/day-label.js';
 import {
   PRIORITIES, PRIO_ORDER, STATUSES, FILTER_STATUSES, PRIORITY_LABELS, STATUS_LABELS, statusLabel,
-  FALLBACK_CATEGORY, isArchived, formatDueDate, normalizeTagList,
+  FALLBACK_CATEGORY, isArchived, formatDueDate, normalizeTagList, seriesDoneText,
   catLabel as catLabelOf, catSortIndex as catSortIndexOf,
   canEditTaskDefinition as canEditTaskDefinitionFor,
 } from '/utils/task-fields.js';
@@ -135,10 +135,6 @@ let taskDocuments = null;
 // --------------------------------------------------------
 // Hilfsfunktionen
 // --------------------------------------------------------
-
-function initials(name = '') {
-  return name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-}
 
 // Sichtbarkeits-Indikator (#474): nur für eingeschränkte Elemente ein dezentes
 // Icon — „Alle" bleibt icon-los (keine visuelle Flut, „Kraft ohne Lärm").
@@ -453,6 +449,17 @@ async function wireSyncTarget(panel, task) {
 }
 
 /**
+ * Das Schloss einer gesperrten Aufgabe - EINE Bauart fuer Liste und Brett
+ * (#1607: das Brett liess es weg, wer die Ansicht wechselte, erfuhr die Sperre
+ * erst am abgelehnten Zug). `role="img"`, damit das `aria-label` gilt.
+ */
+function renderLockedBadge(task) {
+  if (!task.locked) return '';
+  const label = esc(t('tasks.lockedBadge'));
+  return `<span class="due-date" role="img" aria-label="${label}" title="${label}"><i data-lucide="lock" class="icon-sm" aria-hidden="true"></i></span>`;
+}
+
+/**
  * EINE Metazeile, und sie bricht nicht um.
  *
  * Die Zeile trug bis zu acht Elemente mit `flex-wrap: wrap` und wurde damit je
@@ -572,7 +579,7 @@ function renderTaskCard(task, opts = {}) {
         </button>
         ` : `
         ${darfAbhaken ? `
-        <button class="task-status-btn task-status-btn--${task.status}"
+        <button class="task-status-btn task-status-btn--${task.status} check-ring"
                 data-action="toggle-status" data-id="${task.id}" data-status="${task.status}"
                 aria-label="${isDone ? t('tasks.markOpen', { title: esc(task.title) }) : t('tasks.markDone', { title: esc(task.title) })}">
           <i data-lucide="check" class="task-status-btn__check" aria-hidden="true"></i>
@@ -584,7 +591,7 @@ function renderTaskCard(task, opts = {}) {
              Mensch mit Leserecht bekommt keinen Picker, und ohne dieses
              Zeichen verschwaende die Zeile die Auskunft, die der Haken traegt:
              ob die Aufgabe erledigt ist. */''}
-        <span class="task-status-btn task-status-btn--${task.status} task-status-btn--static"
+        <span class="task-status-btn task-status-btn--${task.status} task-status-btn--static check-ring check-ring--static"
               role="img" aria-label="${esc(`${task.title}: ${statusLabel(task.status)}`)}">
           <i data-lucide="check" class="task-status-btn__check" aria-hidden="true"></i>
         </span>
@@ -601,7 +608,7 @@ function renderTaskCard(task, opts = {}) {
         `}
 
         <div class="task-card__body">
-          <button type="button" class="task-card__title u-card-title u-compact" data-action="open-task" data-id="${task.id}" data-md-focus>
+          <button type="button" class="task-card__title u-row-title" data-action="open-task" data-id="${task.id}" data-md-focus>
             ${esc(task.title)}
           </button>
           <div class="task-card__meta">
@@ -617,7 +624,7 @@ function renderTaskCard(task, opts = {}) {
                 hier standen zwei Kopien ohne Rolle (PR-Review #754). */ ''}
             ${task.is_recurring ? `<span class="due-date" role="img" aria-label="${esc(t('tasks.recurring'))}"><i data-lucide="repeat" class="icon-sm" aria-hidden="true"></i></span>` : ''}
             ${task.document_count > 0 ? `<span class="due-date task-card__docs" role="img" aria-label="${esc(t('tasks.documentsCount', { count: task.document_count }))}"><i data-lucide="paperclip" class="icon-sm" aria-hidden="true"></i></span>` : ''}
-            ${task.locked ? `<span class="due-date" role="img" aria-label="${esc(t('tasks.lockedBadge'))}" title="${esc(t('tasks.lockedBadge'))}"><i data-lucide="lock" class="icon-sm" aria-hidden="true"></i></span>` : ''}
+            ${renderLockedBadge(task)}
             ${renderVisibilityBadge(task.visibility)}
             ${showCategory && task.category !== FALLBACK_CATEGORY ? `<span class="due-date task-card__category">${esc(catLabel(task.category))}</span>` : ''}
             ${renderTagBadges(task.tags, ROW_TAG_BADGES_VISIBLE, task.priority)}
@@ -992,7 +999,7 @@ function wireTagBadgeFilter(container) {
  * unter dem Aufklapper (DESIGN.md: „Weitere Einstellungen nennt, was dahinter
  * liegt"; A3 P1-2). Dieselbe Bauart wie eventAdvancedTopics() im Kalender.
  */
-function taskAdvancedTopics({ privacy = true } = {}) {
+function taskAdvancedTopics({ privacy = true, recurrence = false, reminder = false } = {}) {
   const topics = [
     t('tasks.startDateLabel'),
     t('tasks.pointsLabel'),
@@ -1000,6 +1007,10 @@ function taskAdvancedTopics({ privacy = true } = {}) {
     t('tasks.statusLabel'),
     privacy ? t('common.visibility.label') : null,
     t('tasks.documentsLabel'),
+    // Nur solange sie leer hinter dem Aufklapper liegen (R16) - der Hinweis
+    // nennt, was dahinter IST, nicht was dort sein koennte.
+    recurrence ? t('rrule.labelRepeat') : null,
+    reminder ? t('reminders.sectionTitle') : null,
   ].filter(Boolean);
   try {
     return new Intl.ListFormat(getLocale(), { style: 'long', type: 'conjunction' }).format(topics);
@@ -1086,7 +1097,32 @@ function renderModalContent({ task = null, users = [], reminder = null } = {}) {
   const advancedLabel = advancedSummary.length
     ? `${t('modal.moreSettings')} · ${advancedSummary.join(' · ')}`
     : undefined;
-  const advancedHint = taskAdvancedTopics({ privacy: !hidesPrivacyControls('tasks') });
+  /* WIEDERHOLUNG UND ERINNERUNG LIEGEN HINTER DEM AUFKLAPPER, SOLANGE SIE LEER
+   * SIND (Critique 2026-10-05, R16). Beide standen offen unter ihm - eine
+   * Auswahl "Keine" samt Hinweis und ein ausgeschalteter Schalter, zusammen
+   * rund 200px fuer zwei Angaben, die die meisten Aufgaben nicht tragen. Ein
+   * GESETZTER Wert bleibt offen an seinem alten Platz: beim Bearbeiten darf
+   * nichts Gesetztes versteckt sein, und eine Serie in eine Zusammenfassung zu
+   * kuerzen hiesse, ihre Regel zu verschweigen. Der Abschnitt selbst entfaellt
+   * ohne Recht (`renderReminderSection` liefert dann nichts). */
+  const recurrenceHtml = renderRRuleFields('task', task?.recurrence_rule, {
+    allowFromCompletion: true,
+    fromCompletion: !!task?.recurrence_from_completion,
+    // AUSDRUECKLICH FALSE, nicht weggelassen (#960). Eine Aufgabe ist eine
+    // Zeile mit einem Faelligkeitsdatum, das Liste, Ueberfaelligkeit und
+    // Countdown direkt lesen - sie wird nicht wie eine Kalenderserie vom
+    // Startdatum aus expandiert. Der Monatsletzten-Hinweis muss das sagen,
+    // sonst verspricht er einen Termin, den es hier nicht gibt.
+    expandsFromStart: false,
+  });
+  const reminderHtml = renderReminderSection(task, reminder);
+  const recurrenceTucked = !task?.recurrence_rule;
+  const reminderTucked = !reminder && reminderHtml !== '';
+  const advancedHint = taskAdvancedTopics({
+    privacy: !hidesPrivacyControls('tasks'),
+    recurrence: recurrenceTucked,
+    reminder: reminderTucked,
+  });
 
   const advancedFieldsHtml = `
       <div class="modal-grid modal-grid--2">
@@ -1160,6 +1196,7 @@ ${syncTargetFieldHtml(task)}
         </select>
         <p class="task-field-hint">${t('common.visibility.hint')}</p>
         <p class="task-field-hint field-hint--warn" id="task-visibility-warning" role="status" hidden><i data-lucide="alert-triangle" aria-hidden="true"></i><span>${t('common.visibility.assigneesNobodyHint')}</span></p>
+        <p class="task-field-hint field-hint--warn" id="task-visibility-private-warning" role="status" hidden><i data-lucide="alert-triangle" aria-hidden="true"></i><span>${t('common.visibility.privateAssignedHint')}</span></p>
       </div>
 
       <!-- #830: Die Sperre steht neben der Sichtbarkeit, weil beide dieselbe
@@ -1179,7 +1216,9 @@ ${syncTargetFieldHtml(task)}
       ${renderDocumentAttachField({
         attachments: (task?.documents ?? []).map((doc) => ({ document_id: doc.id, name: doc.name, mime_type: doc.mime_type })),
         label: t('tasks.documentsLabel'),
-      })}`;
+      })}
+${recurrenceTucked ? `<div class="task-form__tucked">${recurrenceHtml}</div>` : ''}
+${reminderTucked ? `<div class="task-form__tucked">${reminderHtml}</div>` : ''}`;
 
   return `
     <form id="task-form" novalidate>
@@ -1187,7 +1226,7 @@ ${syncTargetFieldHtml(task)}
 
       <div class="form-group">
         <div class="form-field">
-          <label class="label" for="task-title">${t('tasks.titleLabel')}<span class="required-marker" aria-hidden="true"> *</span></label>
+          <label class="label" for="task-title">${t('tasks.titleLabel')}${REQUIRED_MARK}</label>
           <input class="input" type="text" id="task-title" name="title"
                  value="${esc(task?.title)}" placeholder="${t('tasks.titlePlaceholder')}"
                  required autocomplete="off">
@@ -1199,20 +1238,6 @@ ${syncTargetFieldHtml(task)}
             ${t('common.required')}
           </div>
         </div>
-      </div>
-
-      <!-- Notiz steht beim Titel, nicht hinter dem Aufklapper: sie ist sein
-           Gegenstueck, und eine Zusammenfassung kann Freitext nicht tragen.
-           Genau deshalb sind zwei Zeilen zu wenig gewesen (#731): das Feld war
-           auf die Groesse einer Zusammenfassung gebaut, obwohl der Kommentar
-           darueber das Gegenteil begruendet. -->
-      <div class="form-group">
-        <label class="label" for="task-description">${t('tasks.descriptionLabel')}</label>
-        ${renderMarkdownToolbar()}
-        <textarea class="input" id="task-description" name="description"
-                  rows="6" placeholder="${t('tasks.descriptionPlaceholder')}"
-                 >${esc(task?.description)}</textarea>
-        <small class="form-hint">${t('tasks.descriptionMarkdownHint')}</small>
       </div>
 
       <div class="modal-grid modal-grid--2">
@@ -1278,20 +1303,27 @@ ${syncTargetFieldHtml(task)}
         </div>
       </div>
 
+      <!-- DIE NOTIZ STEHT NACH DEM, WAS EINE AUFGABE AUSMACHT (Critique
+           2026-10-05, R16). Sie stand direkt unter dem Titel, und mit ihrer
+           Formatierleiste lag die Faelligkeit mobil bei y=700 von 844 - wann,
+           wer und wie wichtig kamen erst nach dem Freitext. Im Hauptteil
+           bleibt sie trotzdem: eine Zusammenfassung kann Freitext nicht
+           tragen (#731), hinter den Aufklapper gehoert sie nicht. Die Leiste
+           erscheint erst mit dem Fokus im Feld (utils/markdown-toolbar.js). -->
+      <div class="form-group" style="margin-top:var(--space-4)">
+        <label class="label" for="task-description">${t('tasks.descriptionLabel')}</label>
+        ${renderMarkdownToolbar()}
+        <textarea class="input" id="task-description" name="description"
+                  rows="6" placeholder="${t('tasks.descriptionPlaceholder')}"
+                 >${esc(task?.description)}</textarea>
+        <small class="form-hint">${t('tasks.descriptionMarkdownHint')}</small>
+      </div>
+
       ${advancedSection(advancedFieldsHtml, { label: advancedLabel, hint: advancedHint })}
 
-      ${renderRRuleFields('task', task?.recurrence_rule, {
-        allowFromCompletion: true,
-        fromCompletion: !!task?.recurrence_from_completion,
-        // AUSDRUECKLICH FALSE, nicht weggelassen (#960). Eine Aufgabe ist eine
-        // Zeile mit einem Faelligkeitsdatum, das Liste, Ueberfaelligkeit und
-        // Countdown direkt lesen - sie wird nicht wie eine Kalenderserie vom
-        // Startdatum aus expandiert. Der Monatsletzten-Hinweis muss das sagen,
-        // sonst verspricht er einen Termin, den es hier nicht gibt.
-        expandsFromStart: false,
-      })}
+      ${recurrenceTucked ? '' : recurrenceHtml}
 
-      ${renderReminderSection(task, reminder)}
+      ${reminderTucked ? '' : reminderHtml}
 
       <div id="task-form-error" class="form-error" role="alert" hidden></div>
 
@@ -1312,6 +1344,18 @@ ${syncTargetFieldHtml(task)}
 // --------------------------------------------------------
 // Seiten-State
 // --------------------------------------------------------
+
+/**
+ * Der Ruhezustand des Statusfilters: die Liste zeigt, was zu tun ist.
+ *
+ * EINE QUELLE fuer drei Stellen (Critique 2026-10-05, R16): den Startwert des
+ * Zustands, den Zaehler am Filterknopf und das Zuruecksetzen im Blatt. Sie
+ * liefen auseinander - der Startwert war „Offen", der Zaehler zaehlte ihn als
+ * Filter („Filter 1" im Ruhezustand), und „Alle Filter aufheben" fuehrte in
+ * einen dritten Zustand mit leerem Status, der auch Erledigtes zeigt.
+ */
+const DEFAULT_STATUS_FILTER = Object.freeze(['open']);
+const defaultFilters = () => ({ status: [...DEFAULT_STATUS_FILTER], priority: [], assigned_to: [], category: [], tags: [] });
 
 let state = {
   tasks:           [],
@@ -1355,7 +1399,7 @@ let state = {
   // wie jeder andere Filter in dieser Leiste auch (#586).
   // Status, Priorität und Person halten mehrere Werte (#671); innerhalb einer
   // Achse wirken sie ODER, zwischen den Achsen UND. Tags bleiben UND-verknüpft.
-  filters:         { status: ['open'], priority: [], assigned_to: [], category: [], tags: [] },
+  filters:         defaultFilters(),
   groupMode:       'category',   // 'category' | 'due'
   viewMode:        'list',       // 'list' | 'kanban' | 'history' (resolved at render time)
   // Der Verlauf (#791) hat einen eigenen Bestand, weil er etwas anderes zeigt
@@ -1610,12 +1654,53 @@ async function refreshTags() {
  *        Uebergang nach „erledigt" sinnvoll; der Server verwirft die Angabe an
  *        jedem anderen Wechsel still, damit eine Sammelaktion nicht an einem
  *        mitgeschickten Feld scheitert.
+ * @returns {Promise<object>} die Antwort des Servers. Sie traegt bei einer
+ *        erledigten Serie `next_due_date` (#1603) - wer abhakt, reicht sie an
+ *        die Quittung weiter (`seriesDoneText`).
  */
 async function toggleTaskStatus(id, currentStatus, doneByUserId = null) {
   const next = currentStatus === 'done' ? 'open' : 'done';
-  await api.patch(`/tasks/${id}/status`, doneByUserId == null
+  return api.patch(`/tasks/${id}/status`, doneByUserId == null
     ? { status: next }
     : { status: next, done_by_user_id: doneByUserId });
+}
+
+/**
+ * Die Quittung nach Haken oder Wisch in der Liste - EINE fuer beide Gesten.
+ *
+ * Derselbe Rueckweg an beiden: die Geste hatte zwei Endpunkte mit zwei
+ * Antworten, der Wisch bot Undo an, der Tipp - die haeufigere Bedienung - liess
+ * den Eintrag kommentarlos aus dem gefilterten Bild verschwinden.
+ *
+ * BEI EINER SERIE NENNT SIE DAS NAECHSTE MAL (#1603): dort verschwindet nichts,
+ * die Folgeinstanz steht nach dem Neuladen an derselben Stelle, und „Als
+ * erledigt markiert." neben einer offenen Zeile las sich wie ein Fehler.
+ *
+ * Die Schluessel heissen weiter `swiped*`: ihr TEXT ist gestenneutral ("Als
+ * erledigt markiert."), nur der Name nennt die Wischgeste. Ein Rename kostet
+ * jede Locale-Datei fuer eine Namensschuld, die kein Nutzer sieht - vermerkt
+ * statt bezahlt.
+ *
+ * @param {HTMLElement|null} container
+ * @param {number|string} taskId
+ * @param {string} nextStatus der Status NACH dem Wechsel
+ * @param {object} response die Antwort von `toggleTaskStatus`
+ */
+function acknowledgeStatusToggle(container, taskId, nextStatus, response) {
+  window.yuvomi.showToast(
+    seriesDoneText(response)
+      ?? t(nextStatus === 'done' ? 'tasks.swipedDoneToast' : 'tasks.swipedOpenToast'),
+    'default',
+    5000,
+    async () => {
+      try {
+        await toggleTaskStatus(taskId, nextStatus);
+        await reloadWithRowMotion(container, taskId);
+      } catch (err) {
+        window.yuvomi.showToast(err.message, 'danger');
+      }
+    },
+  );
 }
 
 async function loadTaskForEdit(id) {
@@ -1871,16 +1956,31 @@ function reminderRemindAtFromForm(form, { dueDate, dueTime = null } = {}) {
 // Modal-Verwaltung (delegiert an Shared Modal-System)
 // --------------------------------------------------------
 
-// Blendet einen Hinweis ein, wenn „Nur Zugewiesene" gewählt ist, aber niemand
-// zugewiesen wurde — dann sieht faktisch nur der Ersteller den Eintrag (#474 Guard).
-function wireVisibilityWarning(panel, selectSel, msName, warnSel) {
+// Zwei Hinweise an der Sichtbarkeit, beide warnen nur und aendern nichts
+// (dieselbe Regel wie im Termin-Dialog, pages/calendar.js):
+// - „Nur Zugewiesene" ohne Person: dann sieht faktisch nur der Ersteller den
+//   Eintrag (#474 Guard).
+// - „Nur ich" mit mindestens einer anderen Person als dem Ersteller: die Zugewiesenen sehen den Eintrag
+//   nicht. Die Kombination bleibt erlaubt und die
+//   Zuweisung stehen - Bestandsdaten und API-Clients fuehren sie.
+function wireVisibilityWarning(panel, selectSel, msName, warnSel, privateWarnSel, creatorId = null) {
   const select = panel.querySelector(selectSel);
   const warn   = panel.querySelector(warnSel);
   if (!select || !warn) return;
+  const privateWarn = privateWarnSel ? panel.querySelector(privateWarnSel) : null;
   const ms = panel.querySelector(`.user-ms[data-ms-name="${msName}"]`);
   const update = () => {
-    const count = getSelectedUserIds(panel, msName).length;
-    warn.hidden = !(select.value === 'assignees' && count === 0);
+    const ids = getSelectedUserIds(panel, msName).map(Number);
+    warn.hidden = !(select.value === 'assignees' && ids.length === 0);
+    // Wer den Eintrag angelegt hat, sieht ihn auch als „Nur ich": gezaehlt
+    // werden nur die anderen. Massgeblich ist `created_by` des Eintrags, nicht
+    // wer ihn gerade bearbeitet; ein neuer gehoert dem angemeldeten Konto.
+    const others = creatorId == null ? ids : ids.filter((id) => id !== Number(creatorId));
+    if (privateWarn) privateWarn.hidden = !(select.value === 'private' && others.length > 0);
+    // Die Sichtbarkeit steht unter „Weitere Einstellungen", die Personen
+    // darueber: aufklappen, nie zuklappen.
+    const shown = [warn, privateWarn].find((el) => el && !el.hidden);
+    shown?.closest('details')?.setAttribute('open', '');
   };
   select.addEventListener('change', update);
   ms?.addEventListener('click', () => setTimeout(update, 0));
@@ -2050,7 +2150,8 @@ function wireTaskForm(panel, { task = null, container = null, onChanged = () => 
   // RRULE-Events binden
   bindRRuleEvents(document, 'task');
   bindUserMultiSelect(panel, 'task_assigned');
-  wireVisibilityWarning(panel, '#task-visibility', 'task_assigned', '#task-visibility-warning');
+  wireVisibilityWarning(panel, '#task-visibility', 'task_assigned', '#task-visibility-warning', '#task-visibility-private-warning',
+    task?.created_by ?? state.currentUserId);
   wireCountdownGate(panel);
 
   // Tag-Editor (#586)
@@ -2448,8 +2549,15 @@ async function handleFormSubmit(e, { container = null, onChanged = () => loadTas
   try {
     let savedTaskId = taskId;
     if (taskId) {
-      await api.put(`/tasks/${taskId}`, body);
-      window.yuvomi.showToast(t('tasks.savedToast'), 'success');
+      // Das Status-Feld hakt genauso ab wie die Checkbox, und der Server legt
+      // dabei genauso die Folgeinstanz an (#1620). Ohne den Hinweis schloss das
+      // Formular mit „gespeichert" ueber einer offenen Zeile, die aussieht wie
+      // die eben erledigte. Derselbe Helfer wie auf jedem anderen Abhak-Weg,
+      // und wie in der Detailansicht haengt der Hinweis am Erledigen selbst:
+      // PUT liefert `next_due_date` nur beim Uebergang nach „erledigt".
+      const response = await api.put(`/tasks/${taskId}`, body);
+      const seriesText = body.status === 'done' ? seriesDoneText(response) : null;
+      window.yuvomi.showToast(seriesText ?? t('tasks.savedToast'), 'success');
     } else {
       const res = await api.post('/tasks', body);
       savedTaskId = res.data?.id;
@@ -2519,7 +2627,8 @@ async function handleFormSubmit(e, { container = null, onChanged = () => loadTas
 async function handleRenameSubtask(id, currentTitle, container) {
   const title = await promptModal(t('tasks.subtaskRenamePrompt'), currentTitle);
   // Abbruch (null) und "unverändert" gehen beide ohne Request weiter; ein
-  // leergeräumtes Feld ist kein gültiger Titel und wird wie Abbruch behandelt.
+  // leergeräumtes Feld ist kein gültiger Titel, das meldet promptModal selbst
+  // am Feld und bleibt offen (#1607).
   if (!title || title.trim() === currentTitle) return;
   try {
     await api.put(`/tasks/${id}`, { title: title.trim() });
@@ -2587,10 +2696,13 @@ async function moveTaskToColumn(before, column) {
   // Statuswechsel nötig ist, muss sich auf den alten Stand beziehen.
   if (column === 'archived') {
     await setTaskArchived(before.id, true);
-    return;
+    return null;
   }
   if (before.archived_at) await setTaskArchived(before.id, false);
-  if (before.status !== column) await api.patch(`/tasks/${before.id}/status`, { status: column });
+  // Die Antwort des Statuswechsels geht zurueck: an ihr haengt die Quittung
+  // einer erledigten Serie (#1603). Ohne Statuswechsel gibt es keine.
+  if (before.status !== column) return api.patch(`/tasks/${before.id}/status`, { status: column });
+  return null;
 }
 
 /** Optimistisches Spiegelbild von moveTaskToColumn auf dem State-Objekt. */
@@ -2612,12 +2724,19 @@ async function runColumnMove(task, column, container) {
   const before = { id: task.id, status: task.status, archived_at: task.archived_at };
   applyColumnLocally(task, column);
   renderKanban(container);
+  let seriesText = null;
   try {
-    await moveTaskToColumn(before, column);
+    const response = await moveTaskToColumn(before, column);
+    if (column === 'done') seriesText = seriesDoneText(response);
   } catch (err) {
     window.yuvomi.showToast(err.message, 'danger');
   }
   await loadTasks(container);
+  // NACH dem Neuladen, wie in der Liste: die Karte liegt in „Erledigt", und in
+  // „Offen" ist im selben Moment eine gleich aussehende aufgetaucht. Der Satz
+  // sagt, dass das die naechste ist und nicht dieselbe (#1603). Ohne Serie
+  // bleibt das Brett still - die gewanderte Karte ist dort die Quittung.
+  if (seriesText) window.yuvomi.showToast(seriesText, 'default', 5000);
 }
 
 function renderKanbanCard(task) {
@@ -2635,6 +2754,17 @@ function renderKanbanCard(task) {
       : next === 'in_progress'
         ? t('tasks.kanbanMoveToInProgress')
         : t('tasks.kanbanMoveToOpen');
+  // DER NAME NENNT DIE AUFGABE (#1607). Der Knopf ist ein Icon ohne Text; mit
+  // dem Verb allein hiessen alle Knoepfe einer Spalte gleich, und ein
+  // Screenreader konnte sie nicht auseinanderhalten. Der Tooltip bleibt beim
+  // Verb - die Karte, ueber der er steht, zeigt ihren Titel selbst.
+  const nextName = archived
+    ? t('tasks.unarchiveNamed', { title: task.title })
+    : next === 'done'
+      ? t('tasks.kanbanMoveToDoneNamed', { title: task.title })
+      : next === 'in_progress'
+        ? t('tasks.kanbanMoveToInProgressNamed', { title: task.title })
+        : t('tasks.kanbanMoveToOpenNamed', { title: task.title });
   return `
     <!-- KEIN draggable-Attribut, obwohl die Karte ziehbar ist: SortableJS zieht
          ueber seine draggable-OPTION (einen Selektor), und ein echtes
@@ -2651,6 +2781,7 @@ function renderKanbanCard(task) {
       <div class="kanban-card__meta">
         ${renderPriorityBadge(task.priority)}
         ${due ? `<span class="due-date ${due.cls}"><i data-lucide="clock" class="icon-sm" aria-hidden="true"></i> ${due.label}</span>` : ''}
+        ${renderLockedBadge(task)}
         ${renderTagBadges(task.tags, TAG_BADGES_VISIBLE, task.priority)}
       </div>
       <div class="kanban-card__footer">
@@ -2660,7 +2791,7 @@ function renderKanbanCard(task) {
               weg - zusammen mit dem Ziehen, das dieselbe Bewegung macht. */ ''}
         ${readOnly() ? '' : `
         <button class="kanban-card__status-btn" type="button"
-                data-next-status="${next}" title="${nextLabel}" aria-label="${nextLabel}">
+                data-next-status="${next}" title="${esc(nextLabel)}" aria-label="${esc(nextName)}">
           <i data-lucide="${icon}" aria-hidden="true"></i>
         </button>`}
       </div>
@@ -3161,7 +3292,7 @@ function renderDoerPicker(task, isDone, archived) {
     // Handlung, und eines davon fuehrte in eine 403.
     icon: tablett ? 'check' : 'user-round-check',
     triggerClass: tablett
-      ? 'task-status-btn task-status-btn--open task-status-btn--pick'
+      ? 'task-status-btn task-status-btn--open task-status-btn--pick check-ring'
       : 'btn btn--ghost btn--icon btn--icon-sm task-doer-btn',
     items: members.map((u) => ({
       action: 'pick-doer', id: u.id, label: u.display_name, icon: 'user-round',
@@ -3505,13 +3636,36 @@ function renderTaskList(container, { paneQuiet = false } = {}) {
  * eigener Chip, jetzt nur noch diese Zahl.
  */
 function activeFilterCount() {
-  return (state.viewMode === 'kanban' ? 0 : state.filters.status.length)
+  return statusDeviationCount()
     + state.filters.priority.length
     + state.filters.assigned_to.length
     + state.filters.category.length
     + state.filters.tags.length
     + (state.showFuture ? 1 : 0)
     + (state.dueToday ? 1 : 0);
+}
+
+/**
+ * Wie viele Filter der Statusachse zaehlen: nur eine ABWEICHUNG vom Standard.
+ *
+ * - Der Standard „Offen" zaehlt nicht - er ist der Ruhezustand, und ein Knopf,
+ *   der im Ruhezustand „Filter 1" in Aktiv-Farbe traegt, sagt nichts mehr.
+ * - Im Brett wirkt die Achse nicht (die Spalten SIND der Status).
+ * - Die Weitung, die „Bis heute faellig" selbst gesetzt hat, ist Teil DIESES
+ *   Filters und zaehlt nicht doppelt.
+ * - Sonst jeder gewaehlte Wert; der leere Status („alle") ist eine Abweichung
+ *   und zaehlt als einer.
+ */
+function statusDeviationCount() {
+  if (state.viewMode === 'kanban') return 0;
+  const status = state.filters.status;
+  const isDefault = status.length === DEFAULT_STATUS_FILTER.length
+    && DEFAULT_STATUS_FILTER.every((value) => status.includes(value));
+  if (isDefault) return 0;
+  const widenedByDueToday = state.dueToday && state.dueTodayWidened
+    && status.length === 2 && status.includes('open') && status.includes('in_progress');
+  if (widenedByDueToday) return 0;
+  return Math.max(1, status.length);
 }
 
 /**
@@ -3613,27 +3767,9 @@ function filterSheetGroups() {
     showRows.push(toggleRowHtml({ label: t('tasks.assignedToMe'), icon: 'user', checked: isAssignedToMe(),
       attrs: { 'data-filter-mine': 'true' } }));
   }
-  showRows.push(toggleRowHtml({ label: t('tasks.showFuture'), icon: 'calendar-clock', checked: state.showFuture,
-    attrs: { 'data-filter-future': 'true' } }));
   showRows.push(toggleRowHtml({ label: t('tasks.filterDueToday'), icon: 'calendar-check', checked: state.dueToday,
     attrs: { 'data-filter-due-today': 'true' } }));
   groups.push({ heading: t('tasks.filterGroupShow'), html: showRows.join('') });
-
-  if (state.viewMode === 'list') {
-    const modes = [['category', 'tasks.categoryLabel', 'folder'], ['due', 'tasks.dueDateLabel', 'calendar-clock']];
-    groups.push({
-      heading: t('tasks.groupToggleLabel'),
-      html: `
-        <div class="segmented tasks-group-mode" id="group-mode-toggle" role="radiogroup" aria-label="${esc(t('tasks.groupToggleLabel'))}">
-          ${modes.map(([mode, key, icon]) => {
-            const on = state.groupMode === mode;
-            return `<button type="button" class="segmented__item${on ? ' is-active' : ''}" role="radio"
-                    data-tab-id="${mode}" aria-checked="${on}" tabindex="${on ? '0' : '-1'}">
-              <i data-lucide="${icon}" aria-hidden="true"></i>${esc(t(key))}</button>`;
-          }).join('')}
-        </div>`,
-    });
-  }
 
   if (state.viewMode !== 'kanban') {
     groups.push({ heading: t('tasks.filterGroupStatus'),
@@ -3645,15 +3781,43 @@ function filterSheetGroups() {
     groups.push({ heading: t('tasks.filterGroupPerson'),
       html: chipsHtml('assigned_to', t('tasks.filterGroupPerson'), state.users.map((u) => ({ value: String(u.id), label: u.display_name }))) });
   }
+  // KATEGORIE UND TAG SIND EINGEKLAPPT, SOLANGE NICHTS GEWAEHLT IST (Critique
+  // 2026-10-05, R16). Das Blatt mass 35 Bedienelemente und 1084px in 591px;
+  // die beiden langen Achsen - je Haushalt ein Dutzend Chips und mehr - sind
+  // die seltenen. Eine gesetzte Wahl steht offen: was wirkt, ist nie hinter
+  // einem Aufklapper versteckt (dieselbe Regel wie im Aufgaben-Dialog).
   if (state.categories.length) {
     groups.push({ heading: t('tasks.categoryLabel'),
+      fold: state.filters.category.length ? 'open' : 'closed',
       html: chipsHtml('category', t('tasks.categoryLabel'), state.categories.map((c) => ({ value: c.key, label: catLabel(c.key) }))) });
   }
   // Tags nur, wenn welche vergeben sind - sonst stuende eine leere Gruppe da (#586).
   if (state.allTags.length) {
     groups.push({ heading: t('tasks.filterGroupTag'),
+      fold: state.filters.tags.length ? 'open' : 'closed',
       html: chipsHtml('tag', t('tasks.filterGroupTag'), state.allTags.map((entry) => ({ value: entry.tag, label: entry.tag }))) });
   }
+
+  // ANSICHT, ABGESETZT AM ENDE (R16). „Gruppieren nach" und „Geplante anzeigen"
+  // standen zwischen den Filtern, engen aber nichts ein: das eine ordnet die
+  // Liste, das andere weitet sie um das, was noch nicht dran ist. Sie stehen
+  // jetzt als eigener Abschnitt hinter allen Achsen.
+  const viewRows = [];
+  if (state.viewMode === 'list') {
+    const modes = [['category', 'tasks.categoryLabel', 'folder'], ['due', 'tasks.dueDateLabel', 'calendar-clock']];
+    viewRows.push(`
+        <div class="segmented tasks-group-mode" id="group-mode-toggle" role="radiogroup" aria-label="${esc(t('tasks.groupToggleLabel'))}">
+          ${modes.map(([mode, key, icon]) => {
+            const on = state.groupMode === mode;
+            return `<button type="button" class="segmented__item${on ? ' is-active' : ''}" role="radio"
+                    data-tab-id="${mode}" aria-checked="${on}" tabindex="${on ? '0' : '-1'}">
+              <i data-lucide="${icon}" aria-hidden="true"></i>${esc(t(key))}</button>`;
+          }).join('')}
+        </div>`);
+  }
+  viewRows.push(toggleRowHtml({ label: t('tasks.showFuture'), icon: 'calendar-clock', checked: state.showFuture,
+    attrs: { 'data-filter-future': 'true' } }));
+  groups.push({ heading: t('tasks.viewToggleLabel'), variant: 'view', html: viewRows.join('') });
   return groups;
 }
 
@@ -3672,6 +3836,15 @@ function syncFilterSheet(panel) {
       : hasFilter(chip.dataset.filter, chip.dataset.value);
     chip.classList.toggle('filter-chip--active', on);
     chip.setAttribute('aria-pressed', String(on));
+    // WAS WIRKT, STEHT OFFEN - auch wenn es NACH dem Oeffnen des Blatts gesetzt
+    // wurde. Ein gemerktes Set ("Zuletzt benutzt") kann Kategorie oder Tag
+    // setzen, waehrend deren Aufklapper zu ist: der Chip wurde aktiv, blieb
+    // aber verborgen. Nur aufklappen, nie zuklappen und nichts neu bauen - der
+    // Fokus steht vielleicht gerade in der Falte.
+    if (on) {
+      const fold = chip.closest('details.filter-sheet__fold');
+      if (fold && !fold.open) fold.open = true;
+    }
   });
   const mine = panel.querySelector('[data-filter-mine]');
   if (mine) mine.checked = isAssignedToMe();
@@ -3707,6 +3880,9 @@ function renderFilters(container) {
 function openTaskFilters(container) {
   const panel = openFilterSheet({
     groups: filterSheetGroups(),
+    // Nicht „Alle Filter aufheben": der Knopf stellt den Standard her (Status
+    // „Offen"), und so heisst er auch.
+    resetLabel: t('common.filtersResetDefault'),
     onChange: (input) => onFilterSheetChange(input, container),
     onReset: () => { resetTaskFilters(container); },
   });
@@ -3777,12 +3953,14 @@ async function onFilterSheetClick(e, container) {
 }
 
 /**
- * „Alle Filter aufheben": alle Achsen leer, und auch „Geplante anzeigen" aus -
- * sonst bliebe nach dem Aufheben eine Zahl am Knopf stehen, die das Blatt
- * gerade weggenommen haben will.
+ * „Filter zuruecksetzen": zurueck auf den STANDARD (Status „Offen", sonst
+ * nichts), und auch „Geplante anzeigen" aus - sonst bliebe nach dem
+ * Zuruecksetzen eine Zahl am Knopf stehen, die das Blatt gerade weggenommen
+ * haben will. Bis R16 leerte der Knopf auch den Status: ein dritter Zustand,
+ * der Erledigtes mitzeigt und weder Ruhezustand noch gewaehlt war.
  */
 async function resetTaskFilters(container) {
-  state.filters = { status: [], priority: [], assigned_to: [], category: [], tags: [] };
+  state.filters = defaultFilters();
   state.showFuture = false;
   state.dueToday = false;
   state.dueTodayWidened = false;
@@ -4079,21 +4257,9 @@ function wireSwipeGestures(container) {
         const card = row.querySelector('.task-card');
         if (card) card.style.visibility = 'hidden';
         try {
-          await toggleTaskStatus(taskId, capturedStatus);
+          const response = await toggleTaskStatus(taskId, capturedStatus);
           await reloadWithRowMotion(container, taskId);
-          window.yuvomi.showToast(
-            t(nextStatus === 'done' ? 'tasks.swipedDoneToast' : 'tasks.swipedOpenToast'),
-            'default',
-            5000,
-            async () => {
-              try {
-                await toggleTaskStatus(taskId, nextStatus);
-                await reloadWithRowMotion(container, taskId);
-              } catch (err) {
-                window.yuvomi.showToast(err.message, 'danger');
-              }
-            },
-          );
+          acknowledgeStatusToggle(container, taskId, nextStatus, response);
         } catch (err) {
           window.yuvomi.showToast(err.message, 'danger');
           await loadTasks(container);
@@ -4263,7 +4429,7 @@ function setViewMode(container, mode) {
   if (listEl) listEl.style.opacity = '0.4';
   const restore = () => {
     const el = container.querySelector('#task-list');
-    if (el) { el.style.transition = 'opacity 0.15s'; el.style.opacity = ''; }
+    if (el) { el.style.transition = 'opacity var(--transition-fast)'; el.style.opacity = ''; }
   };
   requestAnimationFrame(() => {
     // Der Verlauf holt Vorgaenge, die beiden anderen Ansichten Aufgaben -
@@ -4297,7 +4463,7 @@ function wireToolbar(container) {
       openTaskFilters(container);
       return;
     }
-    const item = e.target.closest('.popover-menu__item[data-action]');
+    const item = pageToolsActionEl(e.target);
     if (!item || item.disabled) return;
     // Der Fokus steht auf einem Eintrag, den das Menue gerade versteckt hat.
     // Ein Dialog (Kategorien, Tags) gaebe ihn beim Schliessen dorthin zurueck,
@@ -4615,10 +4781,14 @@ async function completeTaskFor(container, taskId, userId) {
   const quelle = actingAsDisplay() ? (state.displayPeople ?? []) : (state.users ?? []);
   const person = quelle.find((u) => u.id === userId);
   try {
-    await toggleTaskStatus(taskId, 'open', userId);
+    const response = await toggleTaskStatus(taskId, 'open', userId);
     await reloadWithRowMotion(container, taskId);
+    // EIN Toast, nie zwei: bei einer Serie sagt derselbe Satz, wer es war UND
+    // wann es weitergeht (#1603) - auch am Wandtablett, wo die neue Zeile sonst
+    // wie ein Haken aussieht, der nicht gehalten hat.
+    const name = person?.display_name ?? '';
     window.yuvomi.showToast(
-      t('tasks.doneByToast', { name: person?.display_name ?? '' }),
+      seriesDoneText(response, { name }) ?? t('tasks.doneByToast', { name }),
       'default',
       5000,
       actingAsDisplay() ? null : async () => {
@@ -4796,31 +4966,11 @@ function wireTaskList(container) {
       // Netz verlaengert sie nicht noch einmal (EXIT_HOLD_MS).
       const holdUntil = performance.now() + EXIT_HOLD_MS;
       try {
-        await toggleTaskStatus(id, status);
+        const response = await toggleTaskStatus(id, status);
         await settled;
         await reloadWithRowMotion(container, id, { holdUntil });
-        // Derselbe Rückweg wie beim Wischen. Die Geste hatte hier zwei
-        // Endpunkte mit zwei Antworten: der Wisch bot Undo an, der Tipp - die
-        // häufigere Bedienung - liess den Eintrag kommentarlos aus dem
-        // gefilterten Bild verschwinden.
-        //
-        // Die Schlüssel heissen weiter `swiped*`: ihr TEXT ist gestenneutral
-        // ("Als erledigt markiert."), nur der Name nennt die Wischgeste. Ein
-        // Rename kostet 24 Locale-Dateien für eine Namensschuld, die kein
-        // Nutzer sieht - vermerkt statt bezahlt.
-        window.yuvomi.showToast(
-          t(nextStatus === 'done' ? 'tasks.swipedDoneToast' : 'tasks.swipedOpenToast'),
-          'default',
-          5000,
-          async () => {
-            try {
-              await toggleTaskStatus(id, nextStatus);
-              await reloadWithRowMotion(container, id);
-            } catch (err) {
-              window.yuvomi.showToast(err.message, 'danger');
-            }
-          },
-        );
+        // Derselbe Rückweg wie beim Wischen - und dieselbe Quittung.
+        acknowledgeStatusToggle(container, id, nextStatus, response);
       } catch (err) {
         window.yuvomi.showToast(err.message, 'danger');
         await loadTasks(container);
@@ -5621,12 +5771,15 @@ export async function render(container, { user, signal } = {}) {
 // Testfläche: nur reine Funktionen, deren Vertrag außerhalb dieser Datei zählt.
 export const __test = {
   groupBy, groupKey, formatDueDate, normalizeFilterSet, taskQuery, state,
+  // Die Quittung nach dem Abhaken (#1603), je Weg am laufenden Aufruf: Haken
+  // und Wisch teilen sich eine, die Personenwahl und das Brett haben je ihre.
+  acknowledgeStatusToggle, completeTaskFor, runColumnMove,
   // Die Reihenfolge innerhalb einer Gruppe (ihr Aufrufer `renderTaskGroups`
   // steht weiter unten): Wanduhr des Haushalts, nicht die des Geraets.
   sortTasks, taskSortNow,
   // `?due=today` (Re-Critique 2026-09-27): was die Adresse setzt, was die
   // Liste daraus zeigt, und dass das Blatt es wieder nimmt - samt Adresse.
-  dueTodayFromSearch, isDueByToday, applyDueTodayFromAddress,
+  dueTodayFromSearch, isDueByToday, applyDueTodayFromAddress, setDueToday,
   // Das Brett als Markup plus seine Spaltenliste (#1250). Beides steht hier,
   // weil die Spaltenzahl eine Zusicherung GEGEN das Stylesheet ist: das Raster
   // muss so viele Spalten legen, wie diese Liste fuehrt, und genau dort ist es

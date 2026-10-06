@@ -15,14 +15,17 @@
  *
  * Die Übersetzungen kommen aus denselben `public/locales/*.json`, die auch der
  * Client lädt - sie werden als Daten gelesen (readFileSync), nicht importiert.
- * Die Schichtgrenze aus `test/test-layer-boundary.js` bleibt damit gewahrt: es
- * gibt keinen Modul-Import über `public/` hinweg, und die Übersetzungen können
- * nicht auseinanderlaufen.
+ * Die Schichtgrenze aus `test/test-layer-boundary.js` bleibt damit gewahrt, und
+ * die Übersetzungen können nicht auseinanderlaufen. Der eine Modul-Import über
+ * `public/` hinweg ist der Partikel-Auflöser fürs Koreanische: eine reine
+ * Funktion, die dort in der Liste der geteilten Module steht, damit die Regel
+ * nicht zweimal formuliert ist.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveKoreanParticles } from '../../public/utils/korean-particles.js';
 
 const LOCALES_DIR = fileURLToPath(new URL('../../public/locales/', import.meta.url));
 
@@ -132,6 +135,14 @@ export function isSupportedLocale(locale) {
 }
 
 /**
+ * Sprachcodes, die eine vorhandene Locale meinen, aber anders heissen: `no` ist
+ * die Makrosprache Norwegisch, `nn` (Nynorsk) hat keine eigene Datei. Beide
+ * fallen auf `nb`. Das Gegenstueck heisst in public/i18n.js genauso; kein Import
+ * verbindet die beiden (Schichtgrenze), test:language-lists haelt sie gleich.
+ */
+const LANGUAGE_ALIAS = Object.freeze({ no: 'nb', nn: 'nb' });
+
+/**
  * Die spezifischste unterstuetzte Locale eines frei eingegebenen Sprach-Tags,
  * oder null. Fuer Werte, die von aussen kommen (`?lang=` der API): Gross- und
  * Kleinschreibung und `_` statt `-` werden in BCP-47-Form gebracht, dann faellt
@@ -155,10 +166,21 @@ export function supportedLocaleFor(tag) {
       ? teil[0].toUpperCase() + teil.slice(1).toLowerCase()
       : teil.toUpperCase();
   }
+  const sprache = teile[0];
+  const rest = teile.slice(1);
   while (teile.length) {
     const kandidat = teile.join('-');
     if (isSupportedLocale(kandidat)) return kandidat;
     teile.pop();
+  }
+  // Rueckfall ueber den Alias, erst nachdem der Tag selbst nichts fand.
+  if (Object.hasOwn(LANGUAGE_ALIAS, sprache)) {
+    const alias = [LANGUAGE_ALIAS[sprache], ...rest];
+    while (alias.length) {
+      const kandidat = alias.join('-');
+      if (isSupportedLocale(kandidat)) return kandidat;
+      alias.pop();
+    }
   }
   return null;
 }
@@ -210,12 +232,13 @@ export function translate(locale, key, params = {}) {
   const chain = [isSupportedLocale(locale) ? locale : DEFAULT_LOCALE, DEFAULT_LOCALE, REFERENCE_LOCALE];
 
   let str;
+  let strLocale;
   for (const candidate of chain) {
     const hit = resolveKey(loadLocale(candidate), key);
     // Ein Key, der auf einen Teilbaum zeigt, ist ein Aufruffehler und kein Text.
     // Ohne diese Prüfung würde das replaceAll unten mit einem TypeError brechen -
     // ausgerechnet in einer Funktion, die nie werfen soll.
-    if (typeof hit === 'string') { str = hit; break; }
+    if (typeof hit === 'string') { str = hit; strLocale = candidate; break; }
   }
   if (str === undefined) return key;
 
@@ -229,9 +252,17 @@ export function translate(locale, key, params = {}) {
   //     date-Durchgang in das Datum.
   // Unbekannte Platzhalter bleiben stehen, statt zu verschwinden - so ist ein
   // fehlender Parameter im Ergebnis sichtbar und nicht still weggekürzt.
-  return str.replace(/\{\{(\w+)\}\}/g, (placeholder, name) => (
+  const fill = (text) => text.replace(/\{\{(\w+)\}\}/g, (placeholder, name) => (
     Object.prototype.hasOwnProperty.call(params, name) ? String(params[name]) : placeholder
   ));
+  // Koreanisch schreibt hinter einen Platzhalter beide Formen der Partikel
+  // (`{{name}}이(가)`), weil die richtige am eingesetzten Wort hängt (#1607).
+  // Dieselbe Regel wie in t() (public/i18n.js), aus derselben Datei: aufgelöst
+  // wird an der Vorlage, der eingesetzte Wert bleibt, wie er ist.
+  // Es entscheidet die Sprache des GELIEFERTEN Texts, nicht die angefragte:
+  // fällt ein koreanischer Key auf en oder de zurück, ist der Text kein
+  // Koreanisch. Jede andere Sprache zahlt genau diesen einen Vergleich.
+  return strLocale === 'ko' ? resolveKoreanParticles(str, fill) : fill(str);
 }
 
 const VALID_DATE_FORMATS = ['mdy', 'dmy', 'ymd', 'mdy_dot', 'dmy_dot', 'dmy_slash', 'ymd_dot', 'ymd_slash'];

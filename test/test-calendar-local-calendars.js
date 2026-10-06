@@ -207,7 +207,7 @@ test('default repair never assigns rows and generated events have no local calen
   assert.match(buildCalendarFeed(db, fallback.id), /X-WR-CALNAME:Our calendar/);
 });
 
-test('migration 230 leaves every existing event untouched', async () => {
+test('migration 232 leaves every existing event untouched', async () => {
   const { DatabaseSync } = await import('node:sqlite');
   const { MIGRATIONS } = dbmod;
   const database = new DatabaseSync(':memory:');
@@ -218,7 +218,7 @@ test('migration 230 leaves every existing event untouched', async () => {
       INSERT INTO calendar_events VALUES (1, 'Authored', 'local', NULL, NULL, 'original'),
         (2, 'External', 'google', NULL, NULL, 'original');`);
     const before = database.prepare('SELECT * FROM calendar_events ORDER BY id').all();
-    database.exec(MIGRATIONS.find(row => row.version === 230).up);
+    database.exec(MIGRATIONS.find(row => row.version === 232).up);
     const after = database.prepare('SELECT id,title,external_source,target_google_calendar_id,target_caldav_account_id,updated_at FROM calendar_events ORDER BY id').all();
     assert.deepEqual(after, before);
     assert.equal(database.prepare('SELECT COUNT(*) AS n FROM calendar_events WHERE local_calendar_id IS NOT NULL').get().n, 0);
