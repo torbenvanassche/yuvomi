@@ -5951,7 +5951,10 @@ function restoreHiddenSources(userId) {
 }
 
 function localCalendarDisplayName(calendar) {
-  return calendar?.is_default ? t('calendar.defaultLocalCalendar') : (calendar?.name ?? '');
+  // Only localize the initial name; a saved rename takes precedence.
+  return calendar?.is_default && calendar.name === 'Yuvomi'
+    ? t('calendar.defaultLocalCalendar')
+    : (calendar?.name ?? '');
 }
 
 function eventLocalCalendarDisplayName(ev) {

@@ -77,6 +77,24 @@ test('local calendars: default exists and calendars can be created', async () =>
   assert.equal(work.is_default, false);
 });
 
+test('the default calendar can be renamed and its stored name is used by the API and feed', async () => {
+  const calendar = (await call('GET', '/calendars')).body.data.find(row => row.is_default);
+  try {
+    const renamed = await call('PUT', `/calendars/${calendar.id}`, { body: { name: 'Family planner' } });
+    assert.equal(renamed.status, 200);
+    assert.equal(renamed.body.data.name, 'Family planner');
+    assert.equal(renamed.body.data.is_default, true);
+    const listed = (await call('GET', '/calendars')).body.data.find(row => row.id === calendar.id);
+    assert.equal(listed.name, 'Family planner');
+    const event = await createEvent('Renamed default appointment');
+    assert.equal(event.local_calendar_name, 'Family planner');
+    assert.match(buildCalendarFeed(db, calendar.id), /X-WR-CALNAME:Family planner/);
+  } finally {
+    const restored = await call('PUT', `/calendars/${calendar.id}`, { body: { name: calendar.name } });
+    assert.equal(restored.status, 200);
+  }
+});
+
 test('event create assigns selected calendar and older clients fall back to default', async () => {
   const family = await createCalendar('Family', '#CC3355');
   const event = await createEvent('Family appointment', family.id);

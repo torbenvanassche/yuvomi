@@ -26,7 +26,7 @@
 // Grundschema (Migration v1, plus einzelne später ergänzte Spalten - siehe oben).
 // Änderungen in db.js MIGRATIONS müssen hier synchron gehalten werden.
 const MIGRATIONS_SQL = {
-  230: `
+  232: `
           CREATE TABLE local_calendars (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
             name        TEXT    NOT NULL,
