@@ -7,11 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-- **Payment reminders can be turned off for each subscription** (D#1226). Turn off the reminder
+### Added
+
+- **Payment reminders can be turned off for each subscription** (#1708, from D#1226). Turn off the reminder
   in the subscription dialog while keeping the subscription active and its cost in the budget.
   Editing or renewing it keeps the reminder off. Existing subscriptions keep reminders enabled.
-
-### Added
 
 - **A household can put its members in an order of its own, and every list of people follows it**
   (#1644, from D#1605, asked by @ChaCha500). Until now members were listed alphabetically

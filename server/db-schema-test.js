@@ -26,10 +26,6 @@
 // Grundschema (Migration v1, plus einzelne später ergänzte Spalten - siehe oben).
 // Änderungen in db.js MIGRATIONS müssen hier synchron gehalten werden.
 const MIGRATIONS_SQL = {
-  234: `
-    ALTER TABLE budget_subscriptions ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 1
-      CHECK(reminder_enabled IN (0,1));
-  `,
   1: `
     CREATE TABLE IF NOT EXISTS users (
       id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1450,6 +1446,10 @@ const MIGRATIONS_SQL = {
   // Suite, die eine Mitgliederliste gegen dieses Schema sortiert.
   232: `
     ALTER TABLE users ADD COLUMN sort_order INTEGER;
+  `,
+  235: `
+    ALTER TABLE budget_subscriptions ADD COLUMN reminder_enabled INTEGER NOT NULL DEFAULT 1
+      CHECK(reminder_enabled IN (0,1));
   `,
 };
 

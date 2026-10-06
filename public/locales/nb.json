@@ -4170,6 +4170,7 @@
         "nextPaymentLabel": "Neste betaling",
         "reminderDaysLabel": "Påminningsdager",
         "reminderEnabledLabel": "Betalingspåminnelse",
+        "noReminder": "Ingen påminnelse",
         "categoryLabel": "Kategori",
         "paymentMethodLabel": "Betalingsmetode",
         "websiteLabel": "Nettside",

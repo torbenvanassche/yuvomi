@@ -4400,6 +4400,7 @@
         "nextPaymentLabel": "Наступний платіж",
         "reminderDaysLabel": "Дні нагадування",
         "reminderEnabledLabel": "Нагадування про оплату",
+        "noReminder": "Без нагадування",
         "categoryLabel": "Категорія",
         "paymentMethodLabel": "Спосіб оплати",
         "websiteLabel": "Веб-сайт",
