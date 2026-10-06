@@ -4,6 +4,7 @@
  */
 
 import express from 'express';
+import { transferPair, mirrorTransfer, deleteTransfer, TRANSFER_INCOME_CATEGORY } from '../../services/budget-transfers.js';
 import { createLogger } from '../../logger.js';
 import * as db from '../../db.js';
 import { str, oneOf, date as validateDate, num, rrule, MAX_TITLE, MONTH_RE } from '../../middleware/validate.js';
@@ -76,7 +77,8 @@ router.get('/summary', (req, res) => {
       SELECT
         SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
         SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) AS expenses,
-        SUM(amount) AS balance
+        SUM(amount) AS balance,
+        SUM(CASE WHEN transfer_entry_id IS NOT NULL AND amount < 0 THEN -amount ELSE 0 END) AS moved_to_savings
       FROM budget_entries
       WHERE date BETWEEN ? AND ?${filter.clause}${bookedOnly()}
     `).get(from, to, ...filter.params);
@@ -116,6 +118,7 @@ router.get('/summary', (req, res) => {
         expenses:   totals.expenses || 0,
         balance:    totals.balance  || 0,
         byCategory,
+        moved_to_savings: totals.moved_to_savings || 0,
         pending: {
           count:    pending.count,
           income:   pending.income,
@@ -358,6 +361,7 @@ function searchEntries(req, res) {
  */
 router.post('/', (req, res) => {
   try {
+    if (req.body.transfer_entry_id !== undefined) return refuse(res, [refusal('transfer_invalid', 'Create transfers through /budget/transfers.')]);
     const vTitle  = str(req.body.title,    'Title',  { max: MAX_TITLE });
     const vAmount = num(req.body.amount,  'Amount', { required: true });
     const fallbackCategory = defaultCategory(Number(req.body.amount) < 0 ? 'expense' : 'income');
@@ -456,7 +460,10 @@ router.put('/:id/series', (req, res) => {
     const id    = parseInt(req.params.id, 10);
     const entry = db.get().prepare('SELECT * FROM budget_entries WHERE id = ?').get(id);
     if (!entry) return res.status(404).json({ error: 'Entry not found', code: 404 });
-    if (!mayEdit(req, entry)) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
+    if (!mayEdit(req, entry) || (entry.transfer_entry_id && !mayEdit(req, transferPair(db.get(), entry)))) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
+
+    if (entry.transfer_entry_id) return refuse(res, [refusal('transfer_series_required', 'Edit paired series through /budget/transfers/:id/series.')]);
+    if (req.body.transfer_entry_id !== undefined) return refuse(res, [refusal('transfer_invalid', 'transfer_entry_id is read-only.')]);
 
     const parentId = entry.recurrence_parent_id ?? (entry.is_recurring ? entry.id : null);
     if (!parentId) return refuse(res, [refusal('entry_not_recurring', 'Not a recurring entry.')]);
@@ -815,10 +822,16 @@ router.delete('/:id/series', (req, res) => {
     const id    = parseInt(req.params.id, 10);
     const entry = db.get().prepare('SELECT * FROM budget_entries WHERE id = ?').get(id);
     if (!entry) return res.status(404).json({ error: 'Entry not found', code: 404 });
-    if (!mayEdit(req, entry)) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
+    if (!mayEdit(req, entry) || (entry.transfer_entry_id && !mayEdit(req, transferPair(db.get(), entry)))) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
 
     const parentId = entry.recurrence_parent_id ?? (entry.is_recurring ? entry.id : null);
     if (!parentId) return refuse(res, [refusal('entry_not_recurring', 'Not a recurring entry.')]);
+
+    if (entry.transfer_entry_id) {
+      const anchor = db.get().prepare('SELECT * FROM budget_entries WHERE id = ?').get(parentId);
+      deleteTransfer(db.get(), anchor);
+      return res.status(204).end();
+    }
 
     db.get().transaction(() => {
       db.get().prepare('DELETE FROM budget_entries WHERE recurrence_parent_id = ?').run(parentId);
@@ -843,8 +856,17 @@ router.put('/:id', (req, res) => {
     const id    = parseInt(req.params.id, 10);
     const entry = db.get().prepare('SELECT * FROM budget_entries WHERE id = ?').get(id);
     if (!entry) return res.status(404).json({ error: 'Entry not found', code: 404 });
-    if (!mayEdit(req, entry)) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
+    if (!mayEdit(req, entry) || (entry.transfer_entry_id && !mayEdit(req, transferPair(db.get(), entry)))) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
 
+    if (req.body.transfer_entry_id !== undefined) return refuse(res, [refusal('transfer_invalid', 'transfer_entry_id is read-only.')]);
+    if (entry.transfer_entry_id) {
+      const partner = transferPair(db.get(), entry);
+      const recurrenceFields = ['is_recurring', 'recurrence_interval', 'recurrence_interval_count', 'recurrence_virtual', 'recurrence_confirm', 'recurrence_rule'];
+      if (recurrenceFields.some((key) => req.body[key] !== undefined && req.body[key] !== entry[key])) return refuse(res, [refusal('transfer_series_required', 'Change transfer recurrence through the paired series.')]);
+      if (req.body.amount !== undefined && (!(Number(req.body.amount) * entry.amount > 0) || Math.round(Math.abs(Number(req.body.amount)) * 100) === 0)) return refuse(res, [refusal('entry_amount_invalid', 'A transfer must retain its direction and a nonzero amount.')]);
+      if (req.body.category !== undefined && (entry.amount > 0 ? req.body.category !== TRANSFER_INCOME_CATEGORY : !db.get().prepare("SELECT 1 FROM budget_categories WHERE key = ? AND type = 'expense'").get(req.body.category))) return refuse(res, [refusal('entry_category_invalid', 'Invalid transfer category.')]);
+      if (req.body.account_id !== undefined && (!req.body.account_id || Number(req.body.account_id) === partner.account_id)) return refuse(res, [refusal('entry_account_invalid', 'Choose two different accounts.')]);
+    }
     const checks = [];
     if (req.body.title    !== undefined) checks.push(['entry_title_invalid', str(req.body.title,    'Title',  { max: MAX_TITLE, required: false })]);
     if (req.body.amount   !== undefined) checks.push(['entry_amount_invalid', num(req.body.amount,   'Amount')]);
@@ -1005,6 +1027,8 @@ router.put('/:id', (req, res) => {
         id
       );
 
+      if (entry.transfer_entry_id) mirrorTransfer(db.get(), id);
+
       if (linkedPayment) {
         db.get().prepare(`
           UPDATE budget_loan_payments
@@ -1072,7 +1096,7 @@ router.patch('/:id/confirm', (req, res) => {
     const id    = parseInt(req.params.id, 10);
     const entry = db.get().prepare('SELECT * FROM budget_entries WHERE id = ?').get(id);
     if (!entry) return res.status(404).json({ error: 'Entry not found', code: 404 });
-    if (!mayEdit(req, entry)) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
+    if (!mayEdit(req, entry) || (entry.transfer_entry_id && !mayEdit(req, transferPair(db.get(), entry)))) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
     if (!entry.is_pending) {
       return refuse(res, [refusal('entry_already_booked', 'Entry is already booked.')]);
     }
@@ -1089,6 +1113,7 @@ router.patch('/:id/confirm', (req, res) => {
       ? entry.amount
       : cents(entry.amount < 0 ? -corrected : corrected);
 
+    db.get().transaction(() => {
     db.get().prepare(`
       UPDATE budget_entries
          SET is_pending = 0,
@@ -1096,6 +1121,11 @@ router.patch('/:id/confirm', (req, res) => {
              date       = COALESCE(?, date)
        WHERE id = ?
     `).run(nextAmount, req.body.date ?? null, id);
+    if (entry.transfer_entry_id) {
+      if (!nextAmount) throw new Error('A transfer cannot have a zero amount');
+      mirrorTransfer(db.get(), id);
+    }
+    })();
 
     const updated = entryWithLoanMeta(id);
     res.json({ data: { ...updated, attachments: attachmentsFor(id, documentViewer(req)) } });
@@ -1115,7 +1145,12 @@ router.delete('/:id', (req, res) => {
     const id    = parseInt(req.params.id, 10);
     const entry = db.get().prepare('SELECT * FROM budget_entries WHERE id = ?').get(id);
     if (!entry) return res.status(404).json({ error: 'Entry not found', code: 404 });
-    if (!mayEdit(req, entry)) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
+    if (!mayEdit(req, entry) || (entry.transfer_entry_id && !mayEdit(req, transferPair(db.get(), entry)))) return res.status(403).json({ error: 'You cannot modify this entry.', code: 403 });
+
+    if (entry.transfer_entry_id) {
+      deleteTransfer(db.get(), entry);
+      return res.status(204).end();
+    }
 
     const linkedPayment = db.get().prepare(`
       SELECT * FROM budget_loan_payments WHERE budget_entry_id = ?

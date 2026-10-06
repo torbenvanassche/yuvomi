@@ -6,6 +6,7 @@
  */
 
 import { api } from '/api.js';
+import { openTransferDialog, transferFieldsHtml, wireTransferForm } from '/pages/budget-transfers.js';
 import { openModal as openSharedModal, closeModal, confirmOverModal, advancedSection, wireBlurValidation, reportFieldError, refocusAfterRender } from '/components/modal.js';
 import { renderDocumentAttachField, bindDocumentAttachField, attachmentLinksNode } from '/components/document-attach.js';
 import { openDetailView } from '/components/detail-view.js';
@@ -1218,6 +1219,7 @@ function renderBody() {
     <!-- Zusammenfassung -->
     <div class="metric-grid${expensesOnly ? ' metric-grid--expenses-only' : ''}">
       ${expensesOnly ? expensesCard : incomeCard + expensesCard + balanceCard}
+      <div class="metric-card"><div class="metric-card__label">${t('budget.movedToSavings')}</div><div class="metric-card__value">${amountByRole(s.moved_to_savings || 0, 'total').text}</div></div>
     </div>
     </div>
     ${pendingNote}
@@ -3071,6 +3073,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
     if (mode === 'edit' && entry) openEntryReadView(entry);
     return;
   }
+  if (entry?.transfer_entry_id) { openBudgetTransfer(entry); return; }
   const isEdit = mode === 'edit';
   const today  = todayKey();
   // Ein neuer Eintrag gehört in den Monat, den der Nutzer gerade ansieht. Sonst
@@ -3087,7 +3090,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
   // damit die Zuordnung ablesbar ist, nimmt hier aber keine Eingabe entgegen - der
   // Server bucht ohnehin nach der Richtung und würde eine Umkehr still zurückdrehen.
   const isLoanPayment = isEdit && (entry.loan_payment_id != null || entry.loan_id != null);
-  const initialTypeId = !isEdit && initialType === 'loan' ? 'loan' : (isExpense ? 'expense' : 'income');
+  const initialTypeId = !isEdit && ['loan', 'transfer'].includes(initialType) ? initialType : (isExpense ? 'expense' : 'income');
   // Bei virtuellen Serien hält amount nur den Monatsanteil; im Formular den eingegebenen Periodenbetrag zeigen.
   const editAmount = isEdit && entry.recurrence_virtual && entry.recurrence_full_amount != null
     ? entry.recurrence_full_amount
@@ -3144,7 +3147,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
       ${[
         ['expense', 'budget.typeExpense'],
         ['income', 'budget.typeIncome'],
-        ...(isEdit ? [] : [['loan', 'budget.typeLoan']]),
+        ...(isEdit ? [] : [['loan', 'budget.typeLoan'], ['transfer', 'budget.typeTransfer']]),
       ].map(([id, key]) => {
         const on = id === initialTypeId;
         return `<button class="segmented__item${on ? ' is-active' : ''}" id="type-${id}" type="button" role="radio"
@@ -3283,6 +3286,8 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
         })}
     </div>
 
+    <div id="bm-transfer-fields" hidden>${isEdit ? '' : transferFieldsHtml(transferDialogOptions())}</div>
+
     <div id="bm-loan-fields" hidden>
       ${loanFormFieldsHtml(null, { startMonth: defaultDate.slice(0, 7) })}
     </div>
@@ -3305,6 +3310,7 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
     size: 'md',
     onSave(panel) {
       let currentType = initialTypeId;
+      const saveTransfer = isEdit ? null : wireTransferForm(panel, transferDialogOptions());
 
       // Checkbox-Logik des Zustaendigen-Pickers (#1057): "Niemand" schliesst die
       // uebrigen aus und umgekehrt. Ohne diese Bindung waeren beide gleichzeitig
@@ -3332,8 +3338,9 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
         currentType = type;
         // Den Zustand der Leiste (is-active, aria-checked, tabindex) malt
         // wireTablist - hier nur, was am Typ haengt.
-        panel.querySelectorAll('.js-entry-field').forEach((el) => { el.hidden = type === 'loan'; });
+        panel.querySelectorAll('.js-entry-field').forEach((el) => { el.hidden = type === 'loan' || type === 'transfer'; });
         panel.querySelector('#bm-loan-fields').hidden = type !== 'loan';
+        panel.querySelector('#bm-transfer-fields').hidden = type !== 'transfer';
         // Wiederkehrungs-Optionen nur zeigen, wenn "Wiederkehrend" aktiv ist.
         if (type !== 'loan') {
           panel.querySelector('#bm-recurrence-options').hidden = !panel.querySelector('#bm-recurring').checked;
@@ -3506,6 +3513,10 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
         // statt ihn in ein 403 laufen zu lassen.
         if (readOnly()) return;
         const saveBtn    = panel.querySelector('#bm-save');
+        if (currentType === 'transfer') {
+          await saveTransfer(saveBtn);
+          return;
+        }
         if (currentType === 'loan') {
           await saveLoanFromPanel(panel, saveBtn, { closeAfterSave: true });
           return;
@@ -3666,6 +3677,17 @@ function openBudgetModal({ mode, entry = null, initialType = '' }) {
       setType(currentType);
     },
   });
+}
+
+function transferDialogOptions() {
+  return { accounts: state.accounts ?? [], categories: expenseCategories(), subcategories: state.meta.subcategories,
+    month: state.month, currency: state.currency, budgetMode: state.budgetMode, readOnly,
+    onSaved: async () => { await loadMonth(state.month); renderBody(); window.yuvomi?.showToast(t('budget.savedToast'), 'success'); },
+    onDelete: deleteEntry, onError: (err) => showBudgetError(err, { fallback: BUDGET_SAVE_FAILED }) };
+}
+
+function openBudgetTransfer(entry = null) {
+  return openTransferDialog({ ...transferDialogOptions(), entry });
 }
 
 function requestNameInPanel(panel, { title, label, placeholder }) {
@@ -4304,6 +4326,9 @@ const BUDGET_REFUSALS = new Map([
   ['series_end_refused', [null, BUDGET_SAVE_FAILED]],
   ['entry_not_recurring', [null, BUDGET_FAILED]],
   ['entry_already_booked', [null, BUDGET_FAILED]],
+  // Transfers (transfers.js and linked entry guards)
+  ['transfer_invalid', [null, BUDGET_SAVE_FAILED]],
+  ['transfer_series_required', [null, BUDGET_SAVE_FAILED]],
   // Konto (accounts.js)
   ['account_name_invalid', ['#am-name', 'common.titleRequired']],
   ['account_balance_invalid', ['#am-balance', 'budget.validAmountRequired']],
@@ -4817,6 +4842,19 @@ function listNarrowsSummary() {
 async function deleteEntry(id) {
   if (readOnly()) return;
   const entry = findEntry(id);
+  if (entry?.transfer_entry_id) {
+    let route = `/budget/${id}`;
+    if (entry.recurrence_parent_id) {
+      const scope = await recurringChoiceModal({ title: t('budget.recurringSeriesScope'), thisLabel: t('budget.recurringThisOnly'), seriesLabel: t('budget.recurringEntireSeries'), seriesDanger: true });
+      if (scope === null) return;
+      if (scope === 'series') route += '/series';
+    }
+    const prompt = entry.is_recurring ? t('budget.recurringEntireSeries') + ' — ' + t('budget.transferDeleteConfirm') : t('budget.transferDeleteConfirm');
+    if (!await confirmOverModal(t('common.delete'), prompt)) return;
+    try { await api.delete(route); await loadMonth(state.month); renderBody(); }
+    catch (err) { showBudgetError(err, { fallback: BUDGET_SAVE_FAILED }); }
+    return;
+  }
   // Aus der Suche heraus kann die Buchung in einem anderen Monat liegen - dann
   // aendert ihr Loeschen die Bilanz dieses Monats nicht.
   const inMonth = state.entries.some((e) => e.id === id);

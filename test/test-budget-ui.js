@@ -2741,12 +2741,12 @@ test('der Buchungstyp ist ein .segmented mit radiogroup und angesagtem Zustand (
   assert.ok(neu.group, 'die Typwahl ist kein .segmented budget-type-toggle');
   assert.match(neu.group, /role="radiogroup"/, 'die Typwahl traegt kein role="radiogroup"');
   assert.match(neu.group, /aria-label="budget\.typeGroupLabel"/, 'die Gruppe hat keinen Namen');
-  assert.deepEqual(neu.state, { expense: 'true', income: 'false', loan: 'false' },
+  assert.deepEqual(neu.state, { expense: 'true', income: 'false', loan: 'false', transfer: 'false' },
     'neu: Ausgabe angesagt, die anderen beiden nicht');
   for (const b of neu.radios) assert.match(b, /class="segmented__item/, `${b.slice(0, 40)} ist kein Kanon-Segment`);
 
   const darlehen = typRadios(buchungsDialog({ mode: 'create', initialType: 'loan' }).content);
-  assert.deepEqual(darlehen.state, { expense: 'false', income: 'false', loan: 'true' },
+  assert.deepEqual(darlehen.state, { expense: 'false', income: 'false', loan: 'true', transfer: 'false' },
     'vom Darlehens-Leerzustand aus steht der Zustand schon im Markup auf Darlehen');
 
   const einnahme = typRadios(buchungsDialog({ mode: 'edit', entry: { id: 1, title: 'Lohn', amount: 1200, category: 'salary', subcategory: '', date: '2026-06-03' } }).content);
@@ -3943,7 +3943,7 @@ function serverReasons(file) {
 }
 
 test('#1668: jeder Grund der Budget-Routen ist eingeordnet, jedes Feld gibt es, jeder Satz steht in jeder Sprache', () => {
-  const atServer = new Set(['entries.js', 'accounts.js', 'categories.js', 'loans.js'].flatMap((file) => [...serverReasons(file)]));
+  const atServer = new Set(['entries.js', 'accounts.js', 'categories.js', 'loans.js', 'transfers.js'].flatMap((file) => [...serverReasons(file)]));
   assert.ok(atServer.size >= 55, `zu wenige Gruende gelesen (${atServer.size}) - das Muster greift nicht mehr`);
   for (const probe of ['entry_account_invalid', 'series_end_refused', 'series_start_too_early', 'entry_start_date_invalid', 'account_credit_limit_invalid', 'loan_settled', 'category_exists']) {
     assert.ok(atServer.has(probe), `Vorbedingung: der Leser sieht ${probe}`);
@@ -4028,7 +4028,7 @@ test('#1668: keine Stelle der Budget-Seite schreibt den Satz des Servers in eine
   assert.doesNotMatch(code, /err(?:or)?\??\.data\??\.error/, 'die Seite liest den Satz des Servers');
   // Die 13 Stellen von damals und der Verbuchen-Dialog laufen ueber eine Funktion.
   const calls = [...code.matchAll(/(?<!function )\bshowBudgetError\(err\b/g)].length;
-  assert.equal(calls, 14, `showBudgetError(err, ...) steht ${calls}x`);
+  assert.equal(calls, 16, `showBudgetError(err, ...) steht ${calls}x`);
   // Die drei Dialoge geben sich selbst mit, damit die Absage am Feld landet.
   assert.equal([...code.matchAll(/showBudgetError\(err, \{ panel, fallback: BUDGET_SAVE_FAILED \}\)/g)].length, 3);
 });
