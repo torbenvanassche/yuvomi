@@ -817,6 +817,15 @@ test('eine eigene Farbe schlaegt die geliehene weiterhin', () => {
   assert.equal(zeile.color, '#3CA368', 'eine ausdrueckliche Farbe bleibt');
 });
 
+test('ein lokaler Countdown ohne eigene Farbe erbt die Kalenderfarbe', () => {
+  reset();
+  seedEvent({ title: 'Lokal', start: '2026-09-10', color: null, assignedTo: null });
+  const calendar = get().prepare('SELECT color FROM local_calendars WHERE is_default = 1').get();
+  const item = getCountdowns(get(), { userId: ALICE, todayKey: '2026-08-27' }).items.find((c) => c.title === 'Lokal');
+  assert.ok(calendar.color);
+  assert.equal(item.color, calendar.color);
+});
+
 test('ohne jede Quelle bleibt die Farbe null, damit der Modulton greift', () => {
   // Bewusst NICHT das neutrale Grau aus `resolveEventColor()`: die Kachel hat
   // mit dem Ton ihres Moduls einen besseren Notnagel, und ein Grau sieht aus
@@ -825,7 +834,8 @@ test('ohne jede Quelle bleibt die Farbe null, damit der Modulton greift', () => 
   const zeile = getCountdowns(get(), { userId: ALICE, todayKey: '2026-08-27' }).items.find((c) => c.title === 'Nackt');
   assert.equal(zeile, undefined, 'Vorbedingung: noch nichts angelegt');
 
-  seedEvent({ title: 'Nackt', start: '2026-09-10', color: null, assignedTo: null });
+  const id = seedEvent({ title: 'Nackt', start: '2026-09-10', color: null, assignedTo: null });
+  get().prepare("UPDATE calendar_events SET external_source = 'caldav' WHERE id = ?").run(id);
   const nackt = getCountdowns(get(), { userId: ALICE, todayKey: '2026-08-27' }).items.find((c) => c.title === 'Nackt');
   assert.equal(nackt.color, null, 'keine Quelle heisst null, nicht Grau');
 });
