@@ -13,7 +13,7 @@ import { sortMembers } from '/utils/member-order.js';
 import { makeSortable } from '/utils/sortable.js';
 import { vibrate } from '/utils/ux.js';
 import { openModal, closeModal, confirmModal, refocusAfterRender } from '/components/modal.js';
-import { createRetryState, toggleRowHtml } from '/settings/components.js';
+import { createRetryState, toggleRowHtml, settingSwitchRowHtml } from '/settings/components.js';
 import {
   renderUserMultiSelect, getSelectedUserIds, bindUserMultiSelect,
 } from '/components/user-multi-select.js';
@@ -167,8 +167,10 @@ function memberHtml(u, currentUserId, { orderable = false, aligned = false } = {
         <i data-lucide="grip-vertical" class="icon-md"></i>
       </span>` : '';
   // Konten der Haushaltshilfe sind keine Familienmitglieder: sie tragen das
-  // Personal-Label statt einer Familienrolle (Audit A2-25e).
-  const familyRole = u.is_worker ? t('housekeeping.staff') : familyRoleLabel(u.family_role);
+  // Label ihrer Rolle statt einer Familienrolle (Audit A2-25e). Ein eigener
+  // Schluessel: der Reiter im Modul nennt die Mehrzahl, der Ersatz fuer einen
+  // fehlenden Namen ist kein Rollenname (#1723).
+  const familyRole = u.is_worker ? t('housekeeping.workerRole') : familyRoleLabel(u.family_role);
   const systemRole = u.role === 'admin' ? ` · ${esc(t('settings.systemAdminBadge'))}` : '';
   // Ein ehemaliges Konto (#1381): die Zeile bleibt, damit sichtbar ist, wen
   // die Verwaltung deaktiviert hat - Eintraege nennen die Person weiter.
@@ -349,17 +351,24 @@ function renderPage(container) {
         <button class="btn btn--secondary settings-add-btn" id="add-member-btn" hidden>${t('settings.addMember')}</button>
       </div>
 
-      <div class="settings-card" id="two-factor-household-card">
-        <h3 class="settings-card__title">${t('settings.twoFactorTitle')}</h3>
-        <p class="form-hint">${t('settings.twoFactorHouseholdHint')}</p>
-        ${toggleRowHtml({
-          control: 'switch',
-          label: t('settings.twoFactorRequireLabel'),
-          attrs: { id: 'two-factor-require' },
-          disabled: true,
-        })}
-        <ul class="settings-2fa__members" id="two-factor-members"></ul>
-        <div id="two-factor-household-error" class="form-error" role="alert" hidden></div>
+      <!-- Zeilen im Traeger (R17, E9): der Schalter, darunter als zweite Zeile
+           die Liste, wen die Pflicht trifft - beides zusammen ist die
+           Entscheidung (#672). -->
+      <div id="two-factor-household-card">
+        <h3 class="settings-card__title settings-group__title">${t('settings.twoFactorTitle')}</h3>
+        <div class="row-carrier settings-group">
+          ${settingSwitchRowHtml({
+            label: t('settings.twoFactorRequireLabel'),
+            description: t('settings.twoFactorHouseholdHint'),
+            descriptionId: 'two-factor-household-hint',
+            extra: '<div id="two-factor-household-error" class="form-error" role="alert" hidden></div>',
+            attrs: { id: 'two-factor-require', 'aria-describedby': 'two-factor-household-hint' },
+            disabled: true,
+          })}
+          <div class="settings-setting-row settings-setting-row--stacked settings-2fa__row">
+            <ul class="settings-setting-row__control settings-2fa__members" id="two-factor-members"></ul>
+          </div>
+        </div>
       </div>
 
       <div class="settings-card" id="invites-card">

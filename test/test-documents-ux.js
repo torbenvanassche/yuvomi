@@ -359,7 +359,7 @@ test('die Speicher-Einstellungen sind von der Seite aus verlinkt — nur für Ad
 test('das Rückgängig-Löschen stellt die Server-Sortierung wieder her', () => {
   // Vorher wurde beim Undo fest nach Namen sortiert, was die Datums-Ordnung zerschoss.
   assert.match(page, /function deleteDocuments\(docs\)/);
-  const del = page.slice(page.indexOf('function deleteDocuments'), page.indexOf('function deleteDocuments') + 1400);
+  const del = page.slice(page.indexOf('function deleteDocuments'), page.indexOf('function deleteDocuments') + 2400);
   assert.doesNotMatch(del, /localeCompare/);
   assert.match(del, /applyFilters\(\)/);
   // Kein Nachladen auf einen abgehängten Container nach Seitenwechsel.
@@ -1375,7 +1375,7 @@ test('ein Dokument ist EIN Tab-Stopp, seine Aktionen bleiben sichtbar und per Pf
   assert.equal((actions.match(/tabindex: '0'/g) || []).length, 1, 'genau ein Einstieg je Dokument');
   assert.equal((actions.match(/tabindex: '-1'/g) || []).length, 2);
   for (const cls of ['document-card__actions', 'document-row__actions']) {
-    assert.match(page, new RegExp(`<div class="${cls}" role="toolbar" aria-label="\\$\\{esc\\(t\\('documents\\.actionsFor', \\{ name: doc\\.name \\}\\)\\)\\}">`));
+    assert.match(page, new RegExp(`<div class="${cls}" role="toolbar" aria-label="\\$\\{esc\\(t\\('documents\\.actionsFor', \\{ name: doc\\.name \\}\\)\\)\\}"\\$\\{readBarAttr\\(doc\\)\\}>`));
   }
   assert.match(fnBody('renderDocuments', 'visibleFolderRows'), /wireRovingToolbars\(list\)/);
   assert.match(de.documents.actionsFor, /\{\{name\}\}/);
@@ -1498,8 +1498,10 @@ test('kompakte Zeile: kein Auge, die Zeile oeffnet, und das Menue traegt Ansehen
   // Re-Critique P2: mobil blieben dem Titel 153px, weil Auge und Kebab je 48px
   // standen - und ein Tipp auf die Zeile oeffnet ohnehin den Betrachter.
   const compact = [...eachRule(css)].filter((rule) => rule.at.some((a) => /@container list-rows \(max-width: 30rem\)/.test(a)));
-  const hides = compact.find((rule) => rule.selector.split(',').map((x) => x.trim()).includes('.document-row__actions [data-action="view"]'));
-  assert.ok(hides, 'das Auge faellt unter 30rem weg');
+  const hides = compact.find((rule) => rule.selector.split(',').map((x) => x.trim()).includes('.document-row__actions:not([data-read-bar]) [data-action="view"]'));
+  // Seit #1265 nur dort, wo ein Kebab steht: ohne Verwaltungsrecht gibt es
+  // kein Menue, das „Ansehen" fuehren koennte, also bleibt das Auge (`data-read-bar`).
+  assert.ok(hides, 'das Auge faellt unter 30rem weg - ausser in einer Leiste ohne Kebab');
   assert.match(hides.body, /display:\s*none/);
   // Raster und breite Liste behalten es: sonst blendet es keine Regel aus.
   const elsewhere = [...eachRule(css)].filter((rule) => /\[data-action="view"\]/.test(rule.selector)
@@ -1602,8 +1604,9 @@ test('der Betrachter bietet Bearbeiten an, schliesst sich dafuer und gibt den Au
   const viewer = fnBody('openDocumentViewer', 'renderViewerContent');
   const actions = viewer.slice(viewer.indexOf('<span class="document-viewer__actions">'), viewer.indexOf('document-viewer__note'));
   // Die geteilte Zeilenaktion (Runde 5): Name mit Objekt, "<Dokument> bearbeiten".
-  assert.match(actions, /\$\{canEditDocuments\(\) \? `\s*\$\{rowActionHtml\(\{ icon: 'pencil', action: 'edit-document', label: t\('common\.editNamed', \{ name: doc\.name \}\)/);
-  assert.match(page, /function canEditDocuments\(\) \{\s*return !isNavModuleReadOnly\('documents'\);\s*\}/);
+  // Seit #1265 fragt der Stift das DOKUMENT (Modulrecht UND Besitzregel), nicht
+  // nur das Modul; das Verhalten faehrt test-inventory-documents-readonly-ui.js.
+  assert.match(actions, /\$\{mayManage\(doc\) \? `\s*\$\{rowActionHtml\(\{ icon: 'pencil', action: 'edit-document', label: t\('common\.editNamed', \{ name: doc\.name \}\)/);
   // Der Ausloeser des Betrachters wird VOR dem Oeffnen gemerkt; beim Wechsel
   // bekommt er den Fokus zurueck, damit der Bearbeiten-Dialog ihn als seinen
   // Ausloeser merkt (modal.js merkt document.activeElement). Mobil schliesst
@@ -1876,4 +1879,48 @@ test('das Ablaufdatum nutzt den Kanon-Datepicker statt eines nativen Datumsfelds
   // input-Ereignis, das Speichern liest `.value` (ISO-Schluessel).
   assert.match(page, /expiresInput\.addEventListener\('input', \(\) => \{ reminderGroup\.hidden = !expiresInput\.value; \}\)/);
   assert.match(page, /form\.querySelector\('#document-expires-at'\)\.value \|\| null/);
+});
+
+// ── R17 Schritt 5 (Critique 2026-10-07, A6 P2): der Betrachter am Telefon ────
+// Gemessen 390x844: Blatt 366x743 mit Rand, Dokument 332x460 (54 % der Hoehe),
+// davor 172px Meta samt Dauerhinweis. Jetzt vollflaechig (Dokument 390x694),
+// der Meta-Block ist eine Zeile, die aufklappt.
+test('der Betrachter ist schmal vollflaechig, und der Meta-Block klappt hinter der Kategorie auf', () => {
+  const rules = [...eachRule(css)].map((r) => ({ ...r, selector: r.selector.trim() }));
+  const at = (r, re) => r.at.some((a) => re.test(a));
+  const sheet = rules.find((r) => r.selector === '.modal-panel:has(.document-viewer)');
+  assert.ok(sheet && at(sheet, /max-width:\s*767px/), 'vollflaechig nur dort, wo Dialoge Blaetter sind (unter 768px)');
+  assert.match(sheet.body, /height:\s*100%/);
+  assert.match(sheet.body, /max-height:\s*none/, 'die 88-%-Kappung des Blatts gilt hier nicht');
+  assert.match(sheet.body, /border-radius:\s*0/);
+  const overlay = rules.find((r) => r.selector === '.modal-overlay:has(.document-viewer)');
+  assert.ok(overlay && at(overlay, /max-width:\s*767px/) && /padding:\s*0/.test(overlay.body), 'kein Rand um das Blatt');
+  const head = rules.find((r) => r.selector === '.modal-panel:has(.document-viewer) > .modal-panel__header');
+  assert.match(head?.body ?? '', /env\(safe-area-inset-top\)/, 'der Kopf weicht der Statusleiste');
+  const pdf = rules.find((r) => r.selector === '.document-viewer__pdf' && at(r, /max-width:\s*767px/));
+  assert.match(pdf?.body ?? '', /align-self:\s*stretch/, 'der PDF-Rahmen fuellt den Rest statt fester 65vh');
+
+  // Der Knopf: ausserhalb der schmalen Breite unsichtbar.
+  const base = rules.find((r) => r.at.length === 0 && r.selector.split(',').map((s) => s.trim()).includes('.document-viewer__info-toggle'));
+  assert.match(base?.body ?? '', /display:\s*none/, 'ab 640px gibt es den Knopf nicht');
+  const shown = rules.find((r) => r.selector === '.document-viewer__info-toggle' && at(r, /max-width:\s*639px/));
+  assert.match(shown?.body ?? '', /display:\s*inline-flex/);
+  assert.match(shown.body, /min-height:\s*var\(--target-base\)/, 'ein volles Ziel');
+  const hidden = rules.find((r) => at(r, /max-width:\s*639px/) && /:not\(\.document-viewer--info-open\)/.test(r.selector));
+  assert.ok(hidden && /display:\s*none/.test(hidden.body), 'eingeklappt blendet der Meta-Block aus');
+  assert.match(hidden.selector, /\.document-viewer__note/, 'samt Teilen-Hinweis');
+  assert.match(hidden.selector, /\.document-viewer__details/, 'und Lesezeilen');
+  assert.match(hidden.selector, /> span:not\(\.document-viewer__actions\):not\(\.doc-badge\)/,
+    'die Aktionen und ein Ablauf in Warnfarbe bleiben stehen');
+  // Die Regeln stehen NACH den Grundregeln des Betrachters (gleiche Spezifitaet).
+  assert.ok(css.lastIndexOf('.document-viewer__pdf {') > css.indexOf('height: 65vh'), 'die schmale Regel folgt der Grundregel');
+
+  const viewer = fnBody('openDocumentViewer', 'renderViewerContent');
+  assert.match(viewer, /<button type="button" class="btn btn--ghost btn--sm document-viewer__info-toggle"\s+aria-expanded="false" aria-controls="document-viewer-root"\s+aria-label="\$\{t\('common\.showDetails'\)\}"/,
+    'der Knopf ist ein Aufklapper mit Namen');
+  assert.match(viewer, /<div class="document-viewer" id="document-viewer-root">/);
+  assert.match(viewer, /infoToggle\.setAttribute\('aria-expanded', String\(open\)\)/);
+  assert.match(viewer, /classList\.toggle\('document-viewer--info-open', open\)/);
+  // Der Hinweis bleibt im Markup: SPEC.md (D#1014) sagt ihn zu.
+  assert.match(viewer, /class="document-viewer__note"/);
 });

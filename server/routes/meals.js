@@ -11,6 +11,7 @@ import { str, oneOf, date, num, collectErrors, MAX_TITLE, MAX_TEXT, MAX_SHORT, D
 import { addDays, mealWeekday, datesForTemplateInRange } from '../services/meal-recurrence.js';
 import { todayKey } from '../utils/timezone.js';
 import { mayWriteModule } from '../permissions.js';
+import { MEAL_COOK_COLUMNS_SQL, MEAL_COOK_JOIN_SQL, cookField, cookForNewOccurrence, cookRefusal } from '../services/meal-cook.js';
 
 const log = createLogger('Meals');
 
@@ -68,9 +69,11 @@ function sanitizedIngredients(ingredients) {
 function loadMealWithIngredients(id) {
   const meal = db.get().prepare(`
     SELECT m.*, u.display_name AS creator_name, u.avatar_color AS creator_color,
-           mrt.end_date AS recurrence_end_date
+           mrt.end_date AS recurrence_end_date,
+           mrt.cook_user_id AS recurrence_cook_user_id,${MEAL_COOK_COLUMNS_SQL}
     FROM meals m
     LEFT JOIN users u ON u.id = m.created_by
+    ${MEAL_COOK_JOIN_SQL}
     LEFT JOIN meal_recurrence_templates mrt ON mrt.id = m.recurrence_template_id
     WHERE m.id = ?
   `).get(id);
@@ -90,12 +93,12 @@ function deleteMealOccurrence(meal, actorId) {
   db.get().prepare('DELETE FROM meals WHERE id = ?').run(meal.id);
 }
 
-function createMealRecord({ date, meal_type, title, notes, recipe_url, recipe_id, ingredients = [] }, actorId) {
+function createMealRecord({ date, meal_type, title, notes, recipe_url, recipe_id, cook_user_id = null, ingredients = [] }, actorId) {
   const cleanIngredients = sanitizedIngredients(ingredients);
   const result = db.get().prepare(`
-    INSERT INTO meals (date, meal_type, title, notes, recipe_url, recipe_id, created_by)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `).run(date, meal_type, title, notes, recipe_url, recipe_id, actorId);
+    INSERT INTO meals (date, meal_type, title, notes, recipe_url, recipe_id, cook_user_id, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(date, meal_type, title, notes, recipe_url, recipe_id, cook_user_id, actorId);
   insertMealIngredients(result.lastInsertRowid, cleanIngredients);
   return loadMealWithIngredients(result.lastInsertRowid);
 }
@@ -173,15 +176,25 @@ function materializeRecurringMeals(from, to) {
       WHERE template_id = ?
       ORDER BY id ASC
     `);
+    // Der Koch der Serie geht mit (#1679): die Vorlage traegt ihn, und jede
+    // Mahlzeit, die aus ihr entsteht, beginnt mit ihm. Ohne die Spalte hier
+    // stuende er nur an dem einen Termin, an dem die Serie angelegt wurde.
+    // NIE UNGEPRUEFT: was hier entsteht, ist eine NEUE Mahlzeit, und die
+    // bekommt keinen Koch, den POST und PUT heute ablehnten - ein inzwischen
+    // deaktiviertes Konto stuende sonst in jeder kuenftigen Woche neu im Plan.
+    // `cookForNewOccurrence()` fragt dasselbe Praedikat wie die Schreibrouten;
+    // die Vorlage selbst und die schon bestehenden Mahlzeiten bleiben unberuehrt.
     const insertMeal = db.get().prepare(`
-      INSERT INTO meals (date, meal_type, title, notes, recipe_url, recipe_id, recurrence_template_id, created_by)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO meals (date, meal_type, title, notes, recipe_url, recipe_id, recurrence_template_id, cook_user_id, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const ingredientsByTemplate = new Map();
+    const cookByTemplate = new Map();
     for (const { template, date } of pending) {
       if (!ingredientsByTemplate.has(template.id)) {
         ingredientsByTemplate.set(template.id, templateIngredients.all(template.id));
+        cookByTemplate.set(template.id, cookForNewOccurrence(template.cook_user_id));
       }
       const result = insertMeal.run(
         date,
@@ -191,6 +204,7 @@ function materializeRecurringMeals(from, to) {
         template.recipe_url,
         template.recipe_id,
         template.id,
+        cookByTemplate.get(template.id),
         template.created_by
       );
       insertMealIngredients(result.lastInsertRowid, ingredientsByTemplate.get(template.id));
@@ -240,7 +254,8 @@ router.get('/suggestions', (req, res) => {
  * Query: ?week=YYYY-MM-DD  (beliebiges Datum der gewünschten Woche; default: aktuelle Woche)
  * Response: { data: Meal[], weekStart: string, weekEnd: string }
  *
- * Meal: { id, date, meal_type, title, notes, created_by, ingredients: Ingredient[] }
+ * Meal: { id, date, meal_type, title, notes, created_by, cook_user_id, cook_name,
+ *         cook_color, recurrence_cook_user_id, ingredients: Ingredient[] }
  * Ingredient: { id, meal_id, name, quantity, on_shopping_list }
  */
 router.get('/', (req, res) => {
@@ -257,9 +272,15 @@ router.get('/', (req, res) => {
     // recurrence_end_date kommt aus der Vorlage mit: die Oberfläche zeigt im
     // Bearbeiten-Dialog, bis wann die Serie läuft, und muss dafür nicht pro Karte
     // nachfragen. NULL heißt unbegrenzt.
+    // recurrence_cook_user_id ebenso (#1679): der Koch der SERIE neben dem
+    // dieser Mahlzeit. Der Dialog braucht beide, um beim Speichern der ganzen
+    // Serie zu wissen, ob die Serie den gezeigten Koch schon hat. NULL heisst
+    // "die Serie hat keinen Koch" oder "keine Serie" - `recurrence_template_id`
+    // sagt, welches von beiden.
     const meals = db.get().prepare(`
       SELECT m.*, u.display_name AS creator_name, u.avatar_color AS creator_color,
              mrt.end_date AS recurrence_end_date,
+           mrt.cook_user_id AS recurrence_cook_user_id,${MEAL_COOK_COLUMNS_SQL},
              -- Hat das verknuepfte Rezept ein Bild (#1059)? Der Planer stellt
              -- damit den Platzhalter ODER das Vorschaubild, ohne je Karte
              -- nachzufragen - und ohne einen Request, der fuer ein bildloses
@@ -270,6 +291,7 @@ router.get('/', (req, res) => {
              (r.image_data IS NOT NULL) AS recipe_has_own_image
       FROM meals m
       LEFT JOIN users u ON u.id = m.created_by
+      ${MEAL_COOK_JOIN_SQL}
       LEFT JOIN meal_recurrence_templates mrt ON mrt.id = m.recurrence_template_id
       LEFT JOIN recipes r ON r.id = m.recipe_id
       WHERE m.date BETWEEN ? AND ?
@@ -340,7 +362,9 @@ router.get('/', (req, res) => {
 /**
  * POST /api/v1/meals
  * Neue Mahlzeit anlegen.
- * Body: { date, meal_type, title, notes?, ingredients?: [{ name, quantity? }] }
+ * Body: { date, meal_type, title, notes?, cook_user_id?, ingredients?: [{ name, quantity? }] }
+ * `cook_user_id` ist ein Haushaltsmitglied oder null (#1679); mit
+ * `repeat_weekly` traegt ihn auch die Serie.
  * Response: { data: Meal }
  */
 router.post('/', (req, res) => {
@@ -352,13 +376,14 @@ router.post('/', (req, res) => {
     const vNotes      = str(req.body.notes, 'Notizen', { max: MAX_TEXT, required: false });
     const vRecipeUrl  = str(req.body.recipe_url, 'Rezept-URL', { max: MAX_TEXT, required: false });
     const vRecipeId   = num(req.body.recipe_id, 'Rezept-ID', { required: false });
+    const vCook       = cookField(req.body.cook_user_id);
     const repeatWeekly = req.body.repeat_weekly === true;
     // Leeres/fehlendes repeat_until heißt „ohne Ende" - die Serie bleibt dann
     // unbegrenzt, wie vor #619, aber jetzt als bewusste Wahl statt als einziger Zustand.
     const vRepeatUntil = repeatWeekly
       ? date(req.body.repeat_until, 'Wiederholungs-Ende')
       : { value: null, error: null };
-    const errors = collectErrors([vDate, vType, vTitle, vNotes, vRecipeUrl, vRecipeId, vRepeatUntil]);
+    const errors = collectErrors([vDate, vType, vTitle, vNotes, vRecipeUrl, vRecipeId, vCook, vRepeatUntil]);
     if (!req.body.meal_type) errors.push('Mahlzeit-Typ ist erforderlich.');
     if (vRepeatUntil.value && vDate.value && vRepeatUntil.value < vDate.value) {
       errors.push('Wiederholungs-Ende darf nicht vor dem Datum liegen.');
@@ -370,6 +395,11 @@ router.post('/', (req, res) => {
       if (!recipeExists) return res.status(400).json({ error: 'Rezept nicht gefunden.', code: 400 });
     }
 
+    // Kochen kann nur ein Haushaltsmitglied (#1679) - dieselbe Liste, die der
+    // Dialog anbietet. Eine neue Mahlzeit hat noch keinen gespeicherten Stand.
+    const cookError = cookRefusal(vCook.value);
+    if (cookError) return res.status(400).json({ error: cookError, code: 400 });
+
     const meal = db.transaction(() => {
       const cleanIngredients = sanitizedIngredients(ingredients);
       let recurrenceTemplateId = null;
@@ -377,8 +407,8 @@ router.post('/', (req, res) => {
       if (repeatWeekly) {
         const template = db.get().prepare(`
           INSERT INTO meal_recurrence_templates
-            (start_date, end_date, weekday, meal_type, title, notes, recipe_url, recipe_id, created_by)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (start_date, end_date, weekday, meal_type, title, notes, recipe_url, recipe_id, cook_user_id, created_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           vDate.value,
           vRepeatUntil.value,
@@ -388,6 +418,7 @@ router.post('/', (req, res) => {
           vNotes.value,
           vRecipeUrl.value,
           vRecipeId.value,
+          vCook.value,
           req.authUserId || req.session.userId
         );
         recurrenceTemplateId = template.lastInsertRowid;
@@ -402,9 +433,9 @@ router.post('/', (req, res) => {
       }
 
       const result = db.get().prepare(`
-        INSERT INTO meals (date, meal_type, title, notes, recipe_url, recipe_id, recurrence_template_id, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(vDate.value, vType.value, vTitle.value, vNotes.value, vRecipeUrl.value, vRecipeId.value, recurrenceTemplateId, req.authUserId || req.session.userId);
+        INSERT INTO meals (date, meal_type, title, notes, recipe_url, recipe_id, recurrence_template_id, cook_user_id, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(vDate.value, vType.value, vTitle.value, vNotes.value, vRecipeUrl.value, vRecipeId.value, recurrenceTemplateId, vCook.value, req.authUserId || req.session.userId);
 
       const mealId = result.lastInsertRowid;
 
@@ -423,6 +454,8 @@ router.post('/', (req, res) => {
 /**
  * POST /api/v1/meals/apply-plan
  * Body: { assignments, replace_existing?, skip_occupied? }
+ * Eine Zuweisung darf `cook_user_id` tragen (#1679): die Mahlzeit entsteht mit
+ * diesem Koch.
  * Ohne Option additiv; replace_existing leert die genannten Slots zuerst;
  * skip_occupied legt nur in Slots an, die vor dem Aufruf leer waren
  * (Discussion #1380), und nennt die uebrigen in `skipped`.
@@ -448,6 +481,7 @@ router.post('/apply-plan', (req, res) => {
 
     const prepared = [];
     const recipeIds = new Set();
+    const cookIds = new Set();
     for (const assignment of assignments) {
       const vDate = date(assignment.date, 'Datum', true);
       const vType = oneOf(assignment.meal_type, VALID_MEAL_TYPES, 'Mahlzeit-Typ');
@@ -455,10 +489,12 @@ router.post('/apply-plan', (req, res) => {
       const vNotes = str(assignment.notes, 'Notizen', { max: MAX_TEXT, required: false });
       const vRecipeUrl = str(assignment.recipe_url, 'Rezept-URL', { max: MAX_TEXT, required: false });
       const vRecipeId = num(assignment.recipe_id, 'Rezept-ID', { required: false });
-      const errors = collectErrors([vDate, vType, vTitle, vNotes, vRecipeUrl, vRecipeId]);
+      const vCook = cookField(assignment.cook_user_id);
+      const errors = collectErrors([vDate, vType, vTitle, vNotes, vRecipeUrl, vRecipeId, vCook]);
       if (!assignment.meal_type) errors.push('Mahlzeit-Typ ist erforderlich.');
       if (errors.length) return res.status(400).json({ error: errors.join(' '), code: 400 });
       if (vRecipeId.value !== null) recipeIds.add(vRecipeId.value);
+      if (vCook.value !== null) cookIds.add(vCook.value);
       prepared.push({
         date: vDate.value,
         meal_type: vType.value,
@@ -466,6 +502,7 @@ router.post('/apply-plan', (req, res) => {
         notes: vNotes.value,
         recipe_url: vRecipeUrl.value,
         recipe_id: vRecipeId.value,
+        cook_user_id: vCook.value,
         ingredients: assignment.ingredients || [],
       });
     }
@@ -473,6 +510,15 @@ router.post('/apply-plan', (req, res) => {
     for (const recipeId of recipeIds) {
       const recipeExists = db.get().prepare('SELECT id FROM recipes WHERE id = ?').get(recipeId);
       if (!recipeExists) return res.status(400).json({ error: 'Rezept nicht gefunden.', code: 400 });
+    }
+
+    // Jede Zuweisung legt eine NEUE Mahlzeit an, auch mit replace_existing: ein
+    // gespeicherter Stand, der einen Koch gueltig hielte, gibt es hier nicht
+    // (#1679). Ein Nicht-Mitglied in EINER Zuweisung weist den ganzen Aufruf ab,
+    // wie ein unbekanntes Rezept - geschrieben ist bis hier nichts.
+    for (const cookId of cookIds) {
+      const cookError = cookRefusal(cookId);
+      if (cookError) return res.status(400).json({ error: cookError, code: 400 });
     }
 
     const skipped = [];
@@ -516,8 +562,11 @@ router.post('/apply-plan', (req, res) => {
 
 /**
  * PUT /api/v1/meals/:id
- * Mahlzeit bearbeiten (Titel, Notizen, Datum, Typ).
- * Body: { date?, meal_type?, title?, notes? }
+ * Mahlzeit bearbeiten (Titel, Notizen, Datum, Typ, Koch).
+ * Body: { date?, meal_type?, title?, notes?, cook_user_id? }
+ * `cook_user_id` (#1679): fehlt das Feld, bleibt der Koch, wie er ist; `null`
+ * nimmt ihn heraus. Ohne `scope` aendert es nur diese Mahlzeit, mit
+ * `?scope=series` die Vorlage und alle Mahlzeiten der Serie.
  * Response: { data: Meal }
  */
 router.put('/:id', (req, res) => {
@@ -533,6 +582,8 @@ router.put('/:id', (req, res) => {
     if (req.body.notes      !== undefined) checks.push(str(req.body.notes, 'Notizen', { max: MAX_TEXT, required: false }));
     if (req.body.recipe_url !== undefined) checks.push(str(req.body.recipe_url, 'Rezept-URL', { max: MAX_TEXT, required: false }));
     if (req.body.recipe_id  !== undefined) checks.push(num(req.body.recipe_id, 'Rezept-ID', { required: false }));
+    const vCook = cookField(req.body.cook_user_id);
+    checks.push(vCook);
     const errors = collectErrors(checks);
     if (errors.length) return res.status(400).json({ error: errors.join(' '), code: 400 });
 
@@ -553,6 +604,27 @@ router.put('/:id', (req, res) => {
       const nNotes     = req.body.notes      !== undefined ? (req.body.notes      || null)       : tpl.notes;
       const nRecipeUrl = req.body.recipe_url !== undefined ? (req.body.recipe_url || null)       : tpl.recipe_url;
       const nRecipeId  = req.body.recipe_id  !== undefined ? (req.body.recipe_id  || null)       : tpl.recipe_id;
+
+      // DER KOCH DER SERIE (#1679). Mitgeschickt, gilt er fuer die Vorlage und
+      // fuer jede Mahlzeit der Serie; fehlt das Feld, bleibt er UEBERALL, wie
+      // er ist - auch an den Mahlzeiten, die einzeln einen anderen bekommen
+      // haben. Die Inhaltsfelder darueber fallen ohne Angabe auf die Vorlage
+      // zurueck; fuer den Koch waere das ein stilles Ueberschreiben jeder
+      // einzeln getroffenen Wahl bei einer blossen Titelaenderung.
+      // GESPEICHERT IST HIER DER KOCH DER VORLAGE, NICHT DER DIESER MAHLZEIT.
+      // Der Aufruf schreibt auf die Vorlage und auf JEDE Mahlzeit der Serie;
+      // "schon gespeichert" gilt deshalb nur fuer den Datensatz, der die Serie
+      // ist. Ein Nicht-Mitglied, das allein an dieser einen Mahlzeit steht,
+      // waere fuer die Vorlage und alle anderen Mahlzeiten eine NEUE Wahl - und
+      // kaeme ueber die Vorlage in jede kuenftige Woche. Die Mahlzeit selbst
+      // bleibt mit ihm speicherbar: ohne `scope`, und im Serien-Umfang, solange
+      // der Koch nicht mitgeschickt wird (der Dialog schickt ihn zur Serie nur,
+      // wenn ihn jemand dort gewaehlt hat - public/pages/meals.js,
+      // `wireCookPicker()`).
+      if (vCook.given) {
+        const cookError = cookRefusal(vCook.value, [tpl.cook_user_id]);
+        if (cookError) return res.status(400).json({ error: cookError, code: 400 });
+      }
 
       // repeat_until: leerer String heißt ausdrücklich „ohne Ende", ein fehlendes
       // Feld lässt die bestehende Grenze stehen.
@@ -589,6 +661,13 @@ router.put('/:id', (req, res) => {
           WHERE recurrence_template_id = ?
         `).run(nMealType, nTitle, nNotes, nRecipeUrl, nRecipeId, templateId);
 
+        if (vCook.given) {
+          db.get().prepare('UPDATE meal_recurrence_templates SET cook_user_id = ? WHERE id = ?')
+            .run(vCook.value, templateId);
+          db.get().prepare('UPDATE meals SET cook_user_id = ? WHERE recurrence_template_id = ?')
+            .run(vCook.value, templateId);
+        }
+
         if (Array.isArray(req.body.ingredients)) {
           const cleanIngredients = sanitizedIngredients(req.body.ingredients);
 
@@ -613,6 +692,13 @@ router.put('/:id', (req, res) => {
       return res.json({ data: loadMealWithIngredients(id) });
     }
 
+    // Nur diese Mahlzeit: neu waehlbar ist ein Haushaltsmitglied, der schon
+    // gespeicherte Koch bleibt gueltig (#1679). Die Serie bleibt unberuehrt.
+    if (vCook.given) {
+      const cookError = cookRefusal(vCook.value, [meal.cook_user_id]);
+      if (cookError) return res.status(400).json({ error: cookError, code: 400 });
+    }
+
     if (meal.recurrence_template_id && req.body.date !== undefined && req.body.date !== meal.date) {
       db.get().prepare(`
         INSERT OR IGNORE INTO meal_recurrence_exceptions (template_id, date, created_by)
@@ -627,7 +713,8 @@ router.put('/:id', (req, res) => {
           title      = COALESCE(?, title),
           notes      = ?,
           recipe_url = ?,
-          recipe_id  = ?
+          recipe_id  = ?,
+          cook_user_id = ?
       WHERE id = ?
     `).run(
       req.body.date      ?? null,
@@ -636,6 +723,7 @@ router.put('/:id', (req, res) => {
       req.body.notes       !== undefined ? (req.body.notes || null)       : meal.notes,
       req.body.recipe_url  !== undefined ? (req.body.recipe_url || null)  : meal.recipe_url,
       req.body.recipe_id   !== undefined ? (req.body.recipe_id || null)   : meal.recipe_id,
+      vCook.given ? vCook.value : meal.cook_user_id,
       id
     );
 

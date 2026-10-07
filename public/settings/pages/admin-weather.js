@@ -99,10 +99,10 @@ function renderPage(container, preferences) {
           <p class="form-hint">${t('settings.householdWeatherOverrideHint')}</p>
           <div id="weather-form-error" class="form-error" role="alert" hidden></div>
           <div class="settings-form-actions">
-            <button type="submit" class="btn btn--primary">${t('settings.weatherSave')}</button>
             ${canRemoveStoredWeather(weatherSource) ? `
               <button type="button" class="btn btn--danger" id="weather-remove-btn">${t('settings.weatherRemove')}</button>
             ` : ''}
+            <button type="submit" class="btn btn--primary">${t('settings.weatherSave')}</button>
           </div>
         </form>
       </div>
@@ -119,7 +119,7 @@ function bindWeatherEvents(container, user) {
     errorElement.hidden = true;
     const location = readWeatherLocation(container, SCOPE);
     if (!hasValidWeatherCoords(location.lat, location.lon)) {
-      errorElement.textContent = `${t('settings.weatherLatLabel')} / ${t('settings.weatherLonLabel')}`;
+      errorElement.textContent = t('settings.weatherCoordsInvalid');
       errorElement.hidden = false;
       return;
     }

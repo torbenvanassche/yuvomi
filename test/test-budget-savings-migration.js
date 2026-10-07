@@ -11,7 +11,7 @@ test('Savings moves under Financials without losing bookings, series or planned 
   db.prepare("INSERT INTO budget_categories (key, name, type) VALUES ('saving', 'Saving', 'expense')").run();
   const id = db.prepare("INSERT INTO budget_entries (title, amount, category, subcategory, date, is_recurring, created_by) VALUES ('Existing saving', -125, 'saving', '', '2026-10-06', 1, ?)").run(user).lastInsertRowid;
   db.prepare("INSERT INTO budget_plans (category, amount) VALUES ('saving', 125), ('financial_other', 50)").run();
-  db.exec(MIGRATIONS.find(m => m.version === 236).up);
+  db.exec(MIGRATIONS.find(m => m.version === 238).up);
   assert.equal(db.prepare("SELECT key FROM budget_categories WHERE key = 'saving'").get(), undefined);
   assert.equal(db.prepare("SELECT category_key FROM budget_subcategories WHERE key = 'saving'").get().category_key, 'financial_other');
   for (const [table, key] of [['budget_entries', 'id'], ['budget_series', 'anchor_id']]) {
@@ -22,6 +22,6 @@ test('Savings moves under Financials without losing bookings, series or planned 
   assert.equal(db.prepare("SELECT category FROM budget_plans WHERE category = 'saving'").get(), undefined);
   assert.deepEqual(db.pragma('foreign_key_check'), []);
   // Reapplying the data correction never adds the old plan twice.
-  db.exec(MIGRATIONS.find(m => m.version === 236).up);
+  db.exec(MIGRATIONS.find(m => m.version === 238).up);
   assert.equal(db.prepare("SELECT amount FROM budget_plans WHERE category = 'financial_other'").get().amount, 175);
 });
