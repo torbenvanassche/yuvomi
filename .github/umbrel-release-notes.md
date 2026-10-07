@@ -1,12 +1,12 @@
-<!-- version: 2.73.0 -->
-This update is a round of fixes on top of 2.72.0.
+<!-- version: 2.75.0 -->
+This update adds pocket money and reworks how many pages are laid out and operated.
 
-A browser or system that announces Norwegian as `no` or `nn` now gets the Norwegian translation instead of English. Refused requests explain themselves in your language: a locked task, a recipe mirrored from Mealie or Tandoor and an expired page each have their own sentence, and the misleading advice to sign in again is gone.
+Rewards can now hold pocket money: a money balance per child, separate from points, credited weekly or monthly on a day you choose. A child asks for a deposit or a withdrawal, a parent confirms it, and only the child and the parents see the balance. Recurring shared expenses have a place of their own: a group lists them, and they can be edited, paused and resumed.
 
-In the budget, a loan created from "New entry" can now say how many installments are already paid, and the suggestion for that number works when the first due month lies in the past. Editing a shared expense shows amounts in your household's number format. Guests of a shared-expense group are no longer stuck behind the back button.
+Many modules open on what you came for. The shift plan shows the plan before its master data, waste collection adds the recurring pickup with its main button, the budget tells planned from booked amounts, inventory opens on your things, and shared expenses show the figures of the group you are looking at. Dialogs now follow one pattern, with Cancel and the main button at the bottom right, and the settings list their options as rows that save the same way on every page. One settings page has a new name: "Integrations" is now "Photos and weather".
 
-In the calendar, closing an event dialog on a wide screen no longer moves the address to the previous page. A direct link to a module that is switched off opens the overview, and a wrong address below the pairing or invitation page leads to that page instead of the sign-in page. Housekeeping reads the check-in of visits that were imported by hand correctly for "today" and "last visit".
+On a phone, the calendar header shrinks to one row when you scroll, the document viewer uses the whole screen, and the budget month changes with a sideways swipe. On a desktop, filters in Tasks open beside the list instead of over it, and net worth, statistics and several lists use the width of the window. Lists, detail columns and the date picker move the same way everywhere.
 
-There are no database migrations in this update and no action is needed.
+The update runs one database migration on first start, which adds the pocket-money balance to Rewards. No existing entry is changed and no action is needed; as always, a backup before updating is a good idea.
 
-Full release notes are available at https://github.com/ulsklyc/yuvomi/releases/tag/v2.73.0
+Full release notes are available at https://github.com/ulsklyc/yuvomi/releases/tag/v2.75.0

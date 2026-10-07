@@ -1,8 +1,8 @@
 import { api } from '/api.js';
-import { formatDate, formatTime, t } from '/i18n.js';
+import { formatDate, formatTime, getLocale, t } from '/i18n.js';
 import { esc } from '/utils/html.js';
 import { weekStartIndex, weekdayOrder } from '/utils/date.js';
-import { bindInstantSwitch, toggleRowHtml } from '/settings/components.js';
+import { bindInstantSwitch, settingRowHtml, toggleRowHtml } from '/settings/components.js';
 import { wireTablist } from '/utils/tablist.js';
 import { attachSegmentIndicator } from '/utils/segment-indicator.js';
 import { getPreferences, savePreferences } from '/settings/preferences-cache.js';
@@ -65,46 +65,50 @@ function renderPage(container, preferences) {
   container.insertAdjacentHTML('beforeend', `
     <section class="settings-section">
       <h2 class="settings-section__title">${t('settings.calendarSectionEvents')}</h2>
-      <div class="settings-card">
-        <h3 class="settings-card__title">${t('settings.calendarDurationTitle')}</h3>
-        <p class="settings-card-description">${t('settings.calendarDurationDescription')}</p>
-
-        <div class="form-group">
-          <label class="form-label" for="calendar-default-duration">${t('settings.calendarDurationLabel')}</label>
-          <select class="form-input" id="calendar-default-duration">
+      <!-- Zeilen statt je einer Karte (R17, E9). Die Zeile heisst wie die
+           fruehere Karte ("Standard-Termindauer", der Suchtreffer); das Feld
+           darin hiess nur "Dauer". -->
+      <div class="row-carrier settings-group">
+        ${settingRowHtml({
+          label: t('settings.calendarDurationTitle'),
+          labelFor: 'calendar-default-duration',
+          description: t('settings.calendarDurationDescription'),
+          descriptionId: 'calendar-default-duration-hint',
+          control: `<select class="form-input" id="calendar-default-duration" aria-describedby="calendar-default-duration-hint">
             ${DURATION_OPTIONS.map((m) => `<option value="${m}"${m === currentDuration ? ' selected' : ''}>${esc(durationOptionLabel(m))}</option>`).join('')}
-          </select>
-        </div>
-
-        <p class="form-hint">
-          ${t('settings.calendarPersonalDefaultsHint')}
-          <a href="${PERSONAL_CALENDAR_PATH}" id="calendar-personal-link">${t('settings.pageCalendarDefaults')}</a>
-        </p>
+          </select>`,
+        })}
       </div>
+      <p class="form-hint settings-group__footer">
+        ${t('settings.calendarPersonalDefaultsHint')}
+        <a href="${PERSONAL_CALENDAR_PATH}" id="calendar-personal-link">${t('settings.pageCalendarDefaults')}</a>
+      </p>
     </section>
 
     <section class="settings-section">
       <h2 class="settings-section__title">${t('settings.calendarSectionView')}</h2>
-      <div class="settings-card">
-        <h3 class="settings-card__title">${t('settings.weekStartTitle')}</h3>
-        <p class="settings-card-description">${t('settings.weekStartDescription')}</p>
-
+      <div class="row-carrier settings-group">
         <!-- Das Segment der Shell (.segmented, panel.css), wie das Theme -
              genau einer von drei Werten gilt. -->
-        <div class="segmented settings-segmented" id="week-start-toggle" role="radiogroup" aria-label="${t('settings.weekStartTitle')}">
-          ${WEEK_START_OPTIONS.map((o) => {
-            const on = o.value === currentWeekStart;
-            return `
-            <button type="button" class="segmented__item${on ? ' is-active' : ''}" role="radio"
-              data-tab-id="${o.value}" aria-checked="${on}" tabindex="${on ? '0' : '-1'}">
-              ${t(o.labelKey)}
-            </button>`;
-          }).join('')}
-        </div>
-
-        <div class="week-start-preview" id="week-start-preview" aria-hidden="true">
-          ${weekStartPreviewHtml(currentWeekStart)}
-        </div>
+        ${settingRowHtml({
+          stacked: true,
+          label: t('settings.weekStartTitle'),
+          labelId: 'week-start-label',
+          description: t('settings.weekStartDescription'),
+          control: `<div class="segmented settings-segmented" id="week-start-toggle" role="radiogroup" aria-labelledby="week-start-label">
+            ${WEEK_START_OPTIONS.map((o) => {
+              const on = o.value === currentWeekStart;
+              return `
+              <button type="button" class="segmented__item${on ? ' is-active' : ''}" role="radio"
+                data-tab-id="${o.value}" aria-checked="${on}" tabindex="${on ? '0' : '-1'}">
+                ${t(o.labelKey)}
+              </button>`;
+            }).join('')}
+          </div>
+          <div class="week-start-preview" id="week-start-preview" aria-hidden="true">
+            ${weekStartPreviewHtml(currentWeekStart)}
+          </div>`,
+        })}
       </div>
     </section>
 
@@ -194,6 +198,52 @@ function appendOptions(select, entries, selectedCode) {
     option.selected = entry.isoCode === selectedCode;
     select.appendChild(option);
   }
+}
+
+/**
+ * Eine Auswahlliste in der UI-Sprache sortieren (#1723). Der Server sortiert
+ * nach dem Namen, den ER kennt; sobald die Seite die Namen uebersetzt oder in
+ * einer anderen Sprache anfragt, stimmt dessen Reihenfolge nicht mehr.
+ * Gibt eine neue Liste zurueck, die Eingabe bleibt unberuehrt.
+ */
+export function sortHolidayEntries(entries, locale = getLocale()) {
+  const list = Array.isArray(entries) ? [...entries] : [];
+  let compare = (a, b) => a.localeCompare(b);
+  try {
+    compare = new Intl.Collator([locale]).compare;
+  } catch {
+    // Eine Sprache, die Intl nicht annimmt, kostet die Feinheiten der Sortierung, nicht die Liste.
+  }
+  return list.sort((a, b) => compare(String(a?.name ?? ''), String(b?.name ?? '')));
+}
+
+/**
+ * Die Feiertagslaender in der UI-Sprache (#1723). Der Server liefert englische
+ * Namen (OpenHolidays ohne Sprachwunsch, dazu die lokal berechneten Laender),
+ * die Seite druckte sie in jeder Sprache so. Der Name entsteht hier aus dem
+ * ISO-Code, wie bei Sprachen (personal-appearance.js) und Waehrungen
+ * (currency.js); was Intl nicht benennen kann, behaelt den Namen des Servers.
+ * `fallback: 'none'` ist dafuer noetig: sonst gaebe `of()` fuer ein
+ * unbekanntes Land den Code zurueck und der Servername kaeme nie zum Zug.
+ * Alle uebrigen Felder (`schoolHolidays`) reisen mit.
+ */
+export function localizeHolidayCountries(countries, locale = getLocale()) {
+  let displayNames = null;
+  try {
+    displayNames = new Intl.DisplayNames([locale], { type: 'region', fallback: 'none' });
+  } catch {
+    // Ohne DisplayNames bleiben die Namen des Servers stehen.
+  }
+  const named = (Array.isArray(countries) ? countries : []).map((entry) => {
+    let name = null;
+    try {
+      name = displayNames?.of(entry.isoCode) || null;
+    } catch {
+      // `of()` wirft bei einem Code, der keine Region sein kann.
+    }
+    return name ? { ...entry, name } : { ...entry };
+  });
+  return sortHolidayEntries(named, locale);
 }
 
 export function shouldApplySubdivisionResponse({
@@ -334,7 +384,7 @@ export async function runHolidayDiscovery(load, onError) {
   }
 }
 
-async function loadSubdivisions(
+export async function loadSubdivisions(
   select,
   countrySelect,
   countryCode,
@@ -350,7 +400,10 @@ async function loadSubdivisions(
   if (!countryCode) return { selectedResolved: true };
 
   try {
-    const response = await api.get(`/preferences/holidays/subdivisions/${countryCode}`);
+    // `lang` ist die UI-Sprache: die Regionsnamen kommen vom Server, Intl kennt
+    // sie nicht (#1723). Der Pfad bleibt als Literal am Aufruf stehen, damit
+    // test:frontend-audit den Endpunkt dieses Blatts weiter sieht.
+    const response = await api.get(`/preferences/holidays/subdivisions/${countryCode}?lang=${encodeURIComponent(getLocale())}`);
     if (!shouldApplySubdivisionResponse({
       requestId,
       latestRequestId: requestState.latestRequestId,
@@ -361,7 +414,7 @@ async function loadSubdivisions(
     }
 
     const subdivisions = Array.isArray(response?.data) ? response.data : [];
-    appendOptions(select, subdivisions, selectedCode);
+    appendOptions(select, sortHolidayEntries(subdivisions), selectedCode);
     select.disabled = subdivisions.length === 0;
     return {
       selectedResolved: isHolidayValueResolved(subdivisions, selectedCode),
@@ -789,9 +842,9 @@ async function bindEvents(container, preferences) {
   );
   if (!countriesResult.ok || !container.isConnected) return;
 
-  const countries = Array.isArray(countriesResult.value?.data)
-    ? countriesResult.value.data
-    : [];
+  const countries = localizeHolidayCountries(
+    Array.isArray(countriesResult.value?.data) ? countriesResult.value.data : [],
+  );
   countriesData = countries;
   appendOptions(
     countrySelect,

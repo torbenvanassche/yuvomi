@@ -182,7 +182,13 @@ const STUBS = {
     export const askOverModal = async (ask) => (
       typeof globalThis.__askOverModal === 'function' ? globalThis.__askOverModal(ask) : ask()
     );
-    export const selectModal = async () => null;
+    // Ohne Stub bricht die Auswahl ab (null) - dann sendet KEIN Aufrufer etwas,
+    // auch mit Schreibrecht nicht. Wer den Weg hinter der Auswahl messen will
+    // (Ordner oder Dokumente verschieben), setzt globalThis.__selectModal und
+    // bekommt Titel und Optionen - dasselbe Muster wie __promptModal.
+    export const selectModal = async (...args) => (
+      typeof globalThis.__selectModal === 'function' ? globalThis.__selectModal(...args) : null
+    );
     // Wer wissen will, OB ein Abschnitt aufgeklappt aufgeht, setzt
     // globalThis.__advancedSection und bekommt Inhalt UND Optionen - die
     // Entscheidung trifft der Aufrufer, und hier kaeme sie sonst nie an.
@@ -259,12 +265,14 @@ const STUBS = {
     // Austritt und Aufziehen (Abhaken, Gruppen) - ohne Layout gibt es nichts
     // zu bewegen, der Aufrufer wartet nur auf das Ende.
     export const collapseOut = () => Promise.resolve();
-    export const expandIn = () => Promise.resolve();
+    // Wer sehen will, WELCHE Zeile einzieht, setzt globalThis.__expandIn.
+    export const expandIn = (el) => { globalThis.__expandIn?.(el); return Promise.resolve(); };
     // Token-Leser ohne Stylesheet: der Rueckfall ist der Wert (utils/flip.js).
     // Region auf-/zuklappen: ohne Layout bleibt nur der Zustand selbst (hidden).
     export const toggleRegion = (region, open) => { if (region) region.hidden = !open; return Promise.resolve(); };
     // Balken wachsen lassen: ohne Layout nichts zu tun, der Endwert steht im Markup.
     export const growBars = () => 0;
+    export const drawChartOnce = () => 0;
     export const durationToken = (name, fallback) => fallback;
     export const easingToken = (name, fallback = 'ease-out') => fallback;
   `,
@@ -341,8 +349,12 @@ const STUBS = {
     // Suiten, die einen Formular-Handler mit gewaehlten Personen FAHREN, setzen
     // globalThis.__getSelectedUserIds; ohne das bleibt es bei niemandem.
     export const getSelectedUserIds = (...args) => globalThis.__getSelectedUserIds?.(...args) ?? [];
-    export const bindUserMultiSelect = () => {};
-    export const renderAvatarStack = () => '';
+    // Wie die beiden Haken darueber: Suiten, die das Avatar-Markup pruefen oder
+    // die Auswahl-Logik fahren (der Koch einer Mahlzeit, #1679), setzen
+    // globalThis.__renderAvatarStack bzw. globalThis.__bindUserMultiSelect auf
+    // die echte Komponente. Ohne das bleibt es beim leeren Markup wie bisher.
+    export const bindUserMultiSelect = (...args) => globalThis.__bindUserMultiSelect?.(...args);
+    export const renderAvatarStack = (...args) => globalThis.__renderAvatarStack?.(...args) ?? '';
   `,
   '/utils/shopping-categories.js': `
     export const DEFAULT_CATEGORY_NAME = 'Sonstiges';

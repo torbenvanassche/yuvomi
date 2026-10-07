@@ -13,8 +13,8 @@
  * Stylesheet-Scan. `getComputedStyle` kennt auch keinen abgeschnittenen
  * SVG-Text - gemessen wird deshalb die Lage des Texts gegen die Kante, die ihn
  * abschneidet. Die Rechnung hinter Punkt 3 haelt `test:chart-gutter` ohne
- * Browser; ob die Budget-Seite den Helfer ruft und Chrome die Formel so
- * anwendet, steht nur hier.
+ * Browser; ob der Budget-Verlauf gemessen wird und Chrome die Formel so
+ * anwendet, steht nur hier (die uebrigen Diagramme: `test:chart-gutter-browser`).
  *
  * DIE GANZE APP im Harness der Dokument-Guards: echter Server, Demo-Seed,
  * angemeldet. Was eine Sonde braucht (Aufgaben, Buchungen, Waehrung), legt sie
@@ -171,7 +171,10 @@ function hangulBreaks(page, selector) {
   }, selector);
 }
 
-const HINTS = '.form-hint, .settings-leaf-header__description, .settings-card-description';
+// Seit R17 (Einstellungen als Zeilen) steht der erklaerende Text eines Schalters
+// in der Zeile selbst; das Blatt "Darstellung" hatte danach noch EINEN
+// mehrzeiligen Hinweis der alten Bauarten, und die Sonde mass nichts.
+const HINTS = '.form-hint, .settings-leaf-header__description, .settings-card-description, .settings-setting-row__description';
 
 test('Koreanisch: ein Hinweis bricht an der Wortgrenze, nicht zwischen zwei Silben', async () => {
   const page = await openPage(harness, { device: 'mobile', locale: 'ko' });
@@ -224,7 +227,11 @@ function axisGeometry(page) {
       const rect = p.getBoundingClientRect();
       return rect.left + rect.width / 2;
     });
-    const curve = svg.querySelector('polyline').getBoundingClientRect();
+    // DIE KURVE IST SEIT R17 AM HEUTIGEN TAG GETEILT (bis heute durchgezogen,
+    // danach als eigener Zug): gemessen wird die Spanne ALLER Zuege. Der erste
+    // allein endet heute - und der letzte Ablesepunkt steht am Monatsende.
+    const spans = [...svg.querySelectorAll('polyline')].map((line) => line.getBoundingClientRect());
+    const curve = { left: Math.min(...spans.map((r) => r.left)), right: Math.max(...spans.map((r) => r.right)) };
     return {
       clipLeft: (clip ?? document.documentElement).getBoundingClientRect().left,
       hostWidth: host.getBoundingClientRect().width,

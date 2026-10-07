@@ -28,6 +28,8 @@ import { RESTORE_IN_PROGRESS_MESSAGE, RESTORE_IN_PROGRESS_REASON } from './utils
 import { setRestoreRunning, activeWriters, restoreWaitTimeoutMs, waitUntilIdle } from './utils/restore-state.js';
 import { decodeHtmlEntities } from './utils/html-entities.js';
 import { toE164, defaultCountryFromConfig } from './utils/phone.js';
+import { todayKey } from './utils/timezone.js';
+import { addMonthsClamped, liftToAnchorDay } from './utils/interval-date.js';
 
 const log = createLogger('DB');
 
@@ -10171,6 +10173,290 @@ const MIGRATIONS = [
   },
   {
     version: 234,
+    description: 'Recurring shared expenses: the series keeps its anchor day (#1721)',
+    // EINE SERIE KANNTE NUR IHREN NAECHSTEN TERMIN, NICHT DEN TAG, FUER DEN SIE
+    // GEDACHT IST (#1721). Der Lauf rueckte mit `setUTCMonth(+1)` weiter: der
+    // 31.01. lief in den Maerz ueber (03.03.), der Februar blieb ohne Buchung,
+    // und weil der naechste Schritt vom uebergelaufenen Datum ausging, stand
+    // die Serie danach fuer immer am 1., 2. oder 3. `anchor_day` ist der Tag im
+    // Monat, 1 bis 31; der Schritt klemmt in kuerzeren Monaten aufs Monatsende
+    // und hebt danach wieder auf diesen Tag (addInterval in
+    // server/services/split-expenses-scheduler.js).
+    //
+    // BESTAND, SCHRITT 1 - JEDE Serie bekommt den Tag ihres heutigen
+    // `next_run_date`. Das ist fuer fast alle die Wahrheit und fuer den Rest das
+    // Verhalten von bisher.
+    //
+    // BESTAND, SCHRITT 2 - ZURUECKGESTELLT WIRD NUR, WAS BELEGT IST. Eine Zeile
+    // am 1. bis 3. sagt nicht, ob sie dort angelegt wurde oder dort ankam. Der
+    // Beleg ist die ERSTE aus der Serie gebuchte Ausgabe (kleinste id mit
+    // `expenses.recurring_rule_id`): der Lauf hat ihr den ersten Termin als
+    // Datum gegeben. Belegt ist die Drift, wenn
+    //   - monatlich: jene Ausgabe am 29., 30. oder 31. liegt und der Termin
+    //     heute hoechstens so weit im Monat steht, wie der Ueberlauf ihn tragen
+    //     konnte (29 -> 1; 30 -> 1, 2; 31 -> 1, 2, 3);
+    //   - jaehrlich: jene Ausgabe an einem 29.02. liegt und der Termin heute an
+    //     einem 01.03.;
+    //   - und die Ausgabe vor dem Termin liegt, nicht geloescht ist und NIE
+    //     BEARBEITET wurde.
+    // Ist die erste Ausgabe geloescht (die App markiert sie nur) oder ganz weg
+    // (dann ist die "erste" eine spaetere, schon gedriftete), gibt es keinen
+    // Beleg und keine Reparatur. Woechentliche Serien driften nicht.
+    //
+    // BEARBEITET: `PUT /expenses/:id` kann das Datum einer Serienbuchung
+    // aendern. Eine Serie, die wirklich am 01.06. angelegt und deren erste
+    // Ausgabe auf den 31.05. umdatiert wurde, saehe aus wie eine Drift. Zwei
+    // Spuren, jede fuer sich genug: der Verlaufseintrag `expense_edited`, den
+    // die Route seit dem ersten Tag der geteilten Ausgaben in derselben
+    // Transaktion schreibt (und den nichts loescht ausser der Gruppe selbst),
+    // und `updated_at <> created_at` - der Trigger bewegt es bei jedem UPDATE,
+    // sieht aber eine Bearbeitung in der Sekunde des Anlegens nicht. Beide,
+    // weil eine echte Drift, die stehen bleibt, der kleinere Schaden ist als
+    // eine echte Serie, die verstellt wird. WAS die Bearbeitung geaendert hat
+    // (nur den Titel?), steht nirgends: jede zaehlt.
+    //
+    // Dann: Anker = Tag jener Ausgabe, und der Termin geht auf den Anker,
+    // geklemmt aufs Monatsende - und zwar
+    //   - in den Monat NACH der letzten Buchung der Serie, wenn der Termin dort
+    //     nicht vergangen ist und vor dem gedrifteten liegt. Das ist der
+    //     ausgelassene Monat, solange er noch vor uns liegt (letzte Buchung
+    //     31.10., Termin 01.12., Migration am 10.11. -> 30.11.);
+    //   - sonst in den Monat des gedrifteten Termins (jaehrlich: in den Februar
+    //     desselben Jahres), mit den zwei Riegeln unten.
+    // Jaehrlich gibt es den ersten Weg nicht: der Ueberlauf vom 29.02. auf den
+    // 01.03. laesst kein Jahr aus, das Folgejahr der letzten Buchung IST das
+    // Jahr des gedrifteten Termins.
+    // Nachgebucht wird in keinem Fall - die Migration schreibt keine Ausgabe,
+    // und kein Termin, den sie setzt, liegt vor heute.
+    //
+    // ZWEI RIEGEL, an denen der Termin stehen bleibt:
+    //   - die Serie hat in diesem Monat (jaehrlich: Jahr) schon gebucht, oder
+    //     ihre letzte Buchung liegt gar nicht vor dem neuen Termin - gemessen
+    //     an ALLEN Ausgaben der Serie, auch geloeschten: der Monat hatte seine
+    //     Buchung;
+    //   - der neue Termin laege vor heute (Tag des Haushalts): der Lauf buchte
+    //     ihn sonst binnen einer Stunde rueckdatiert nach.
+    // Monatlich kommt dann nur der Anker, und die Serie kehrt mit dem naechsten
+    // Schritt zurueck (03.11. -> 31.12.). Jaehrlich bleibt die Zeile ganz, wie
+    // sie ist: der Anker ist ein Tag ohne Monat, ein Anker 29 an einem Termin
+    // im Maerz hoebe den naechsten Schritt auf den 29. Maerz.
+    //
+    // Der CHECK folgt dem von `budget_loans.due_day` (v233). NULL bleibt
+    // moeglich (ADD COLUMN) und heisst "kein Anker": der Schritt klemmt dann
+    // nur. Ein kuenftiger Rebuild von recurring_expenses muss die Spalte samt
+    // CHECK mitnehmen.
+    up(db) {
+      db.exec(`
+        ALTER TABLE recurring_expenses ADD COLUMN anchor_day INTEGER
+          CHECK (anchor_day IS NULL OR (typeof(anchor_day) = 'integer' AND anchor_day BETWEEN 1 AND 31));
+        UPDATE recurring_expenses
+          SET anchor_day = CAST(substr(next_run_date, 9, 2) AS INTEGER)
+          WHERE next_run_date GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'
+            AND CAST(substr(next_run_date, 9, 2) AS INTEGER) BETWEEN 1 AND 31;
+      `);
+
+      const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+      const today = todayKey(db);
+      const firstBooked = db.prepare(`
+        SELECT e.expense_date, e.status,
+               (e.updated_at IS NOT e.created_at
+                OR EXISTS (SELECT 1 FROM expense_activity a
+                           WHERE a.type = 'expense_edited' AND a.entity_type = 'expense' AND a.entity_id = e.id)) AS edited
+        FROM expenses e WHERE e.recurring_rule_id = ? ORDER BY e.id ASC LIMIT 1
+      `);
+      const lastBooked = db.prepare('SELECT MAX(expense_date) AS date FROM expenses WHERE recurring_rule_id = ?');
+      const setAnchor = db.prepare('UPDATE recurring_expenses SET anchor_day = ? WHERE id = ?');
+      const setBack = db.prepare('UPDATE recurring_expenses SET anchor_day = ?, next_run_date = ? WHERE id = ?');
+
+      const series = db.prepare(
+        "SELECT id, frequency, next_run_date FROM recurring_expenses WHERE frequency IN ('monthly', 'yearly')"
+      ).all();
+      for (const row of series) {
+        const next = DATE.exec(row.next_run_date);
+        const first = firstBooked.get(row.id);
+        const booked = first && first.status !== 'deleted' && !first.edited ? DATE.exec(first.expense_date) : null;
+        if (!next || !booked || !(first.expense_date < row.next_run_date)) continue;
+
+        const [, nextYear, nextMonth] = next;
+        const nextDay = Number(next[3]);
+        const bookedDay = Number(booked[3]);
+        const yearly = row.frequency === 'yearly';
+        const drifted = yearly
+          ? booked[2] === '02' && bookedDay === 29 && nextMonth === '03' && nextDay === 1
+          : bookedDay >= 29 && nextDay >= 1 && nextDay <= bookedDay - 28;
+        if (!drifted) continue;
+
+        // Der 1. des Zielmonats, auf den Anker gehoben: derselbe Helfer wie im
+        // Lauf, also dieselbe Klemmung aufs Monatsende.
+        // Ein Termin in Datumsform, der kein Datum ist ("2026-13-01"), bleibt
+        // stehen: eine Migration, die daran wirft, haelt den Start an.
+        let target;
+        try {
+          target = liftToAnchorDay(`${nextYear}-${yearly ? '02' : nextMonth}-01`, bookedDay);
+        } catch { continue; }
+        const period = yearly ? 4 : 7;
+        const last = lastBooked.get(row.id).date;
+
+        // Der ausgelassene Monat liegt noch vor uns: der Monat NACH der
+        // letzten Buchung, sofern sein Termin nicht vergangen ist und vor dem
+        // gedrifteten liegt. `last` ist das spaeteste Datum der Serie, der
+        // Monat danach hat also keine Buchung von ihr.
+        if (!yearly) {
+          let ahead = null;
+          try {
+            ahead = liftToAnchorDay(addMonthsClamped(`${last.slice(0, 7)}-01`, 1), bookedDay);
+          } catch { /* letzte Buchung ohne lesbares Datum: weiter mit dem Monat des Termins */ }
+          if (ahead && ahead >= today && ahead < row.next_run_date) {
+            setBack.run(bookedDay, ahead, row.id);
+            continue;
+          }
+        }
+
+        const alreadyBooked = last >= target || last.slice(0, period) === target.slice(0, period);
+        if (alreadyBooked || target < today) {
+          if (!yearly) setAnchor.run(bookedDay, row.id);
+          continue;
+        }
+        setBack.run(bookedDay, target, row.id);
+      }
+    },
+  },
+  {
+    version: 235,
+    description: 'Meal plan: one member as the cook of a meal and of a series (#1679)',
+    // EINE MAHLZEIT KANNTE NUR, WER SIE EINGETRAGEN HAT (`created_by`), NICHT,
+    // WER KOCHT (#1679, Discussion #1661). `cook_user_id` ist ein Verweis auf
+    // eine Person des Haushalts wie `tasks.assigned_to`: eine Zustaendigkeit an
+    // einem gemeinsamen Eintrag, kein Besitz - wer eine Mahlzeit sieht oder
+    // aendert, haengt weiter allein am `meals`-Recht.
+    //
+    // ZWEI SPALTEN, WEIL EINE SERIE IHREN KOCH BEHAELT: die Vorlage traegt ihn,
+    // und `materializeRecurringMeals` (server/routes/meals.js) kopiert ihn in
+    // jede Mahlzeit, die aus ihr entsteht - ohne die Spalte an der Vorlage
+    // ginge er beim Aufschlagen der naechsten Woche verloren.
+    //
+    // KEIN BACKFILL: NULL heisst "niemand gesetzt", und das ist jede Mahlzeit
+    // von bisher. ON DELETE SET NULL: verschwindet das Konto, bleibt die
+    // Mahlzeit ohne Koch stehen. Wer waehlbar ist, entscheidet nicht das
+    // Schema, sondern `householdMemberSql()` an der Route (docs/DECISIONS.md,
+    // Eintrag 4).
+    //
+    // Ein kuenftiger Rebuild von meals oder meal_recurrence_templates muss die
+    // Spalte mitnehmen.
+    up: `
+      ALTER TABLE meals ADD COLUMN cook_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+      ALTER TABLE meal_recurrence_templates ADD COLUMN cook_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+    `,
+  },
+  {
+    version: 236,
+    description: 'Rewards: pocket money - a unit per ledger row, money requests and a credit plan (#1734)',
+    // TASCHENGELD LEBT AUF DEM LEDGER DER BELOHNUNGEN, NICHT IM BUDGET (#1734,
+    // Discussion #916). Ein Budgetkonto hat keinen Besitzer, Budget kennt kein
+    // "dieses Kind und die Eltern, nicht die Geschwister" und keine Anfrage,
+    // die einer stellt und ein anderer entscheidet. Ledger, Anfrage, Freigabe
+    // und Gegenbuchung gibt es hier schon (docs/DECISIONS.md, Eintrag 6).
+    //
+    // `reward_ledger.unit` SAGT, WAS DIE ZAHL ZAEHLT. Bis hierher war jede
+    // Zeile ein Punkt. Der Default 'points' ist der Bestand, ohne Backfill -
+    // und ADD COLUMN baut die Tabelle nicht neu: die fuenf Indizes
+    // (idx_reward_ledger_user, _redemption, _task, _series, _reverses)
+    // bleiben, und `uniq_reward_earn` kommt nicht zurueck (Migration 230).
+    // Geld steht in ganzen kleinsten Einheiten (Cent) MIT SEINEM WAEHRUNGSCODE,
+    // wie `amount_minor` und `currency` der geteilten Ausgaben.
+    //
+    // `reward_money_accounts` IST DAS KONTO: eine Zeile je Person, und sie
+    // traegt die WAEHRUNG - die Haushaltswaehrung des Tages, an dem die Eltern
+    // es eroeffnet haben. "Hat ein Konto" ist damit eine Zeile und keine
+    // Ableitung aus Plan oder Buchungen, ein Konto kann ohne Plan und ohne
+    // Geld bestehen, und "ein Konto hat genau EINE Waehrung" ist eine Spalte.
+    // Wechselt der Haushalt seine Waehrung spaeter, bleibt das Konto, wie es
+    // ist - 1,00 EUR werden nicht zu 100 Yen. Ein LEERES Konto (kein Plan,
+    // Saldo null, nichts offen) laesst sich schliessen; ein neu eroeffnetes
+    // nimmt die Waehrung von dann.
+    //
+    // `currency` STEHT ZUSAETZLICH AN JEDER GELDZEILE, AN JEDER GELD-ANFRAGE
+    // UND AM PLAN: eine Zeile sagt selbst, worin ihr Betrag steht, auch
+    // nachdem ihr Konto geschlossen und in anderer Waehrung neu eroeffnet
+    // wurde. Die CHECKs binden die Spalte an die Einheit: eine Geldzeile ohne
+    // Code und eine Punktezeile mit Code lehnt das Schema ab (bei der Anfrage
+    // dasselbe ueber `kind`). DASS eine Zeile die Waehrung IHRES Kontos
+    // traegt, kann ein CHECK nicht sagen - das prueft die Schreibschicht in
+    // der Transaktion jeder Buchung (`postMoney()` in
+    // server/services/reward-money.js).
+    //
+    // KEIN NEUER `type`: der CHECK auf `type` liesse sich nur per Rebuild
+    // aendern. Eine Gutschrift nach Plan ist ein `bonus` mit unit 'money',
+    // eine Auszahlung ein `redeem`, eine Korrektur der Eltern `bonus`/`adjust`.
+    //
+    // JEDE SUMME UEBER `delta` BRAUCHT DEN EINHEITEN-FILTER, sonst zaehlen Cent
+    // als Punkte. Die Summe steht deshalb an EINER Stelle, die ohne Einheit
+    // wirft (`ledgerBalanceSql()` in server/services/rewards.js).
+    //
+    // `allowance_date` IST DER TERMIN, FUER DEN EINE PLAN-GUTSCHRIFT GILT, und
+    // der UNIQUE-Index darueber ist die Idempotenz: je Person und Termin
+    // hoechstens eine. Sie steht damit im Schema und nicht nur darin, dass
+    // "der Termin in derselben Transaktion weiterrueckt". Der Schluessel ist
+    // die PERSON, nicht die Planzeile: ein geloeschter und neu angelegter Plan
+    // bucht denselben Tag kein zweites Mal.
+    //
+    // `reward_redemptions.kind`: 'reward' ist die Einloesung von bisher (und
+    // jede Bestandszeile), 'withdrawal' und 'deposit' sind Geld-Anfragen mit
+    // freiem Betrag in `cost` (kleinste Einheiten) und ohne Katalogeintrag.
+    // EINE Spalte statt `unit` plus Richtung: so gibt es keine Einzahlung in
+    // Punkten, die ein zweites Feld erst ausschliessen muesste.
+    //
+    // `reward_allowances` ist der Plan, eine Zeile je Person, in der Form von
+    // `recurring_expenses` (Betrag, Rhythmus, `anchor_day`, `next_run_date`,
+    // `paused_at`), damit der Schritt durch dieselbe Rechnung geht
+    // (`addInterval()` in server/utils/interval-date.js). `anchor_day` ist
+    // monatlich der Tag im Monat (1 bis 31, kuerzere Monate klemmen aufs
+    // Monatsende und heben danach wieder an), woechentlich der Wochentag
+    // (1 = Montag bis 7 = Sonntag).
+    //
+    // Ein kuenftiger Rebuild von reward_ledger oder reward_redemptions muss
+    // `unit`, `allowance_date`, `currency`, `kind` und den Index mitnehmen.
+    up: `
+      ALTER TABLE reward_ledger ADD COLUMN unit TEXT NOT NULL DEFAULT 'points'
+        CHECK(unit IN ('points', 'money'));
+      ALTER TABLE reward_ledger ADD COLUMN allowance_date TEXT;
+      ALTER TABLE reward_ledger ADD COLUMN currency TEXT
+        CHECK((unit = 'money') = (currency IS NOT NULL));
+      CREATE UNIQUE INDEX uniq_reward_allowance_credit
+        ON reward_ledger(user_id, allowance_date) WHERE allowance_date IS NOT NULL;
+
+      ALTER TABLE reward_redemptions ADD COLUMN kind TEXT NOT NULL DEFAULT 'reward'
+        CHECK(kind IN ('reward', 'withdrawal', 'deposit'));
+      ALTER TABLE reward_redemptions ADD COLUMN currency TEXT
+        CHECK((kind = 'reward') = (currency IS NULL));
+
+      CREATE TABLE reward_money_accounts (
+        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id    INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        currency   TEXT    NOT NULL,
+        created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        updated_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      );
+
+      CREATE TABLE reward_allowances (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id       INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        amount_minor  INTEGER NOT NULL CHECK(amount_minor > 0),
+        currency      TEXT    NOT NULL,
+        frequency     TEXT    NOT NULL CHECK(frequency IN ('weekly', 'monthly')),
+        anchor_day    INTEGER NOT NULL CHECK(anchor_day BETWEEN 1 AND 31),
+        next_run_date TEXT    NOT NULL,
+        paused_at     TEXT,
+        created_by    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        created_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
+        updated_at    TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+      );
+      CREATE INDEX idx_reward_allowances_next_run ON reward_allowances(next_run_date, paused_at);
+    `,
+  },
+  {
+    version: 237,
     description: 'Calendar: first-class local calendars with per-calendar feeds',
     up: `
       CREATE TABLE local_calendars (

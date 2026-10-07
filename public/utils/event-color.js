@@ -1,8 +1,8 @@
 /**
  * Modul: Terminfarbe → Anzeigefarbe
  * Zweck: EINE Regel, wie ein Termin zu seiner Farbe kommt - an genau einer
- *        Stelle. Vier Quellen in fester Rangfolge: die eigene Farbe des Termins,
- *        die der ersten zugewiesenen Person, die des lokalen oder externen Kalenders.
+ *        Stelle. Drei Quellen in fester Rangfolge: die eigene Farbe des Termins,
+ *        die der ersten zugewiesenen Person, die des Kalenders.
  * Ausfuehren: node --experimental-sqlite --test test/test-calendar.js
  * Dependencies: keine.
  *
@@ -32,7 +32,7 @@
  * erst dadurch ist diese Rangfolge eine echte.
  */
 
-/** Letzte Instanz, wenn keine der vier Quellen etwas hergibt. */
+/** Letzte Instanz, wenn keine der drei Quellen etwas hergibt. */
 export const EVENT_FALLBACK_COLOR = '#8E8E93';
 
 /**
@@ -59,7 +59,7 @@ export function resolveEventColor(ev) {
 }
 
 /**
- * Dieselbe Rangfolge, aber OHNE letzte Instanz: `null`, wenn keine der vier
+ * Dieselbe Rangfolge, aber OHNE letzte Instanz: `null`, wenn keine der drei
  * Quellen etwas hergibt.
  *
  * Fuer Aufrufer, die einen besseren Notnagel haben als das neutrale Grau - die

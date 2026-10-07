@@ -168,6 +168,16 @@ test('PUT currency: ungültig -> 400, gültig -> persist', async () => {
   assert.equal((await put({ currency: 'USD' })).body.data.currency, 'USD');
   assert.equal((await get()).body.data.currency, 'USD');
 });
+// #1697: der Singapur-Dollar stand nicht in der Liste, gegen die diese Route
+// prueft - ein Haushalt in Singapur bekam auf seine Waehrung eine 400.
+test('PUT currency SGD und Region en-SG werden angenommen (#1697)', async () => {
+  const saved = (await put({ currency: 'SGD', region: 'en-SG', date_format: 'dmy_slash', time_format: '12h' }));
+  assert.equal(saved.status, 200);
+  assert.equal(saved.body.data.currency, 'SGD');
+  assert.equal(saved.body.data.region, 'en-SG');
+  assert.equal((await get()).body.data.currency, 'SGD');
+  await put({ currency: 'USD', region: null });
+});
 test('PUT date_format: ungültig -> 400, gültig -> persist', async () => {
   assert.equal((await put({ date_format: 'zzz' })).status, 400);
   assert.equal((await put({ date_format: 'mdy' })).body.data.date_format, 'mdy');
@@ -732,6 +742,50 @@ test('GET /holidays/subdivisions/:cc: gestubbt -> 200', async () => {
   assert.equal(res.status, 200);
   assert.equal(res.body.data[0].isoCode, 'DE-BY');
   holidays.__setFetchImpl(null);
+});
+// #1723: die Regionen kamen in jeder UI-Sprache auf Englisch, weil die Route
+// keine Sprache kannte und resolveName() dann 'EN' nimmt. `lang` traegt die
+// UI-Sprache; es geht durch supportedLocaleFor(), also durch die Liste der
+// Locale-Dateien, und nie ungeprueft in den Service.
+test('GET /holidays/subdivisions/:cc?lang=: Namen in der UI-Sprache, sonst Englisch (#1723)', async () => {
+  const urls = [];
+  holidays.__setFetchImpl(async (url) => {
+    urls.push(String(url));
+    return {
+      ok: true,
+      json: async () => [
+        { code: 'DE-TH', name: [{ language: 'DE', text: 'Thüringen' }, { language: 'EN', text: 'Thuringia' }] },
+        { code: 'DE-BY', name: [{ language: 'DE', text: 'Bayern' }, { language: 'EN', text: 'Bavaria' }] },
+        { code: 'DE-NW', name: [{ language: 'DE', text: 'Nordrhein-Westfalen' }, { language: 'EN', text: 'North Rhine-Westphalia' }] },
+        // Ein Eintrag, den die API nur in der Landessprache und einer dritten fuehrt.
+        { code: 'DE-XX', name: [{ language: 'PT', text: 'Algures' }, { language: 'EN', text: 'Somewhere' }] },
+      ],
+    };
+  });
+  try {
+    const namen = async (query) => {
+      const res = await raw('GET', `/holidays/subdivisions/DE${query}`);
+      assert.equal(res.status, 200, query);
+      return res.body.data.map((s) => s.name);
+    };
+    const englisch = ['Bavaria', 'North Rhine-Westphalia', 'Somewhere', 'Thuringia'];
+    assert.deepEqual(await namen('?lang=de'), ['Bayern', 'Nordrhein-Westfalen', 'Somewhere', 'Thüringen'],
+      'deutsche Namen, in dieser Sprache sortiert; was die API nicht auf Deutsch fuehrt, bleibt englisch');
+    assert.deepEqual(await namen(''), englisch, 'ohne lang wie bisher: Englisch');
+    assert.deepEqual(await namen('?lang=en'), englisch);
+    // Region im Tag: pt-BR ist eine App-Sprache, OpenHolidays kennt nur PT.
+    assert.deepEqual(await namen('?lang=pt-BR'), ['Algures', 'Bavaria', 'North Rhine-Westphalia', 'Thuringia']);
+    // Eine App-Sprache, die die API fuer dieses Land nicht fuehrt.
+    assert.deepEqual(await namen('?lang=ja'), englisch);
+    // Nichts davon ist eine App-Sprache - und nichts davon erreicht den Service.
+    for (const boese of ['?lang=xx', '?lang=..%2Fde', '?lang=de%26countryIsoCode%3DFR', '?lang=de&lang=fr', '?lang=']) {
+      assert.deepEqual(await namen(boese), englisch, `${boese} faellt auf Englisch`);
+    }
+    assert.ok(urls.length > 0 && urls.every((url) => url.endsWith('/Subdivisions?countryIsoCode=DE')),
+      `lang geht nicht an die Fremd-API: ${[...new Set(urls)].join(', ')}`);
+  } finally {
+    holidays.__setFetchImpl(null);
+  }
 });
 test('GET /holidays/groups/:cc/:sc: ungültige Codes -> 400', async () => {
   assert.equal((await raw('GET', '/holidays/groups/xx/DE-BY')).status, 400);
