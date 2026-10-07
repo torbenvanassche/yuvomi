@@ -67,12 +67,12 @@ export function budgetFilter(req, alias, { scoped = true } = {}) {
  *
  * @returns {{ expr: string, params: number[] }}
  */
-export function budgetCategoryExpr(req, alias) {
+export function budgetCategoryExpr(req, alias, category = `${alias}.category`) {
   const mode = getBudgetMode();
-  if (mode !== 'personal') return { expr: `${alias}.category`, params: [] };
+  if (mode !== 'personal') return { expr: category, params: [] };
   return {
     expr: `CASE WHEN ${budgetDetailsHiddenWhere(alias, '?', { mode })}`
-        + ` THEN '${BUDGET_MASKED_CATEGORY}' ELSE ${alias}.category END`,
+        + ` THEN '${BUDGET_MASKED_CATEGORY}' ELSE ${category} END`,
     params: [viewerId(req)],
   };
 }

@@ -1750,7 +1750,7 @@
         "transferToAccount": "إلى الحساب",
         "transferChooseAccounts": "اختر حسابين مختلفين.",
         "catSaving": "ادخار",
-        "movedToSavings": "تم تحويله إلى المدخرات",
+        "summaryTransfers": "التحويلات",
         "transferDeleteConfirm": "حذف طرفي هذا التحويل؟",
         "typeLoan": "قرض",
         "tabsLabel": "أقسام الميزانية",

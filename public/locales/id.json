@@ -1542,7 +1542,7 @@
         "transferToAccount": "Ke rekening",
         "transferChooseAccounts": "Pilih dua rekening berbeda.",
         "catSaving": "Tabungan",
-        "movedToSavings": "Dipindahkan ke tabungan",
+        "summaryTransfers": "Transfer",
         "transferDeleteConfirm": "Hapus kedua sisi transfer ini?",
         "typeLoan": "Pinjaman",
         "tabsLabel": "Area anggaran",

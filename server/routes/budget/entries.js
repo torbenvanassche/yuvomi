@@ -75,9 +75,9 @@ router.get('/summary', (req, res) => {
 
     const totals = db.get().prepare(`
       SELECT
-        SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
-        SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) AS expenses,
-        SUM(amount) AS balance,
+        SUM(CASE WHEN transfer_entry_id IS NULL AND amount > 0 THEN amount ELSE 0 END) AS income,
+        SUM(CASE WHEN transfer_entry_id IS NULL AND amount < 0 THEN amount ELSE 0 END) AS expenses,
+        SUM(CASE WHEN transfer_entry_id IS NULL THEN amount ELSE 0 END) AS balance,
         SUM(CASE WHEN transfer_entry_id IS NOT NULL AND amount < 0 THEN -amount ELSE 0 END) AS moved_to_savings
       FROM budget_entries
       WHERE date BETWEEN ? AND ?${filter.clause}${bookedOnly()}
@@ -85,14 +85,17 @@ router.get('/summary', (req, res) => {
 
     // Fremde 'shared_amount'-Eintraege laufen unter dem Sammel-Bucket (#659):
     // ihr Betrag zaehlt mit, ihre Kategorie verriete sonst den Zweck.
-    const catExpr = budgetCategoryExpr(req, 'budget_entries');
+    // Show Savings separately in the chart without changing its stored parent category.
+    const catExpr = budgetCategoryExpr(req, 'budget_entries',
+      "CASE WHEN budget_entries.category = 'financial_other' AND budget_entries.subcategory = 'saving'"
+      + " THEN 'saving' ELSE budget_entries.category END");
     const byCategory = db.get().prepare(`
       SELECT ${catExpr.expr} AS category,
-             SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END) AS income,
-             SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END) AS expenses,
+             SUM(CASE WHEN transfer_entry_id IS NULL AND amount > 0 THEN amount ELSE 0 END) AS income,
+             SUM(CASE WHEN transfer_entry_id IS NULL AND amount < 0 THEN amount ELSE 0 END) AS expenses,
              SUM(amount) AS total
       FROM budget_entries
-      WHERE date BETWEEN ? AND ?${filter.clause}${bookedOnly()}
+      WHERE date BETWEEN ? AND ?${filter.clause}${bookedOnly()} AND transfer_entry_id IS NULL
       -- GROUP BY 1, nicht GROUP BY category: bei gleichnamigem Output-Alias
       -- gewinnt in SQLite die ECHTE Spalte, und dann gruppierte die Auswertung
       -- weiter nach der unmaskierten Kategorie - der Sammel-Bucket bliebe leer.
@@ -100,15 +103,24 @@ router.get('/summary', (req, res) => {
       ORDER BY ABS(SUM(amount)) DESC
     `).all(...catExpr.params, from, to, ...filter.params);
 
+    const transferCategories = db.get().prepare(`
+      SELECT ${catExpr.expr} AS category, SUM(-amount) AS transfers
+      FROM budget_entries
+      WHERE date BETWEEN ? AND ?${filter.clause}${bookedOnly()}
+        AND transfer_entry_id IS NOT NULL AND amount < 0
+      GROUP BY 1 ORDER BY SUM(-amount) DESC
+    `).all(...catExpr.params, from, to, ...filter.params);
+    byCategory.push(...transferCategories.map((row) => ({ ...row, income: 0, expenses: 0, total: 0 })));
+
     // Was noch aussteht, wird eigens ausgewiesen (#637). Ohne diese Zahl
     // verschwaende eine erwartete Buchung spurlos aus der Uebersicht, und die
     // Bestaetigung liesse sich nur noch in der Liste finden.
     const pending = db.get().prepare(`
       SELECT COUNT(*) AS count,
-             COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0) AS income,
-             COALESCE(SUM(CASE WHEN amount < 0 THEN amount ELSE 0 END), 0) AS expenses
+             COALESCE(SUM(CASE WHEN transfer_entry_id IS NULL AND amount > 0 THEN amount ELSE 0 END), 0) AS income,
+             COALESCE(SUM(CASE WHEN transfer_entry_id IS NULL AND amount < 0 THEN amount ELSE 0 END), 0) AS expenses
       FROM budget_entries
-      WHERE date BETWEEN ? AND ?${filter.clause} AND is_pending = 1
+      WHERE date BETWEEN ? AND ?${filter.clause} AND is_pending = 1 AND transfer_entry_id IS NULL
     `).get(from, to, ...filter.params);
 
     res.json({

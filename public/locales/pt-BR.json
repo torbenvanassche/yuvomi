@@ -1528,7 +1528,7 @@
         "transferToAccount": "Conta de destino",
         "transferChooseAccounts": "Escolha duas contas diferentes.",
         "catSaving": "Poupança",
-        "movedToSavings": "Transferido para poupança",
+        "summaryTransfers": "Transferências",
         "transferDeleteConfirm": "Excluir os dois lados desta transferência?",
         "typeLoan": "Empréstimo",
         "tabsLabel": "Seções do orçamento",

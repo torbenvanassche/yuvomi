@@ -1528,7 +1528,7 @@
         "transferToAccount": "Σε λογαριασμό",
         "transferChooseAccounts": "Επιλέξτε δύο διαφορετικούς λογαριασμούς.",
         "catSaving": "Αποταμίευση",
-        "movedToSavings": "Μεταφέρθηκε σε αποταμίευση",
+        "summaryTransfers": "Μεταφορές",
         "transferDeleteConfirm": "Διαγραφή και των δύο πλευρών αυτής της μεταφοράς;",
         "typeLoan": "Δάνειο",
         "tabsLabel": "Ενότητες προϋπολογισμού",

@@ -4922,3 +4922,14 @@ test('#1775: eine ueberholte Statistik-Antwort ueberschreibt den neueren Zeitrau
     globalThis.__apiStub = savedStub;
   }
 });
+
+test('transfer category bars stay outside income and expense blocks', () => {
+  const rows = [{ category: 'saving', income: 0, expenses: 0, total: 0, transfers: 10 }];
+  const blocks = budgetUi.categoryBlocks(rows);
+  assert.deepEqual(blocks.expenses, []);
+  assert.deepEqual(blocks.income, []);
+  assert.deepEqual(blocks.transfers, [{ category: 'saving', amount: 10 }]);
+  const html = budgetUi.renderCategoryBars(rows);
+  assert.match(html, /budget-chart-block--transfers/);
+  assert.doesNotMatch(html, /budget-chart-block--expenses|budget-chart-block--income/);
+});

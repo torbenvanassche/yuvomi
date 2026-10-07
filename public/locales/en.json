@@ -1528,7 +1528,7 @@
         "transferToAccount": "To account",
         "transferChooseAccounts": "Choose two different accounts.",
         "catSaving": "Saving",
-        "movedToSavings": "Moved to savings",
+        "summaryTransfers": "Transfers",
         "transferDeleteConfirm": "Delete both sides of this transfer?",
         "typeLoan": "Loan",
         "tabsLabel": "Budget sections",

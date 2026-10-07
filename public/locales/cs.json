@@ -1602,7 +1602,7 @@
         "transferToAccount": "Na účet",
         "transferChooseAccounts": "Vyberte dva různé účty.",
         "catSaving": "Spoření",
-        "movedToSavings": "Převedeno na spoření",
+        "summaryTransfers": "Převody",
         "transferDeleteConfirm": "Smazat obě strany tohoto převodu?",
         "typeLoan": "Půjčka",
         "tabsLabel": "Oblasti rozpočtu",

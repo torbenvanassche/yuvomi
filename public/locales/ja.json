@@ -1528,7 +1528,7 @@
         "transferToAccount": "入金先口座",
         "transferChooseAccounts": "異なる2つの口座を選択してください。",
         "catSaving": "貯蓄",
-        "movedToSavings": "貯蓄へ移動",
+        "summaryTransfers": "振替",
         "transferDeleteConfirm": "この振替の両方の記録を削除しますか？",
         "typeLoan": "貸付",
         "tabsLabel": "予算セクション",

@@ -1528,7 +1528,7 @@
         "transferToAccount": "Célszámla",
         "transferChooseAccounts": "Válassz két különböző számlát.",
         "catSaving": "Megtakarítás",
-        "movedToSavings": "Megtakarításba helyezve",
+        "summaryTransfers": "Átutalások",
         "transferDeleteConfirm": "Törlöd az átutalás mindkét oldalát?",
         "typeLoan": "Hitel",
         "tabsLabel": "Költségvetési szakaszok",

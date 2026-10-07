@@ -1676,7 +1676,7 @@
         "transferToAccount": "На счёт",
         "transferChooseAccounts": "Выберите два разных счёта.",
         "catSaving": "Сбережения",
-        "movedToSavings": "Переведено в сбережения",
+        "summaryTransfers": "Переводы",
         "transferDeleteConfirm": "Удалить обе стороны этого перевода?",
         "typeLoan": "Займ",
         "tabsLabel": "Разделы бюджета",

@@ -1528,7 +1528,7 @@
         "transferToAccount": "Compte destinataire",
         "transferChooseAccounts": "Choisissez deux comptes différents.",
         "catSaving": "Épargne",
-        "movedToSavings": "Transféré vers l’épargne",
+        "summaryTransfers": "Virements",
         "transferDeleteConfirm": "Supprimer les deux écritures de ce virement ?",
         "typeLoan": "Prêt",
         "tabsLabel": "Sections du budget",

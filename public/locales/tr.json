@@ -1528,7 +1528,7 @@
         "transferToAccount": "Hedef hesap",
         "transferChooseAccounts": "İki farklı hesap seçin.",
         "catSaving": "Tasarruf",
-        "movedToSavings": "Tasarrufa aktarılan",
+        "summaryTransfers": "Transferler",
         "transferDeleteConfirm": "Bu transferin iki tarafı da silinsin mi?",
         "typeLoan": "Borç",
         "tabsLabel": "Bütçe bölümleri",

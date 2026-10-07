@@ -1676,7 +1676,7 @@
         "transferToAccount": "На рахунок",
         "transferChooseAccounts": "Виберіть два різні рахунки.",
         "catSaving": "Заощадження",
-        "movedToSavings": "Переказано до заощаджень",
+        "summaryTransfers": "Перекази",
         "transferDeleteConfirm": "Видалити обидві сторони цього переказу?",
         "typeLoan": "Позика",
         "tabsLabel": "Розділи бюджету",

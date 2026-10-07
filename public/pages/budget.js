@@ -1278,7 +1278,7 @@ function renderBody() {
     <!-- Zusammenfassung -->
     <div class="metric-grid${expensesOnly ? ' metric-grid--expenses-only' : ''}">
       ${expensesOnly ? expensesCard : incomeCard + expensesCard + balanceCard}
-      <div class="metric-card"><div class="metric-card__label">${t('budget.movedToSavings')}</div><div class="metric-card__value">${amountByRole(s.moved_to_savings || 0, 'total').text}</div></div>
+      <div class="metric-card"><div class="metric-card__label">${t('budget.summaryTransfers')}</div><div class="metric-card__value">${amountByRole(s.moved_to_savings || 0, 'total').text}</div></div>
     </div>
     </div>
     ${pendingNote}
@@ -1517,6 +1517,7 @@ function syncAddAction() {
  * Vorzeichen des Saldos wie bisher. */
 function categoryBlocks(byCategory) {
   const part = (c, kind) => {
+    if (kind === 'transfers') return Number(c.transfers) || 0;
     const own = kind === 'expenses' ? c.expenses : c.income;
     if (own != null) return Number(own) || 0;
     const total = Number(c.total) || 0;
@@ -1526,12 +1527,13 @@ function categoryBlocks(byCategory) {
     .map((c) => ({ category: c.category, amount: part(c, kind) }))
     .filter((r) => r.amount !== 0)
     .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount));
-  return { expenses: block('expenses'), income: block('income') };
+  return { expenses: block('expenses'), income: block('income'), transfers: block('transfers') };
 }
 
 const CHART_BLOCKS = [
   { kind: 'expenses', labelKey: 'budget.expenses' },
   { kind: 'income', labelKey: 'budget.income' },
+  { kind: 'transfers', labelKey: 'budget.summaryTransfers' },
 ];
 
 function blockTotal(rows) {
@@ -1576,14 +1578,14 @@ function chartSummary(byCategory) {
 const CHART_LEAD = 3;
 
 function chartLeadKind(blocks) {
-  return blocks.expenses.length ? 'expenses' : 'income';
+  return blocks.expenses.length ? 'expenses' : blocks.income.length ? 'income' : 'transfers';
 }
 
 /** Blendet die einspaltige Kurzfassung etwas aus? Nur dann gibt es den Knopf. */
 function chartHasMore(blocks) {
   const lead = chartLeadKind(blocks);
-  const other = lead === 'expenses' ? 'income' : 'expenses';
-  return blocks[lead].length > CHART_LEAD || blocks[other].length > 0;
+  return blocks[lead].length > CHART_LEAD
+    || CHART_BLOCKS.some(({ kind }) => kind !== lead && blocks[kind].length > 0);
 }
 
 /* Die Summe des eingeklappten Einnahmen-Blocks, als zweite Zeile unter dem
@@ -4999,7 +5001,7 @@ function summaryWith(summary, entries, sign) {
   };
   for (const e of entries) {
     const amount = Number(e?.amount);
-    if (!Number.isFinite(amount)) continue;
+    if (!Number.isFinite(amount) || e.transfer_entry_id) continue;
     if (summary.month && String(e.date ?? '').slice(0, 7) !== summary.month) continue;
     const income = amount > 0 ? amount : 0;
     const expenses = amount < 0 ? amount : 0;
@@ -5024,7 +5026,7 @@ function summaryWith(summary, entries, sign) {
     row.total = round((row.total || 0) + sign * amount);
   }
   // Eine Kategorie ohne Buchung liefert der Server nicht - das Diagramm auch nicht.
-  next.byCategory = next.byCategory.filter((r) => r.income !== 0 || r.expenses !== 0);
+  next.byCategory = next.byCategory.filter((r) => r.income !== 0 || r.expenses !== 0 || r.transfers > 0);
   return next;
 }
 
