@@ -3,14 +3,14 @@ import assert from 'node:assert/strict';
 
 const { __test: calendar } = await import('../public/pages/calendar.js');
 
-test('the initial default local calendar name is translated', () => {
+test('the default local calendar displays its saved name', () => {
   assert.equal(
     calendar.localCalendarDisplayName({ id: 1, name: 'Yuvomi', is_default: true }),
-    'calendar.defaultLocalCalendar',
+    'Yuvomi',
   );
 });
 
-test('stored calendar names take precedence over the default label', () => {
+test('renamed and additional calendars display their saved names', () => {
   assert.equal(
     calendar.localCalendarDisplayName({ id: 1, name: 'Renamed default', is_default: true }),
     'Renamed default',

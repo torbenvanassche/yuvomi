@@ -138,6 +138,20 @@ test('local calendar feeds exclude externally synchronized events', async () => 
   const ics = buildCalendarFeed(db, local.id, new Date('2035-05-02T00:00:00Z'), 'Europe/Brussels');
   assert.match(ics, /SUMMARY:Local event/);
   assert.doesNotMatch(ics, /SUMMARY:Google event/);
+
+  // Older databases may carry an invalid assignment from before the write guard.
+  // The resolver must exclude it independently of the trigger protecting new rows.
+  db.exec('SAVEPOINT legacy_external_calendar');
+  try {
+    db.exec('DROP TRIGGER trg_event_local_calendar_insert');
+    const legacy = insert.run('Legacy Google event', '2035-05-01T11:00:00Z', '2035-05-01T12:00:00Z', 'legacy-google-id', local.id, ADMIN.id).lastInsertRowid;
+    assert.equal(resolveLocalCalendarId(db, legacy), null);
+    const feed = buildCalendarFeed(db, local.id, new Date('2035-05-02T00:00:00Z'), 'Europe/Brussels');
+    assert.match(feed, /SUMMARY:Local event/);
+    assert.doesNotMatch(feed, /SUMMARY:Legacy Google event/);
+  } finally {
+    db.exec('ROLLBACK TO legacy_external_calendar; RELEASE legacy_external_calendar');
+  }
 });
 
 test('deleting a non-default calendar reassigns events to the default calendar', async () => {
@@ -194,6 +208,22 @@ test('calendar counts respect the viewer; household feeds have no private audien
   const feed = buildCalendarFeed(db, calendar.id, new Date('2035-05-02T00:00:00Z'));
   assert.match(feed, /SUMMARY:Visibility all/);
   assert.doesNotMatch(feed, /SUMMARY:Visibility (private|assignees)/);
+});
+
+test('household calendar feeds do not borrow their creator or admin preferences', async () => {
+  const calendar = await createCalendar('Household preference', '#112233');
+  const event = await createEvent('Household appointment', calendar.id);
+  db.prepare('INSERT INTO event_assignments (event_id, user_id) VALUES (?, ?)').run(event.id, MEMBER.id);
+  const before = buildCalendarFeed(db, calendar.id, new Date('2035-05-02T00:00:00Z'));
+  const preference = db.prepare('SELECT calendar_feed_show_assignees FROM users WHERE id = ?').get(ADMIN.id);
+  try {
+    db.prepare('UPDATE users SET calendar_feed_show_assignees = 1 WHERE id = ?').run(ADMIN.id);
+    assert.equal(buildCalendarFeed(db, calendar.id, new Date('2035-05-02T00:00:00Z')), before);
+    db.prepare('UPDATE local_calendars SET created_by = NULL WHERE id = ?').run(calendar.id);
+    assert.equal(buildCalendarFeed(db, calendar.id, new Date('2035-05-02T00:00:00Z')), before);
+  } finally {
+    db.prepare('UPDATE users SET calendar_feed_show_assignees = ? WHERE id = ?').run(preference.calendar_feed_show_assignees, ADMIN.id);
+  }
 });
 
 test('default repair never assigns rows and generated events have no local calendar', async () => {

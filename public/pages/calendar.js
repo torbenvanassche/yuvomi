@@ -1338,7 +1338,7 @@ function eventSourceKey(ev) {
   return null;
 }
 
-/** True, solange die Quelle des Termins nicht ausgeblendet ist. Eigene Termine haben keine. */
+/** True, solange der lokale Kalender oder die externe Quelle des Termins nicht ausgeblendet ist. */
 function passesSourceFilter(item) {
   const key = eventSourceKey(item);
   return !key || !state.hiddenSources?.has(key);
@@ -5554,11 +5554,21 @@ async function openLocalCalendarsModal() {
       } else if (e.target.closest('.js-calendar-copy-feed')) {
         if (calendar.feed_url) await copyText(calendar.feed_url, 'calendar.localCalendarExportCopied');
       } else if (e.target.closest('.js-calendar-disable-feed')) {
-        await api.delete(`/calendar/calendars/${id}/feed`);
-        await refreshLocalCalendarsPanel(panel);
+        const ok = await confirmOverModal(t('settings.feedExportDisableConfirm'), {
+          closeOnConfirm: false,
+          danger: true,
+          confirmLabel: t('settings.feedExportDisable'),
+          detail: t('settings.feedExportDisableConfirmDetail'),
+          onConfirm: async () => {
+            await api.delete(`/calendar/calendars/${id}/feed`);
+            await refreshLocalCalendarsPanel(panel);
+          },
+        });
+        if (!ok) return;
         refocusAfterRender();
       } else if (e.target.closest('.js-calendar-delete')) {
         const ok = await confirmOverModal(t('calendar.localCalendarDeleteConfirm', { name: calendar.name }), {
+          closeOnConfirm: false,
           detail: t('calendar.localCalendarDeleteDetail'),
           confirmLabel: t('common.delete'),
           danger: true,
@@ -5941,10 +5951,7 @@ function restoreHiddenSources(userId) {
 }
 
 function localCalendarDisplayName(calendar) {
-  // Only localize the initial name; a saved rename takes precedence.
-  return calendar?.is_default && calendar.name === 'Yuvomi'
-    ? t('calendar.defaultLocalCalendar')
-    : (calendar?.name ?? '');
+  return calendar?.name ?? '';
 }
 
 function eventLocalCalendarDisplayName(ev) {
