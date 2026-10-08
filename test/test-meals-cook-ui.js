@@ -47,6 +47,7 @@ globalThis.__bindUserMultiSelect = picker.bindUserMultiSelect;
 
 const { setPermissions, clearPermissions } = await import('../public/permissions.js');
 const { setHouseholdSize, clearHouseholdSize } = await import('../public/utils/household.js');
+const { toLocalDateKey } = await import('../public/utils/date.js');
 const { __test: meals } = await import('../public/pages/meals.js');
 const { __test: dashboard } = await import('../public/pages/dashboard.js');
 
@@ -70,7 +71,7 @@ const MITTAG = { key: 'lunch', label: 'Mittag' };
 const mahlzeit = (over = {}) => ({
   id: 11, title: 'Linsensuppe', date: '2026-10-07', meal_type: 'lunch', recipe_id: null,
   recipe_url: null, notes: null, recurrence_template_id: null, recurrence_end_date: null,
-  cook_user_id: null, cook_name: null, cook_color: null, cook_avatar: null,
+  cook_user_id: null, cook_name: null, cook_color: null,
   ingredients: [{ id: 1, name: 'Linsen', quantity: '200 g', category: 'Vorrat', on_shopping_list: 0 }],
   ...over,
 });
@@ -169,8 +170,25 @@ test('Wochenansicht: ein Koch ohne Zutaten bekommt seine eigene Meta-Zeile; ein 
   assert.match(meta, /meal-card__cook/);
   assert.doesNotMatch(meta, /meal-card__ingredients-count/);
 
-  const mitBild = await withAccess(SCHREIBEN, () => kachel(mitBen({ cook_avatar: 'data:image/png;base64,QkVO' })));
-  assert.match(mitBild, /<img src="data:image\/png;base64,QkVO" alt="Ben"/);
+  // DAS BILD KOMMT AUS DER MITGLIEDERLISTE, nicht aus der Mahlzeit: der Server
+  // haengt es nicht mehr an jede Zeile der Woche. Die Mahlzeit nennt nur die id.
+  const BEN_MIT_BILD = { ...BEN, avatar_data: 'data:image/png;base64,QkVO' };
+  const karte = (modules, members) => withAccess(modules, () => mitPlan({ members }, () => kachel(mitBen())));
+  const mitBild = await karte(SCHREIBEN, [ANNA, BEN_MIT_BILD]);
+  assert.match(mitBild, /<img src="data:image\/png;base64,QkVO" alt="Ben"/, 'das Profilbild des Mitglieds steht an der Karte');
+  assert.match(abschnitt(mitBild, 'class="meal-card__cook"', '</button>'), /<img src="data:image\/png;base64,QkVO"/, 'und zwar am Koch-Zeichen');
+  assert.match(await karte(LESEN, [ANNA, BEN_MIT_BILD]), /<img src="data:image\/png;base64,QkVO" alt="Ben"/, 'auch bei `read`');
+
+  // Ohne Bild am Mitglied, und fuer einen Koch, der in der Liste nicht steht
+  // (ehemalig, Hauspersonal): die Initialen auf seiner Farbe, kein leeres Bild.
+  for (const members of [MITGLIEDER, [ANNA], []]) {
+    const ohneBild = await karte(SCHREIBEN, members);
+    assert.match(ohneBild, /class="meal-card__cook"/, 'das Zeichen bleibt');
+    assert.doesNotMatch(ohneBild, /<img src="data:/, 'kein Bild');
+    assert.match(ohneBild, /background-color:#34C759/, 'die Farbe aus der Mahlzeit');
+  }
+  // Ein Bildfeld an der Mahlzeit selbst liest niemand mehr.
+  assert.doesNotMatch(await withAccess(SCHREIBEN, () => mitPlan({}, () => kachel(mitBen({ cook_avatar: 'data:image/png;base64,QUxU' })))), /QUxU/);
 });
 
 test('Wochenansicht: der Name des Kochs laeuft durch esc()', async () => {
@@ -192,7 +210,7 @@ test('Wochenansicht bei `read`: der Koch bleibt als Zeichen an der Karte', async
 
 test('Uebersicht: der Slot einer Mahlzeit mit Koch traegt den Avatar in der Kopfzeile, vor dem Symbol der Mahlzeitenart', () => {
   const html = dashboard.renderTodayMeals([
-    { meal_type: 'lunch', title: 'Linsensuppe', cook_user_id: 2, cook_name: 'Ben', cook_color: '#34C759', cook_avatar: null },
+    { meal_type: 'lunch', title: 'Linsensuppe', cook_user_id: 2, cook_name: 'Ben', cook_color: '#34C759' },
     { meal_type: 'dinner', title: 'Pasta', cook_user_id: null, cook_name: null },
   ], ['lunch', 'dinner']);
 
@@ -215,19 +233,109 @@ test('Uebersicht, Heute-Blatt: die Zeile der Mahlzeit traegt den Koch als ihre P
   // Alle drei Mahlzeitenarten, damit die Auswahl "was steht als Naechstes an"
   // zu jeder Uhrzeit eine Mahlzeit findet - der Test haengt nicht an der Uhr.
   const heute = (over) => ['breakfast', 'lunch', 'dinner'].map((meal_type, i) => ({
-    id: 30 + i, meal_type, title: `Gericht ${i}`, cook_user_id: null, cook_name: null, cook_color: null, cook_avatar: null, ...over,
+    id: 30 + i, meal_type, title: `Gericht ${i}`, cook_user_id: null, cook_name: null, cook_color: null, ...over,
   }));
-  const zeile = (todayMeals) => dashboard.buildTodayProgram({ todayMeals }, { includeTasks: false, includeCalendar: false })
+  const zeile = (todayMeals, users) => dashboard.buildTodayProgram({ todayMeals, users }, { includeTasks: false, includeCalendar: false })
     .rows.find((row) => row.kind === 'meal');
 
-  const mit = zeile(heute({ cook_user_id: 2, cook_name: 'Ben', cook_color: '#34C759', cook_avatar: 'data:image/png;base64,QkVO' }));
+  // Das Bild steht in `users` derselben Dashboard-Antwort, nicht an der Mahlzeit.
+  const USERS = [{ id: 1, display_name: 'Anna', avatar_color: '#FF9500', avatar_data: null },
+    { id: 2, display_name: 'Ben', avatar_color: '#34C759', avatar_data: 'data:image/png;base64,QkVO' }];
+  const mit = zeile(heute({ cook_user_id: 2, cook_name: 'Ben', cook_color: '#34C759' }), USERS);
   assert.ok(mit, 'Vorbedingung: das Heute-Blatt hat seine Mahlzeit-Zeile');
   assert.deepEqual(mit.who, { id: 2, display_name: 'Ben', color: '#34C759', avatar_data: 'data:image/png;base64,QkVO' },
     'wen die Zeile angeht, ist der Koch - das Ueberlappungszeichen liest genau diese Person');
+  assert.equal(zeile(heute({ cook_user_id: 2, cook_name: 'Ben', cook_color: '#34C759' })).who.avatar_data, null,
+    'ohne `users` (oder fuer einen Koch, der dort nicht steht) bleiben die Initialen');
+
+  // Die Kachel "Heute essen" nimmt denselben Weg.
+  const slot = (users) => dashboard.renderTodayMeals(
+    [{ meal_type: 'lunch', title: 'Suppe', cook_user_id: 2, cook_name: 'Ben', cook_color: '#34C759' }], ['lunch'], users);
+  assert.match(abschnitt(slot(USERS), 'class="meal-slot__cook"', 'meal-slot__icon'), /<img src="data:image\/png;base64,QkVO" alt="Ben"/,
+    'das Profilbild im Kopf des Slots');
+  assert.doesNotMatch(slot([USERS[0]]), /<img src="data:/, 'ohne Eintrag in `users` kein Bild');
+  assert.match(slot(undefined), /class="meal-slot__cook"/, 'und ohne Liste bleibt das Zeichen');
 
   const ohne = zeile(heute());
   assert.ok(ohne, 'Vorbedingung');
   assert.equal(ohne.who, null, 'ohne Koch bleibt die Zeile, wie sie war');
+});
+
+// renderTodayMeals() nimmt die Liste als Argument - ob die Kachel sie auch
+// BEKOMMT, entscheidet der eine Aufruf in renderDashboardLayout(). Fehlte
+// `data.users` dort, blieben alle Tests darueber gruen und die Kachel zeigte
+// fuer jeden Koch nur noch Initialen (Review zu #1739).
+test('Uebersicht: die Mahlzeiten-Kachel bekommt `users` der Dashboard-Antwort - das Profilbild des Kochs steht im Slot', () => {
+  const USERS = [{ id: 1, display_name: 'Anna', avatar_color: '#FF9500', avatar_data: null },
+    { id: 2, display_name: 'Ben', avatar_color: '#34C759', avatar_data: 'data:image/png;base64,QkVO' }];
+  const todayMeals = [{ id: 31, meal_type: 'lunch', title: 'Suppe', cook_user_id: 2, cook_name: 'Ben', cook_color: '#34C759' }];
+  const kachel = (data) => {
+    const zuvor = globalThis.window.yuvomi;
+    globalThis.window.yuvomi = null;
+    try {
+      return dashboard.renderDashboardLayout([{ id: 'meals', visible: true, size: '2x1' }], data, null, 'EUR', { visibleMealTypes: ['lunch'] });
+    } finally {
+      globalThis.window.yuvomi = zuvor;
+    }
+  };
+  const slot = (html) => abschnitt(html, 'class="meal-slot__cook"', 'meal-slot__icon');
+
+  const mit = kachel({ todayMeals, users: USERS });
+  assert.match(mit, /data-type="lunch"/, 'Vorbedingung: die Kachel ist gezeichnet');
+  assert.match(slot(mit), /<img src="data:image\/png;base64,QkVO" alt="Ben"/, 'das Bild aus `users` steht am Koch-Zeichen');
+
+  // Gegenfall: ohne `users` (oder ohne Bild dort) die Initialen auf der Farbe.
+  const ohne = kachel({ todayMeals });
+  assert.ok(slot(ohne), 'das Zeichen bleibt');
+  assert.doesNotMatch(ohne, /<img src="data:/);
+});
+
+// Entschieden zu #1737: Kochen ist eine Zustaendigkeit wie eine Aufgabe, also
+// zaehlt der Koch am Wandtablett unter "Wer heute dran ist" mit. Der Abschnitt
+// zaehlt `who` ueber alle Zeilen des Tages; faellt `who` an der Mahlzeit-Zeile
+// weg, verschwindet, wer heute NUR kocht, ohne dass sonst etwas rot wuerde.
+test('Wandtablett, "Wer heute dran ist": der Koch der heutigen Mahlzeit zaehlt mit', () => {
+  const heute = (over) => ['breakfast', 'lunch', 'dinner'].map((meal_type, i) => ({
+    id: 30 + i, meal_type, title: `Gericht ${i}`, cook_user_id: null, cook_name: null, cook_color: null, ...over,
+  }));
+  const ANNA_WAND = { id: 1, display_name: 'Anna Beispiel', avatar_color: '#FF9500', avatar_data: null };
+  const BEN_WAND = { id: 2, display_name: 'Ben Beispiel', avatar_color: '#34C759', avatar_data: null };
+  const wer = (todayMeals, urgentTasks = []) => {
+    // Ohne App-Huelle, wie test-dashboard.js die Wand rendert: `window.yuvomi`
+    // traegt hier nur den Toast-Stub, keine Modul-Abfrage.
+    const zuvor = globalThis.window.yuvomi;
+    globalThis.window.yuvomi = null;
+    try {
+      const html = dashboard.renderWallSurface({ todayMeals, urgentTasks, users: [ANNA_WAND, BEN_WAND] }, null, {});
+      return abschnitt(html, 'class="wall__who"', '</section>');
+    } finally {
+      globalThis.window.yuvomi = zuvor;
+    }
+  };
+  const mitglieder = (html) => [...html.matchAll(/<span aria-hidden="true">(\d+)<\/span>[\s\S]*?<span class="wall-who__name">([^<]*)<\/span>/g)]
+    .map((m) => `${m[2]}:${m[1]}`);
+
+  setHouseholdSize(2);
+  try {
+    const nurKoch = wer(heute({ cook_user_id: 2, cook_name: 'Ben Beispiel', cook_color: '#34C759' }));
+    assert.ok(nurKoch, 'Vorbedingung: der Abschnitt ist gebaut');
+    assert.deepEqual(mitglieder(nurKoch), ['Ben:1'], 'wer heute nur kocht, ist heute dran - mit einer Sache');
+    assert.doesNotMatch(nurKoch, /wall-who__none/);
+
+    // Kochen zaehlt NEBEN einer Aufgabe, nicht statt ihrer.
+    const aufgabe = { id: 5, title: 'Muell', status: 'open', due_date: toLocalDateKey(new Date()), due_time: '08:00', assigned_users: [{ id: 2, display_name: 'Ben Beispiel', color: '#34C759' }] };
+    const beides = wer(heute({ cook_user_id: 2, cook_name: 'Ben Beispiel', cook_color: '#34C759' }), [aufgabe]);
+    const ohneKochen = wer(heute(), [aufgabe]);
+    assert.deepEqual(mitglieder(ohneKochen), ['Ben:1'], 'Vorbedingung: die Aufgabe allein zaehlt eins');
+    assert.deepEqual(mitglieder(beides), ['Ben:2'], 'Aufgabe und Kochen sind zwei Dinge');
+
+    // Gegenfall: ohne Koch ist niemand dran.
+    const niemand = wer(heute());
+    assert.match(niemand, /wall-who__none/, 'eine Mahlzeit ohne Koch setzt niemanden auf die Liste');
+    assert.deepEqual(mitglieder(niemand), []);
+  } finally {
+    clearHouseholdSize();
+  }
 });
 
 test('Uebersicht: der Name des Kochs laeuft durch esc()', () => {
@@ -269,15 +377,58 @@ test('Leseansicht bei `read`: der Koch steht als Wert da - mit Avatar und Namen,
   assert.match(editor.content, /class="user-ms" data-ms-name="meal_cook"/);
 });
 
-test('bei `read` wird die Mitgliederliste gar nicht erst geladen; mit Schreibrecht kommt sie aus /family/members', async () => {
+// Die Wochenkarte und die Uebersicht messen `esc()` am Namen je selbst; die
+// Leseansicht schreibt ihn an einer DRITTEN Stelle aus, und zwar als sichtbaren
+// Text. Ohne `esc()` dort blieb jeder der beiden anderen Tests gruen.
+test('Leseansicht bei `read`: der Name des Kochs laeuft durch esc()', async () => {
+  const meal = mitBen({ cook_name: 'Ben"><img src=x onerror=alert(1)>&<b>' });
+  const [lesend] = await withAccess(LESEN, () => mitPlan({ meals: [meal] }, () => modalMitschnitt(
+    () => meals.openMealModal({ mode: 'edit', meal, date: meal.date, mealType: meal.meal_type }),
+  )));
+  assert.match(lesend.content, /data-view="read"/, 'Vorbedingung: es ist die Leseansicht');
+  const zeile = abschnitt(lesend.content, 'class="meal-read__cook"', 'data-lucide="list"');
+  assert.ok(zeile, 'Vorbedingung: die Koch-Zeile ist da');
+  assert.ok(zeile.includes('<span>Ben&quot;&gt;&lt;img src=x onerror=alert(1)&gt;&amp;&lt;b&gt;</span>'),
+    'der ausgeschriebene Name steht escaped da');
+  assert.doesNotMatch(lesend.content, /<img src=x|<b>/, 'und nirgends im Dialog roh');
+});
+
+// Ein Abruf, der scheitert, ist kein Haushalt ohne Mitglieder. Der leere
+// Fallback behauptete genau das - der Dialog bot nur noch "Niemand" an, und
+// nichts sagte, warum.
+test('loadMembers: ein gescheiterter Abruf wird gemeldet und loescht die geladene Liste nicht', async () => {
+  const gemeldet = [];
+  const zuvorError = console.error;
+  const zuvorStub = globalThis.__apiStub;
+  console.error = (...args) => { gemeldet.push(args); };
+  const fehler = Object.assign(new Error('Netz weg'), { status: 503 });
+  globalThis.__apiStub = { get: async () => { throw fehler; } };
+  let members;
+  try {
+    members = await withAccess(SCHREIBEN, () => mitPlan({ members: MITGLIEDER }, async () => {
+      await meals.loadMembers();
+      return meals.state.members;
+    }));
+  } finally {
+    console.error = zuvorError;
+    globalThis.__apiStub = zuvorStub;
+  }
+  assert.equal(gemeldet.length, 1, 'der Fehler wird nicht still geschluckt');
+  assert.ok(gemeldet[0].includes(fehler), 'gemeldet wird der Fehler selbst');
+  assert.deepEqual(members, MITGLIEDER, 'die schon geladene Liste bleibt - kein "es gibt keine Mitglieder"');
+});
+
+test('die Mitgliederliste kommt aus /family/members - auch bei `read`, wo sie das Bild des Kochs traegt', async () => {
   const laden = (modules) => withAccess(modules, () => mitPlan({ members: [{ id: 99 }] }, async () => {
     const liste = await aufrufe(() => meals.loadMembers(), { 'GET /family/members': { data: MITGLIEDER } });
     return { pfade: liste.map((a) => `${a.method} ${a.path}`), members: meals.state.members };
   }));
 
+  // Bei `read` gibt es keine Wahl (die Leseansicht hat keine Auswahl), die
+  // Liste traegt aber das Profilbild, das nicht mehr an jeder Mahlzeit haengt.
   const lesend = await laden(LESEN);
-  assert.deepEqual(lesend.pfade, [], 'ohne Wahl keine Liste');
-  assert.deepEqual(lesend.members, []);
+  assert.deepEqual(lesend.pfade, ['GET /family/members'], 'EIN Abruf fuer die ganze Seite, keiner je Mahlzeit');
+  assert.deepEqual(lesend.members, MITGLIEDER);
 
   const schreibend = await laden(SCHREIBEN);
   assert.deepEqual(schreibend.pfade, ['GET /family/members'], 'die eine Mitgliederliste (householdMemberSql)');
@@ -322,6 +473,71 @@ test('Dialog: ein gespeicherter Koch, der kein Mitglied (mehr) ist, steht in der
   // Neu angeboten wird sie nicht: an einer anderen Mahlzeit fehlt sie.
   const andere = await withAccess(SCHREIBEN, () => mitPlan({}, () => meals.buildModalContent({ mode: 'edit', date: meal.date, mealType: 'lunch', meal: mahlzeit() })));
   assert.deepEqual(optionen(andere).map((o) => o.name), ['userMultiSelect.nobody', 'Anna', 'Ben']);
+});
+
+// R17 Schritt 5 (Critique 2026-10-07, A4 P2): "Mahlzeit bearbeiten" war mobil
+// 1899px lang, "Aenderung anwenden auf" stand bei y 1813 hinter "Weitere
+// Einstellungen". Der Umfang entscheidet, was Speichern tut - er steht oben.
+// Die Zutaten sind beim Bearbeiten eingeklappt und nennen ihre Zahl.
+async function dialogMitAbschnitten(opts) {
+  const abschnitte = [];
+  const vorher = globalThis.__advancedSection;
+  globalThis.__advancedSection = (inner, options) => {
+    abschnitte.push({ inner, options });
+    return `<!--abschnitt-${abschnitte.length - 1}-->`;
+  };
+  try {
+    const html = await withAccess(SCHREIBEN, () => mitPlan({}, () => meals.buildModalContent(opts)));
+    return { html, abschnitte };
+  } finally {
+    if (vorher === undefined) delete globalThis.__advancedSection; else globalThis.__advancedSection = vorher;
+  }
+}
+
+test('Dialog einer Serie: der Umfang steht als Erstes im Dialog, nicht hinter "Weitere Einstellungen"', async () => {
+  const serie = mahlzeit({ recurrence_template_id: 5, recurrence_end_date: '2026-12-31' });
+  const { html, abschnitte } = await dialogMitAbschnitten({ mode: 'edit', date: serie.date, mealType: 'lunch', meal: serie });
+  const umfang = html.indexOf('id="modal-edit-scope"');
+  assert.ok(umfang >= 0, 'der Umfang steht im sichtbaren Teil');
+  for (const marke of ['id="modal-date"', 'id="modal-title"', 'data-ms-name="meal_cook"', '<!--abschnitt-0-->']) {
+    assert.ok(html.indexOf(marke) > umfang, `der Umfang steht vor ${marke}`);
+  }
+  assert.ok(html.indexOf('meal-recurrence-note') >= 0 && html.indexOf('meal-recurrence-note') < umfang, 'der Serienhinweis geht voran');
+  const ende = html.indexOf('id="modal-repeat-until-group" hidden');
+  assert.ok(ende > umfang && ende < html.indexOf('id="modal-date"'), 'das Wiederholungs-Ende bleibt beim Umfang, verborgen bis "Serie"');
+  assert.equal((html.match(/id="modal-edit-scope"/g) ?? []).length, 1, 'genau EIN Umfang-Feld');
+  for (const a of abschnitte) {
+    assert.doesNotMatch(a.inner, /modal-edit-scope|modal-repeat-until/, 'in keinem Aufklapper steht noch ein Stueck davon');
+  }
+  const erweitert = abschnitte.find((a) => /id="modal-recipe-id"/.test(a.inner));
+  assert.equal(erweitert.options.open, false, 'die Serie allein oeffnet "Weitere Einstellungen" nicht mehr');
+
+  // Gegenfall: ohne Serie gibt es keinen Umfang, und Anlegen behaelt den Schalter.
+  const einzel = await dialogMitAbschnitten({ mode: 'edit', date: serie.date, mealType: 'lunch', meal: mahlzeit() });
+  assert.doesNotMatch(einzel.html + einzel.abschnitte.map((a) => a.inner).join(''), /modal-edit-scope/);
+  const neu = await dialogMitAbschnitten({ mode: 'create', date: serie.date, mealType: 'lunch' });
+  assert.match(neu.abschnitte.map((a) => a.inner).join(''), /id="modal-repeat-weekly"/, 'Anlegen: "Woechentlich wiederholen" bleibt, wo es war');
+});
+
+test('Dialog: die Zutaten sind beim Bearbeiten eingeklappt und nennen ihre Zahl - beim Anlegen und ohne Zutaten stehen sie offen', async () => {
+  const drei = mahlzeit({ ingredients: [1, 2, 3].map((id) => ({ id, name: `Zutat ${id}`, quantity: '', category: 'Vorrat', on_shopping_list: 1 })) });
+  const { html, abschnitte } = await dialogMitAbschnitten({ mode: 'edit', date: drei.date, mealType: 'lunch', meal: drei });
+  const zutaten = abschnitte.find((a) => /id="ingredient-list"/.test(a.inner));
+  assert.ok(zutaten, 'die Zutaten stehen im geteilten Aufklapper');
+  assert.equal(zutaten.options.label, 'meals.ingredientsLabel · 3', 'er nennt die Zahl');
+  assert.ok(!zutaten.options.open, 'und startet geschlossen');
+  assert.match(zutaten.inner, /id="add-ingredient-btn"/, '"Zutat hinzufuegen" steht bei der Liste');
+  assert.equal((zutaten.inner.match(/class="ingredient-row/g) ?? []).length, 3);
+  assert.match(html, /<div class="meal-ingredients-fold" id="modal-ingredients-fold">\s*<!--abschnitt-0-->/, 'vor "Weitere Einstellungen"');
+
+  for (const [name, opts] of [
+    ['Anlegen', { mode: 'create', date: drei.date, mealType: 'lunch' }],
+    ['Bearbeiten ohne Zutaten', { mode: 'edit', date: drei.date, mealType: 'lunch', meal: mahlzeit({ ingredients: [] }) }],
+  ]) {
+    const offen = await dialogMitAbschnitten(opts);
+    assert.match(offen.html, /<label class="form-label">meals\.ingredientsLabel<\/label>\s*<div class="ingredient-list" id="ingredient-list">/, `${name}: Liste offen im Dialog`);
+    assert.ok(!offen.abschnitte.some((a) => /id="ingredient-list"/.test(a.inner)), `${name}: nicht im Aufklapper`);
+  }
 });
 
 test('Dialog im Solo-Haushalt: die Auswahl ist verborgen, nicht entfernt', async () => {
@@ -489,26 +705,47 @@ test('Speichern: nur diese Mahlzeit - der Koch geht immer mit, auch als null', a
   assert.equal(entfernt.body.cook_user_id, null, 'den Koch herauszunehmen ist eine Angabe, kein fehlendes Feld');
 });
 
-test('Speichern mit Serien-Umfang: der Koch geht nur mit, wenn er im Dialog geaendert wurde', async () => {
-  const meal = mitBen({ recurrence_template_id: 4, ingredients: [] });
+// Die Senderegel fuer "ganze Serie", am Absendeweg allein: der Koch geht NUR
+// mit, wenn ihn jemand in diesem Dialog gewaehlt hat (`cookTouched`). Welcher
+// Koch an der Mahlzeit oder an der Vorlage steht, spielt keine Rolle - aus den
+// gespeicherten Staenden laesst sich "gewaehlt" nicht von "gezeigt"
+// unterscheiden. Klick, Umfang-Wechsel und der Endzustand je Woche ueber den
+// echten Router stehen in test-meals-cook-series.js.
+test('Speichern mit Serien-Umfang: der Koch geht nur mit, wenn er in diesem Dialog gewaehlt wurde', async () => {
+  const serienBody = async (meal, form, cookTouched) => {
+    const [put, ...mehr] = await speichern({ modal: { mode: 'edit', meal, ...(cookTouched === undefined ? {} : { cookTouched }) }, form });
+    assert.ok(put && !mehr.length, 'genau ein Schreibaufruf');
+    assert.equal(`${put.method} ${put.path}`, 'PUT /meals/11?scope=series');
+    return put.body;
+  };
+  const gleich = mitBen({ recurrence_template_id: 4, recurrence_cook_user_id: 2, ingredients: [] });
+  const abweichend = mitBen({ recurrence_template_id: 4, recurrence_cook_user_id: 1, ingredients: [] });
+  const ohne = mahlzeit({ recurrence_template_id: 4, recurrence_cook_user_id: 1, ingredients: [] });
 
-  const [unveraendert] = await speichern({ modal: { mode: 'edit', meal }, form: formular({ koch: 2, scope: 'series', titel: 'Neuer Titel' }) });
-  assert.equal(`${unveraendert.method} ${unveraendert.path}`, 'PUT /meals/11?scope=series');
-  assert.equal(unveraendert.body.title, 'Neuer Titel', 'Vorbedingung: die Serienaenderung geht raus');
-  assert.ok(!('cook_user_id' in unveraendert.body),
-    'eine Titelaenderung an der Serie ueberschreibt nicht jede einzeln getroffene Koch-Wahl');
+  // Unberuehrt: nichts geht mit - gleich, welcher Stand wovon abweicht.
+  for (const [fall, meal, koch] of [
+    ['Mahlzeit und Vorlage gleich', gleich, 2],
+    ['Mahlzeit weicht von der Vorlage ab', abweichend, 2],
+    ['Mahlzeit ohne Koch, Vorlage mit', ohne, null],
+    ['die Auswahl zeigt den Koch der Vorlage', abweichend, 1],
+  ]) {
+    for (const merker of [false, undefined]) {
+      const body = await serienBody(meal, formular({ koch, scope: 'series', titel: 'Neuer Titel' }), merker);
+      assert.equal(body.title, 'Neuer Titel', `${fall}: Vorbedingung, die Serienaenderung geht raus`);
+      assert.ok(!('cook_user_id' in body), `${fall} (cookTouched ${merker}): kein Koch im Body`);
+    }
+  }
 
-  const [gewechselt] = await speichern({ modal: { mode: 'edit', meal }, form: formular({ koch: 1, scope: 'series' }) });
-  assert.equal(gewechselt.path, '/meals/11?scope=series');
-  assert.equal(gewechselt.body.cook_user_id, 1, 'ein geaenderter Koch erreicht die Serie');
+  // Beruehrt: es geht mit, was gewaehlt ist - auch wenn es keinem Stand widerspricht.
+  assert.equal((await serienBody(gleich, formular({ koch: 2, scope: 'series' }), true)).cook_user_id, 2, 'derselbe Koch, bewusst fuer alle');
+  assert.equal((await serienBody(abweichend, formular({ koch: 1, scope: 'series' }), true)).cook_user_id, 1);
+  const geleert = await serienBody(gleich, formular({ scope: 'series' }), true);
+  assert.ok('cook_user_id' in geleert && geleert.cook_user_id === null, '"Niemand" ist eine Angabe');
 
-  const [entfernt] = await speichern({ modal: { mode: 'edit', meal }, form: formular({ scope: 'series' }) });
-  assert.equal(entfernt.body.cook_user_id, null, 'auch "Niemand" ist eine Aenderung');
-
-  // Eine Serien-Mahlzeit ohne Koch, unveraendert gespeichert: nichts geht mit.
-  const ohne = mahlzeit({ recurrence_template_id: 4, ingredients: [] });
-  const [still] = await speichern({ modal: { mode: 'edit', meal: ohne }, form: formular({ scope: 'series' }) });
-  assert.ok(!('cook_user_id' in still.body));
+  // "Nur diese Mahlzeit" bleibt, wie es war: der Koch geht immer mit, beruehrt oder nicht.
+  const [einzeln] = await speichern({ modal: { mode: 'edit', meal: abweichend }, form: formular({ koch: 2 }) });
+  assert.equal(einzeln.path, '/meals/11');
+  assert.equal(einzeln.body.cook_user_id, 2);
 });
 
 // -------------------------------------------------------------------------
@@ -533,4 +770,305 @@ test('Stylesheets: die Koch-Zeichen schrumpfen nicht, und der Avatar der Kachel 
   assert.match(slot, /margin-inline-start:\s*auto/, 'sonst setzte space-between den Avatar in die Mitte des Kopfs');
 
   assert.ok(regel('meals.css', '.meal-read__cook'), '.meal-read__cook hat eine Regel in meals.css');
+});
+
+// -------------------------------------------------------------------------
+// #1784: die nachgereichte Koch-Auswahl ist keine Eingabe
+// -------------------------------------------------------------------------
+
+/* GEMESSEN AM ECHTEN WAECHTER. Scheiterte der erste Abruf der Mitglieder,
+ * reicht openMealModal() die Auswahl nach, sobald sie da ist - und tauscht
+ * dafuer Felder im offenen Dialog. Der Waechter des Dialogs (components/
+ * modal.js) verglich danach neue Felder gegen die Basis vom Oeffnen und fragte
+ * "Aenderungen verwerfen?", obwohl niemand etwas angefasst hatte.
+ *
+ * Der Loader stubt modal.js fuer die Seite; hier haengt ueber seinen Haken die
+ * ECHTE Funktion, und gefragt wird der echte isFormDirty(). Die Felder der
+ * Attrappe entstehen aus dem ECHTEN Markup (Dialoginhalt und cookPickerHtml()
+ * ueber die echte Personenauswahl), und die Antwort auf `/family/members`
+ * kommt, wann der Test es sagt. */
+const echtesModal = await import('../public/components/modal.js');
+
+/** Die Koch-Checkboxen eines Markups als Felder, wie der Waechter sie liest. */
+function kochFelder(html) {
+  return [...String(html).matchAll(/<input type="checkbox" class="([^"]*)" value="([^"]*)"([^>]*)>/g)]
+    .filter((m) => /data-ms-input="meal_cook"/.test(m[3]))
+    .map((m) => ({
+      type: 'checkbox', name: '', id: '', value: m[2], checked: /(^|\s)checked(\s|$)/.test(m[3]),
+      classList: { contains: (name) => m[1].split(/\s+/).includes(name) },
+    }));
+}
+
+/**
+ * Der offene Dialog: ein Titelfeld, das bleibt, Zutatenzeilen, die der Nutzer
+ * hinzufuegt und wieder wegnimmt (`zutaten`), und die Koch-Auswahl, die
+ * getauscht wird. In dieser Reihenfolge stehen sie auch im echten Formular.
+ */
+function dialogAttrappe(content) {
+  const knoten = () => ({
+    value: '', checked: false, hidden: false, dataset: {}, style: {},
+    addEventListener() {}, setAttribute() {}, removeAttribute() {}, replaceChildren() {}, insertAdjacentHTML() {},
+    appendChild() {}, querySelector: () => null, querySelectorAll: () => [], focus() {},
+  });
+  const titel = { type: 'text', id: 'modal-title', name: '', value: '' };
+  const zutaten = [];
+  let koch = kochFelder(content);
+  let nachgereicht = null;
+  const auswahl = {
+    insertAdjacentHTML(position, html) {
+      assert.equal(position, 'afterend');
+      nachgereicht = kochFelder(html);
+    },
+    remove() { koch = nachgereicht; },
+  };
+  const panel = {
+    dataset: {},
+    querySelector: (sel) => (sel === '.meal-modal__cook' ? auswahl : knoten()),
+    querySelectorAll: (sel) => {
+      if (sel.startsWith('input:not(')) return [titel, ...zutaten, ...koch];
+      if (sel === '[data-ms-input="meal_cook"]') return koch;
+      return [];
+    },
+  };
+  return { panel, titel, zutaten, koch: () => koch };
+}
+
+/**
+ * Den Dialog oeffnen, waehrend die Mitglieder fehlen, und die Antwort erst auf
+ * Zuruf liefern. `fn` bekommt den Waechter (`schmutzig()`), die Felder und
+ * `antworte()`.
+ */
+async function mitNachgereichterAuswahl(opts, fn) {
+  const hakenZuvor = globalThis.__swapFieldsKeepingDirtyBase;
+  const apiZuvor = globalThis.__apiStub;
+  globalThis.__swapFieldsKeepingDirtyBase = echtesModal.swapFieldsKeepingDirtyBase;
+  let liefere = null;
+  globalThis.__apiStub = {
+    get: (path) => (path === '/family/members'
+      ? new Promise((resolve) => { liefere = () => resolve({ data: MITGLIEDER }); })
+      : Promise.resolve({ data: [] })),
+  };
+  try {
+    await withAccess(SCHREIBEN, () => mitPlan({ members: [] }, async () => {
+      const [dialog] = await modalMitschnitt(() => meals.openMealModal(opts));
+      assert.ok(dialog, 'Vorbedingung: der Editor ist aufgegangen');
+      const attrappe = dialogAttrappe(dialog.content);
+      const { panel } = attrappe;
+      const overlay = {
+        isConnected: true, inert: false,
+        querySelector: (sel) => (sel === '.modal-panel' ? panel : null),
+        removeAttribute() {}, contains: () => false,
+      };
+      echtesModal.__test.adoptOverlayForTest(overlay);
+      dialog.onSave(panel);
+      await new Promise((resolve) => setImmediate(resolve));
+      assert.equal(typeof liefere, 'function', 'Vorbedingung: der Dialog holt die Mitglieder nach');
+      const antworte = async () => {
+        liefere();
+        await new Promise((resolve) => setImmediate(resolve));
+      };
+      await fn({ ...attrappe, overlay, antworte, schmutzig: () => echtesModal.__test.isFormDirty(panel) });
+    }));
+  } finally {
+    echtesModal.__test.releaseOverlayForTest();
+    globalThis.__swapFieldsKeepingDirtyBase = hakenZuvor;
+    globalThis.__apiStub = apiZuvor;
+  }
+}
+
+const NEU = { mode: 'create', date: '2026-10-07', mealType: 'lunch' };
+const zeichen = (felder) => felder.map((f) => `${f.value || 'niemand'}:${f.checked ? 1 : 0}`);
+
+test('#1784: die nachgereichte Koch-Auswahl macht den unberuehrten Dialog nicht schmutzig', async () => {
+  await mitNachgereichterAuswahl(NEU, async ({ koch, antworte, schmutzig }) => {
+    assert.deepEqual(zeichen(koch()), ['niemand:1'], 'Vorbedingung: ohne Mitglieder gibt es nur "Niemand"');
+    assert.equal(schmutzig(), false, 'Vorbedingung: frisch geoeffnet ist der Dialog sauber');
+    await antworte();
+    assert.deepEqual(zeichen(koch()), ['niemand:1', '1:0', '2:0'], 'Vorbedingung: die Auswahl ist getauscht');
+    assert.equal(schmutzig(), false, 'der Tausch ist keine Eingabe - das Schliessen fragt nicht');
+    // Gegenfall: eine Wahl in der NEUEN Auswahl ist eine Aenderung, und wer sie
+    // zuruecknimmt, ist wieder sauber - die neuen Felder zaehlen also mit.
+    const [niemand, anna] = koch();
+    anna.checked = true; niemand.checked = false;
+    assert.equal(schmutzig(), true);
+    anna.checked = false; niemand.checked = true;
+    assert.equal(schmutzig(), false);
+  });
+});
+
+test('#1784: was vor dem Tausch getippt wurde, bleibt eine Aenderung - und nur das', async () => {
+  await mitNachgereichterAuswahl(NEU, async ({ titel, koch, antworte, schmutzig }) => {
+    titel.value = 'Linsensuppe';
+    assert.equal(schmutzig(), true, 'Vorbedingung: der getippte Titel ist eine Aenderung');
+    await antworte();
+    assert.equal(koch().length, 3, 'Vorbedingung: die Auswahl ist getauscht');
+    assert.equal(schmutzig(), true, 'der Tausch friert die Eingabe nicht als Ausgangsstand ein');
+    titel.value = '';
+    assert.equal(schmutzig(), false, 'ohne die Eingabe ist der Dialog sauber - der Tausch selbst zaehlt nicht');
+  });
+});
+
+test('#1784: beim Bearbeiten bleibt der gespeicherte Koch gewaehlt, und der Dialog sauber', async () => {
+  const meal = mitBen();
+  const opts = { mode: 'edit', meal, date: meal.date, mealType: meal.meal_type };
+  await mitNachgereichterAuswahl(opts, async ({ koch, antworte, schmutzig }) => {
+    assert.deepEqual(zeichen(koch()), ['niemand:0', '2:1'], 'Vorbedingung: wer schon kocht, steht auch ohne Liste da');
+    await antworte();
+    assert.deepEqual(zeichen(koch()), ['niemand:0', '1:0', '2:1']);
+    assert.equal(schmutzig(), false);
+  });
+});
+
+// Review an #1813: die Basis blieb stehen, sobald sich die Feldzahl vor dem
+// Tausch geaendert hatte - Zeile hinzu, Tausch, Zeile wieder weg, und der Dialog
+// stand im Oeffnungszustand, galt aber als geaendert.
+test('#1784: eine Zutatenzeile vor dem Tausch bleibt eine Aenderung - und nimmt man sie weg, ist der Dialog sauber', async () => {
+  const zeile = () => ({ type: 'text', id: '', name: 'ingredient', value: '' });
+  await mitNachgereichterAuswahl(NEU, async ({ zutaten, koch, antworte, schmutzig }) => {
+    zutaten.push(zeile());
+    assert.equal(schmutzig(), true, 'Vorbedingung: die neue Zeile ist eine Aenderung');
+    await antworte();
+    assert.equal(koch().length, 3, 'Vorbedingung: die Auswahl ist getauscht');
+    assert.equal(schmutzig(), true, 'die Zeile des Nutzers geht nicht in die Basis');
+    zutaten.pop();
+    assert.equal(schmutzig(), false, 'ohne die Zeile steht der Dialog im Oeffnungszustand');
+    // Gegenfall: eine Zeile NACH dem Tausch ist ebenfalls eine Aenderung.
+    zutaten.push(zeile());
+    assert.equal(schmutzig(), true);
+  });
+});
+
+// Der Editor unter der Loesch-Rueckfrage (askOverModal): das ECHTE Parken und
+// Zurueckholen, dazwischen treffen die Mitglieder ein.
+test('#1784: auch unter einer Rueckfrage geparkt bleibt der unberuehrte Dialog sauber', async () => {
+  const dokument = globalThis.document;
+  const hatte = Object.hasOwn(dokument, 'removeEventListener');
+  if (!hatte) dokument.removeEventListener = () => {};
+  try {
+    await mitNachgereichterAuswahl(NEU, async ({ titel, koch, antworte, schmutzig }) => {
+      const geparkt = echtesModal.__test.suspendActiveModal();
+      await antworte();
+      assert.equal(koch().length, 3, 'Vorbedingung: der Tausch lief, waehrend der Dialog geparkt war');
+      echtesModal.__test.resumeSuspendedModal(geparkt);
+      assert.equal(schmutzig(), false, 'zurueckgeholt fragt das Schliessen nicht');
+      // Gegenfall: der Waechter ist nach dem Zurueckholen nicht still tot.
+      titel.value = 'Linsensuppe';
+      assert.equal(schmutzig(), true);
+    });
+  } finally {
+    if (!hatte) delete dokument.removeEventListener;
+  }
+});
+
+// Die geteilte Funktion fuer sich.
+test('#1784: swapFieldsKeepingDirtyBase tauscht immer und fasst nur die Basis SEINES Panels an', () => {
+  let getauscht = 0;
+  echtesModal.swapFieldsKeepingDirtyBase({ querySelectorAll: () => [] }, () => { getauscht += 1; });
+  assert.equal(getauscht, 1, 'ohne offenes Modal und ohne Basis');
+
+  const feld = { type: 'text', id: 'a', name: '', value: '' };
+  const panel = { querySelectorAll: () => [feld] };
+  echtesModal.__test.adoptOverlayForTest({ querySelector: () => panel });
+  try {
+    // Ein FREMDES Panel mit gleich vielen Feldern tauscht sein eines Feld aus.
+    // Griffe die Funktion zur Basis des offenen Formulars statt zu der ihres
+    // Panels, stuende danach das fremde Feld darin.
+    let fremdesFeld = { type: 'text', id: 'b', name: '', value: 'alt' };
+    const fremd = { querySelectorAll: () => [fremdesFeld] };
+    echtesModal.swapFieldsKeepingDirtyBase(fremd, () => {
+      getauscht += 1;
+      fremdesFeld = { type: 'text', id: 'b', name: '', value: 'neu' };
+    });
+    assert.equal(getauscht, 2);
+    assert.equal(echtesModal.__test.isFormDirty(panel), false, 'das offene Formular ist unberuehrt und bleibt sauber');
+    feld.value = 'x';
+    assert.equal(echtesModal.__test.isFormDirty(panel), true, 'und seine Basis ist die vom Oeffnen');
+  } finally {
+    echtesModal.__test.releaseOverlayForTest();
+  }
+});
+
+// Ein Feld, das der NUTZER vor dem Tausch entfernt hat, ist nicht "vom Tausch
+// entfernt": es bleibt als Aenderung in der Basis.
+test('#1784: was der Nutzer vor dem Tausch entfernt hat, bleibt eine Aenderung', () => {
+  const titel = { type: 'text', id: 't', name: '', value: '' };
+  const zeile = { type: 'text', id: '', name: 'ingredient', value: 'Linsen' };
+  let auswahl = [{ type: 'checkbox', id: '', name: '', value: '', checked: true }];
+  let zeilen = [zeile];
+  const panel = { querySelectorAll: () => [titel, ...zeilen, ...auswahl] };
+  echtesModal.__test.adoptOverlayForTest({ querySelector: () => panel });
+  try {
+    zeilen = [];
+    assert.equal(echtesModal.__test.isFormDirty(panel), true, 'Vorbedingung: die entfernte Zeile ist eine Aenderung');
+    echtesModal.swapFieldsKeepingDirtyBase(panel, () => {
+      auswahl = [
+        { type: 'checkbox', id: '', name: '', value: '', checked: true },
+        { type: 'checkbox', id: '', name: '', value: '1', checked: false },
+      ];
+    });
+    assert.equal(echtesModal.__test.isFormDirty(panel), true, 'der Tausch macht das Entfernen nicht ungeschehen');
+    zeilen = [zeile];
+    assert.equal(echtesModal.__test.isFormDirty(panel), false, 'mit der Zeile zurueck ist der Dialog sauber');
+  } finally {
+    echtesModal.__test.releaseOverlayForTest();
+  }
+});
+
+// Ein Tausch, der nur HINZUFUEGT (nichts aus der Basis geht): das Neue steht in
+// der Basis dort, wo es im Formular steht - am Anfang wie in der Mitte.
+test('#1784: ein Tausch, der nur Felder hinzufuegt, traegt sie an ihrer Stelle ein', () => {
+  const feld = (id) => ({ type: 'text', id, name: '', value: '' });
+  for (const [stelle, erwartet] of [[0, 'x,a,b'], [1, 'a,x,b'], [2, 'a,b,x']]) {
+    const felder = [feld('a'), feld('b')];
+    const panel = { querySelectorAll: () => felder };
+    echtesModal.__test.adoptOverlayForTest({ querySelector: () => panel });
+    try {
+      echtesModal.swapFieldsKeepingDirtyBase(panel, () => { felder.splice(stelle, 0, feld('x')); });
+      assert.equal(felder.map((f) => f.id).join(','), erwartet, 'Vorbedingung');
+      assert.equal(echtesModal.__test.isFormDirty(panel), false, `hinzugefuegt an Stelle ${stelle}`);
+      felder[stelle].value = 'getippt';
+      assert.equal(echtesModal.__test.isFormDirty(panel), true, 'und das neue Feld zaehlt mit');
+    } finally {
+      echtesModal.__test.releaseOverlayForTest();
+    }
+  }
+});
+
+test('#1784: auch beim reinen Hinzufuegen geht eine Zeile des Nutzers nicht in die Basis', () => {
+  const feld = (id) => ({ type: 'text', id, name: '', value: '' });
+  const felder = [feld('a'), feld('b')];
+  const panel = { querySelectorAll: () => felder };
+  echtesModal.__test.adoptOverlayForTest({ querySelector: () => panel });
+  try {
+    felder.splice(1, 0, feld('nutzer'));
+    echtesModal.swapFieldsKeepingDirtyBase(panel, () => { felder.push(feld('x')); });
+    assert.equal(felder.map((f) => f.id).join(','), 'a,nutzer,b,x', 'Vorbedingung');
+    assert.equal(echtesModal.__test.isFormDirty(panel), true, 'die Zeile des Nutzers bleibt eine Aenderung');
+    felder.splice(1, 1);
+    assert.equal(echtesModal.__test.isFormDirty(panel), false, 'ohne sie ist der Dialog sauber');
+  } finally {
+    echtesModal.__test.releaseOverlayForTest();
+  }
+});
+
+test('#1784: zwei hinzugefuegte Felder stehen in der Basis in ihrer Reihenfolge, ein zurueckgebrachtes nur einmal', () => {
+  const feld = (id) => ({ type: 'text', id, name: '', value: '' });
+  const felder = [feld('a'), feld('b')];
+  const panel = { querySelectorAll: () => felder };
+  echtesModal.__test.adoptOverlayForTest({ querySelector: () => panel });
+  try {
+    echtesModal.swapFieldsKeepingDirtyBase(panel, () => { felder.splice(1, 0, feld('x'), feld('y')); });
+    assert.equal(felder.map((f) => f.id).join(','), 'a,x,y,b', 'Vorbedingung');
+    assert.equal(echtesModal.__test.isFormDirty(panel), false, 'x vor y, wie im Formular');
+    // Der Nutzer nimmt b weg, und ein Tausch bringt DASSELBE Feld zurueck: es
+    // stand schon in der Basis und kommt kein zweites Mal hinein.
+    const [b] = felder.splice(3, 1);
+    assert.equal(echtesModal.__test.isFormDirty(panel), true, 'Vorbedingung: b fehlt');
+    // Derselbe Tausch nimmt y heraus - er ersetzt also, statt nur hinzuzufuegen.
+    echtesModal.swapFieldsKeepingDirtyBase(panel, () => { felder.splice(2, 1); felder.push(b); });
+    assert.equal(felder.map((f) => f.id).join(','), 'a,x,b', 'Vorbedingung');
+    assert.equal(echtesModal.__test.isFormDirty(panel), false);
+  } finally {
+    echtesModal.__test.releaseOverlayForTest();
+  }
 });

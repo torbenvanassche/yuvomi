@@ -8,68 +8,14 @@ import { createLogger } from '../logger.js';
 import * as db from '../db.js';
 import { buildSplits, insertExpenseLedger, membershipRefusal, SplitInputError } from './split-expenses.js';
 import { todayKey } from '../utils/timezone.js';
-import { addMonthsClamped, addYearsClamped, dateKey, liftToAnchorDay, parseDateKey } from '../utils/interval-date.js';
+import { addInterval, nextRunNotBefore } from '../utils/interval-date.js';
 
 const log = createLogger('SplitExpenseScheduler');
 
-// Der naechste Termin einer Serie nach `dateText` - die EINE Rechnung, durch die
-// der Buchungslauf (generateRecurringExpense) und das Fortsetzen
-// (nextRunNotBefore) gehen.
-//
-// Monate und Jahre klemmen aufs Monatsende (server/utils/interval-date.js) und
-// heben den Tag danach wieder auf `anchorDay`, den Tag, fuer den die Serie
-// gedacht ist (`recurring_expenses.anchor_day`): 31.01. -> 28.02. -> 31.03.,
-// jaehrlich 29.02. -> 28.02. -> im Schaltjahr wieder 29.02. Bis #1721 stand
-// hier `setUTCMonth(+1)`: der 31. lief in den Folgemonat ueber (31.01. ->
-// 03.03.), der Februar blieb ohne Buchung, und weil der naechste Schritt vom
-// uebergelaufenen Datum ausging, kam die Serie nie zurueck.
-//
-// Ohne Anker (NULL) klemmt der Schritt nur. Woechentlich sind es sieben Tage,
-// der Anker spielt dort nicht mit.
-//
-// Ein Termin in Datumsform, der kein Datum ist ("2026-02-31"), wird gelesen wie
-// vor #1721: als der Tag, auf den `Date` ihn ueberlaufen laesst (03.03.). Die
-// Route laesst so etwas nicht herein, aber die geteilten Helfer werfen daran,
-// und ein Schritt, der wirft, liesse den Lauf an dieser Serie stuendlich
-// scheitern, ohne sie je zu pausieren. Was auch `Date` nicht liest
-// ("2026-13-01"), wirft hier wie zuvor.
-function addInterval(dateText, frequency, anchorDay = null) {
-  const from = dateKey(new Date(`${dateText}T00:00:00Z`));
-  if (frequency === 'monthly') return liftToAnchorDay(addMonthsClamped(from, 1), anchorDay);
-  if (frequency === 'yearly') return liftToAnchorDay(addYearsClamped(from, 1), anchorDay);
-  const date = parseDateKey(from);
-  if (frequency === 'weekly') date.setUTCDate(date.getUTCDate() + 7);
-  return dateKey(date);
-}
-
-// Der erste Termin der Serie, der nicht vor `today` liegt, gezaehlt ab
-// `dateText` in ganzen Intervallen - mit addInterval, also mit genau der
-// Rechnung, mit der der Lauf nach jeder Buchung weiterrueckt. Bewusst gezaehlt
-// und nicht gesprungen: wo die Serie nach n Schritten steht, sagt der Lauf, und
-// eine zweite Rechnung daneben muesste ihm erst wieder gleichen (ohne Anker
-// haengt der naechste Termin vom vorigen ab: 31.01. -> 28.02. -> 28.03.).
-//
-// `anchorDay` ist der Ankertag der Zeile; wer ihn weglaesst, bekommt das Raster
-// einer Serie ohne Anker.
-//
-// `skipped` zaehlt die uebergangenen Termine. Ein Termin am Tag `today` gilt
-// nicht als versaeumt: der naechste Lauf bucht ihn.
-function nextRunNotBefore(dateText, frequency, today, anchorDay = null) {
-  // Ein Datum, das keins ist, oder ein Rhythmus, der nicht vorrueckt, bleibt
-  // stehen, statt zu werfen oder endlos zu zaehlen.
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(dateText)) || !/^\d{4}-\d{2}-\d{2}$/.test(String(today))) return { date: dateText, skipped: 0 };
-  let date = dateText;
-  let skipped = 0;
-  while (date < today) {
-    let next;
-    // "2026-13-01" hat die Form eines Datums und ist keins.
-    try { next = addInterval(date, frequency, anchorDay); } catch { break; }
-    if (!(next > date)) break;
-    date = next;
-    skipped += 1;
-  }
-  return { date, skipped };
-}
+// Der Schritt einer Serie (`addInterval`) und das Zaehlen bis zum ersten Termin
+// ab heute (`nextRunNotBefore`) stehen in server/utils/interval-date.js: die
+// Taschengeld-Gutschrift (#1734) rueckt durch dieselbe Rechnung weiter, und
+// eine zweite daneben muesste dieser erst wieder gleichen.
 
 function insertActivity(database, groupId, actorId, type, entityType, entityId, metadata = {}) {
   database.prepare(`
@@ -101,7 +47,11 @@ function readSnapshot(recurring) {
   return snapshot;
 }
 
-function generateRecurringExpense(database, recurring) {
+// Die Anteile, die diese Serie HEUTE buchen wuerde - oder der Wurf, der sagt,
+// warum nicht. Die EINE Rechnung fuer den Buchungslauf und fuer die Frage der
+// Liste, ob eine Serie buchbar ist (`unbookableReason`, #1647): eine zweite
+// Pruefung daneben zeigte "buchbar" an, waehrend der Lauf pausiert.
+function resolveRecurringSplits(database, recurring) {
   const snapshot = readSnapshot(recurring);
   const participants = Array.isArray(snapshot.participants) ? snapshot.participants : [recurring.payer_id];
   const splits = buildSplits({
@@ -118,6 +68,11 @@ function generateRecurringExpense(database, recurring) {
   // Beteiligten ueberhaupt IDs sind.
   const refusal = membershipRefusal(database, recurring.group_id, recurring.payer_id, splits.map((split) => split.user_id));
   if (refusal) throw new RecurringNotBookable('not_a_member', refusal);
+  return splits;
+}
+
+function generateRecurringExpense(database, recurring) {
+  const splits = resolveRecurringSplits(database, recurring);
   const expenseId = database.prepare(`
     INSERT INTO expenses
       (group_id, title, description, amount_minor, currency, converted_amount_minor, converted_currency,
@@ -165,6 +120,22 @@ function pauseReason(err) {
   if (err instanceof RecurringNotBookable) return err.reason;
   if (err instanceof SplitInputError) return 'split_invalid';
   return null;
+}
+
+// Warum der Lauf diese Serie am naechsten Termin pausieren wuerde, oder null.
+// Derselbe Grund, den `recurring_auto_paused` in den Verlauf schreibt - hier
+// aber am HEUTIGEN Stand gemessen: nach einer Bearbeitung, die die Aufteilung
+// repariert, ist er weg, auch wenn die Serie noch pausiert ist. Ein Fehler, der
+// kein "unbuchbar" ist, wird weitergeworfen wie im Lauf.
+function unbookableReason(database, recurring) {
+  try {
+    resolveRecurringSplits(database, recurring);
+    return null;
+  } catch (err) {
+    const reason = pauseReason(err);
+    if (!reason) throw err;
+    return reason;
+  }
 }
 
 // Pausiert die Serie und schreibt den Grund in den Verlauf der Gruppe - die App
@@ -237,4 +208,4 @@ function startScheduler() {
   }, 60 * 60 * 1000).unref();
 }
 
-export { generateRecurringExpense, nextRunNotBefore, processDueRecurringExpenses, startScheduler };
+export { generateRecurringExpense, nextRunNotBefore, processDueRecurringExpenses, startScheduler, unbookableReason };

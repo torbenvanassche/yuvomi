@@ -207,6 +207,14 @@ const STUBS = {
     };
     export const mountFooter = () => null;
     export const refreshDirtySnapshot = () => {};
+    // Der Tausch selbst muss laufen, genau einmal und synchron. Wer die
+    // Dirty-Basis dahinter messen will, haengt die ECHTE Funktion aus
+    // components/modal.js an globalThis.__swapFieldsKeepingDirtyBase.
+    export const swapFieldsKeepingDirtyBase = (panel, swap) => (
+      typeof globalThis.__swapFieldsKeepingDirtyBase === 'function'
+        ? globalThis.__swapFieldsKeepingDirtyBase(panel, swap)
+        : swap()
+    );
     export const captureModalContext = () => globalThis.__modalContextId?.() ?? 'test-modal-context';
     export const isModalContextCurrent = (context) => (
       globalThis.__modalContextId?.() === undefined
@@ -261,16 +269,18 @@ const STUBS = {
     export const scheduleUndoableDelete = (opts) => { globalThis.__undoStub?.(opts); };
     // Im Test gibt es keine Animation, die ausspielen koennte - der Aufrufer
     // awaitet das Ergebnis, also loest der Stub sofort auf.
-    export const animationSettled = () => Promise.resolve();
+    export const acknowledgeCheck = () => Promise.resolve();
     // Austritt und Aufziehen (Abhaken, Gruppen) - ohne Layout gibt es nichts
     // zu bewegen, der Aufrufer wartet nur auf das Ende.
     export const collapseOut = () => Promise.resolve();
-    export const expandIn = () => Promise.resolve();
+    // Wer sehen will, WELCHE Zeile einzieht, setzt globalThis.__expandIn.
+    export const expandIn = (el) => { globalThis.__expandIn?.(el); return Promise.resolve(); };
     // Token-Leser ohne Stylesheet: der Rueckfall ist der Wert (utils/flip.js).
     // Region auf-/zuklappen: ohne Layout bleibt nur der Zustand selbst (hidden).
     export const toggleRegion = (region, open) => { if (region) region.hidden = !open; return Promise.resolve(); };
     // Balken wachsen lassen: ohne Layout nichts zu tun, der Endwert steht im Markup.
     export const growBars = () => 0;
+    export const drawChartOnce = () => 0;
     export const durationToken = (name, fallback) => fallback;
     export const easingToken = (name, fallback = 'ease-out') => fallback;
   `,

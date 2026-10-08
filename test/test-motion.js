@@ -235,7 +235,7 @@ test('kein Shorthand-Token mit einer zweiten Kurve in einer Transition oder Anim
  *
  *    Die Regel: Interaktions-Motion nimmt Dauer und Kurve aus tokens.css.
  *    AUSGENOMMEN sind nur
- *      - Endlos-Schleifen (`infinite`): Wetter, Spinner, Shimmer, Blob - dort
+ *      - Endlos-Schleifen (`infinite`): Wetter, Spinner, Shimmer - dort
  *        ist `linear`/`ease-in-out` die Aussage und die Periode kein UI-Tempo;
  *      - die benannten Stellen unten, jede mit ihrem Grund;
  *      - Nullwerte (`0s`, `none`) - kein Tempo, sondern "aus".
@@ -1098,7 +1098,7 @@ test('Inhaltswechsel: Reiter, Zeitraeume und Bereiche tauschen ueber swapContent
     ['meals', /swapPeriod\(_container\?\.querySelector\('#week-grid'\) \?\? null, step, renderWeekGrid\)/, 'Woche'],
     ['schedule', /swapContent\(bodyEl\(\), renderPage, \{ direction \}\)/, 'Reiterwechsel'],
     ['schedule', /swapPeriod\(bodyEl\(\), step, renderPage\)/, 'Woche/Tag der Uebersicht'],
-    ['health', /swapContent\(panel, null\)/, 'Bereichswechsel in jeder Breite'],
+    ['health', /swapContent\(panel, null, \{ direction \}\)/, 'Bereichswechsel in jeder Breite (schmal mit Richtung, R18)'],
   ];
   const missing = carriers.filter(([name, pattern]) => !pattern.test(pageSource(name))).map(([name, , what]) => `${name}.js: ${what}`);
   assert.deepEqual(missing, [], `Traeger ohne den geteilten Uebergang:\n  ${missing.join('\n  ')}`);
@@ -1131,6 +1131,185 @@ test('Listenbewegung: Module, die ihre Zeilen neu bauen, nutzen list-motion bzw.
   assert.match(fn, /if \(first\) \{\s*el\.replaceChildren\(\);\s*el\.insertAdjacentHTML\('beforeend', renderSkeletonList/, 'Skelett nur unter `first`');
 });
 
+/* R17, Bewegung: "das System steht, die Abdeckung fehlt". Acht Seiten bauten
+ * ihre Liste nach Anlegen und Loeschen hart neu. Jede Zeile hier ist eine
+ * Stelle, an der die DATEN sich aendern - nicht die Frage (Filter, Suche). */
+test('Listenbewegung R17: Notizen, Dokumente, Kontakte, Budget, Inventar, Abos, Aufteilung und Geburtstage zeichnen ueber list-motion', () => {
+  const modules = [
+    ['notes', /redrawList\(grid, \(\) => drawGrid\(grid\), \{ selector: NOTE_CARD, keyAttr: 'data-id' \}\)/, 'Raster'],
+    ['notes', /state\.notes = state\.notes\.filter\(\(n\) => n\.id !== id\);\s*renderNotesAndFilters\(\{ motion: true \}\)/, 'geloeschte Notiz'],
+    ['notes', /closeSavedEditorWhenActive\(\);\s*renderNotesAndFilters\(\{ motion: true \}\)/, 'gespeicherte Notiz'],
+    ['documents', /redrawList\(list, drawDocuments, \{ selector: DOCUMENT_ITEM, keyAttr: 'data-id' \}\)/, 'Liste und Raster'],
+    ['documents', /Promise\.all\(leaving\.map\(\(row\) => collapseRow\(row\)\)\)\.then\(/, 'geloeschte Zeile klappt aus'],
+    ['contacts', /redrawList\(container, \(\) => drawList\(container, \{ animate \}\), \{ selector: CONTACT_ROW, keyAttr: 'data-id' \}\)/, 'Liste'],
+    ['contacts', /collapseRow\(row, \{ group: row\?\.closest\('\.contact-group'\), selector: CONTACT_ROW \}\)/, 'geloeschter Kontakt klappt aus, mit dem letzten die Gruppe'],
+    ['budget', /redrawList\(body, renderBody, \{ selector: BUDGET_ENTRY, keyAttr: 'data-id' \}\)/, 'Buchungsliste'],
+    ['budget', /summaryWith\(state\.summary, \[entry\], -1\);[\s\S]{0,260}collapseEntryThenRedraw\(id\);/, 'geloeschte Buchung klappt aus'],
+    ['budget', /closeModal\(\{ force: true \}\);\s*redrawEntries\(\);\s*window\.yuvomi\?\.showToast\(t\('budget\.addedToast'\)/, 'neue Buchung zieht auf'],
+    ['inventory', /redrawList\(host, renderListBody, \{ selector: INVENTORY_ITEM_ROW, keyAttr: 'data-id' \}\)/, 'Gegenstaende'],
+    ['inventory', /await collapseRow\(_container\?\.querySelector\(`#inventory-list \.list-row\[data-id="\$\{item\.id\}"\]`\)/, 'geloeschter Gegenstand klappt aus'],
+    ['subscriptions', /redrawList\(content, drawContent, \{ selector: SUBSCRIPTION_ROW, keyAttr: 'data-swipe-id' \}\)/, 'Abos'],
+    ['subscriptions', /await collapseRow\(container\.querySelector\(`#subscriptions-list \.swipe-row\[data-swipe-id=/, 'geloeschtes Abo klappt aus'],
+    ['split-expenses', /redrawList\(main, \(\) => drawMain\(main\), \{ selector: SPLIT_ROW, keyAttr: 'data-row-key' \}\)/, 'Ausgaben und Serien'],
+    ['split-expenses', /await collapseSplitRow\(`expense-\$\{expense\.id\}`\);\s*renderAll\(\{ motion: true \}\)/, 'geloeschte Ausgabe klappt aus'],
+    ['split-expenses', /await collapseSplitRow\(`recurring-\$\{recurring\.id\}`\);\s*renderAll\(\{ motion: true \}\)/, 'geloeschte Serie klappt aus'],
+    ['split-expenses', /renderAll\(\);[\s\S]{0,260}swapContent\(_container\?\.querySelector\(`#split-main \[data-row-key="recurring-\$\{id\}"\]`\) \?\? null, null\);/, 'Pausieren/Fortsetzen blendet die Serienzeile'],
+    ['birthdays', /redrawList\(host, \(\) => drawList\(host, \{ repaint \}\), \{ selector: BIRTHDAY_ROW, keyAttr: 'data-swipe-id' \}\)/, 'Liste'],
+    ['birthdays', /collapseRow\(row\)\.then\(\(\) => \{ if \(_container === owner\) renderList\(\{ motion: true \}\); \}\)/, 'geloeschter Geburtstag klappt aus'],
+  ];
+  const missing = modules.filter(([name, pattern]) => !pattern.test(pageSource(name))).map(([name, , what]) => `${name}.js: ${what}`);
+  assert.deepEqual(missing, [], `Liste ohne Bewegung:\n  ${missing.join('\n  ')}`);
+  // Die Zeile muss das Attribut auch TRAGEN, an dem die Bewegung sie
+  // wiedererkennt - ein Selektor ohne Treffer zeichnet still ohne Bewegung.
+  const carried = [
+    ['notes', /class="note-card \$\{[^}]+\}"\s+data-id="\$\{note\.id\}"/],
+    ['documents', /<article class="document-card\$\{[^}]+\}" data-id="\$\{doc\.id\}">/],
+    ['documents', /<article class="list-row document-row\$\{[^}]+\}" data-id="\$\{doc\.id\}">/],
+    ['contacts', /contact-item" data-id="\$\{c\.id\}"/],
+    ['budget', /const rowInteraction = masked \? '' : `data-id="\$\{e\.id\}"`;/],
+    ['inventory', /<div class="list-row" data-id="\$\{item\.id\}" data-md-id=/],
+    ['subscriptions', /data-swipe-id="\$\{subscription\.id\}"/],
+    ['split-expenses', /data-expense-id="\$\{expense\.id\}" data-row-key="expense-\$\{expense\.id\}"/],
+    ['split-expenses', /data-expense-view="\$\{expense\.id\}" data-row-key="expense-\$\{expense\.id\}"/],
+    ['split-expenses', /split-recurring-row\$\{[^}]+\}" data-row-key="recurring-\$\{recurring\.id\}"/],
+    ['birthdays', /data-swipe-id="\$\{birthday\.id\}"/],
+  ];
+  const bare = carried.filter(([name, pattern]) => !pattern.test(pageSource(name))).map(([name, pattern]) => `${name}.js: ${pattern}`);
+  assert.deepEqual(bare, [], `Zeile ohne Wiedererkennungs-Attribut:\n  ${bare.join('\n  ')}`);
+});
+
+const publicSource = (path) => readFileSync(new URL(`../public/${path}`, import.meta.url), 'utf8');
+
+test('Liste + Detail: ein Wechsel der Auswahl blendet die Detailspalte, ein Neuzeichnen derselben nicht', () => {
+  const md = publicSource('utils/master-detail.js');
+  // Nur select() mit einer ANDEREN Auswahl blendet ...
+  assert.match(md, /if \(!same \|\| bodyEl\.hidden\) paint\(selected, \{ swap: !same \}\);/);
+  // ... und zwar NACH dem Zeichnen, ohne Richtung (nur opacity: ein transform
+  // machte die Spalte zum Bezugsrahmen ihres klebenden Kopfes).
+  const paint = md.slice(md.indexOf('async function paint('), md.indexOf('function showLoadError('));
+  assert.match(paint, /createIcons\(\{ el: bodyEl \}\);[\s\S]{0,260}if \(swap\) swapContent\(bodyEl, null\);\n  \}/);
+  assert.ok(paint.indexOf('await renderDetail') < paint.indexOf('swapContent(bodyEl'), 'erst zeichnen, dann blenden');
+  // refresh({ repaint }) zeichnet dieselbe Auswahl neu - ohne Blende.
+  assert.match(md, /if \(repaint && selected != null && isSplit\(\)\) paint\(selected\);/);
+  assert.equal((md.match(/swap: /g) ?? []).length, 1, 'genau eine Stelle setzt swap');
+});
+
+const ruleBodies = (file, selector) => [...eachRule(css(file))]
+  .filter((r) => r.selector.replace(/\s+/g, ' ').trim() === selector)
+  .map((r) => r.body);
+
+test('Large Title: der Titel blendet in seinen neuen Schnitt, Layout wird nicht animiert', () => {
+  const settle = ruleBodies('layout.css', '.page-toolbar--capped.is-collapsed > .page-toolbar__title').join(';');
+  assert.match(settle, /animation:\s*page-title-settle var\(--duration-xs\) var\(--ease-out\)/, 'Einklappen blendet');
+  const back = ruleBodies('layout.css', '.page-toolbar--capped.was-collapsed:not(.is-collapsed) > .page-toolbar__title').join(';');
+  assert.match(back, /animation:\s*page-title-settle-back var\(--duration-xs\) var\(--ease-out\)/, 'Ausklappen blendet');
+  // Nur Deckkraft: ein Keyframe mit Groesse, Abstand oder Versatz animierte Layout im klebenden Kopf.
+  for (const name of ['page-title-settle', 'page-title-settle-back']) {
+    const body = keyframesBody(name);
+    assert.ok(body, `@keyframes ${name} fehlt`);
+    const props = [...body.matchAll(/([\w-]+)\s*:/g)].map((m) => m[1]);
+    assert.deepEqual([...new Set(props)], ['opacity'], `${name} animiert mehr als opacity`);
+  }
+  // Der Rueckweg haengt am Merker, nicht an `--capped` allein: sonst blendete
+  // jeder Seitenaufbau seinen Titel ein, sobald die Messung die Klasse setzt.
+  const titleRules = [...eachRule(css('layout.css'))].filter((r) => /page-title-settle/.test(r.body));
+  assert.equal(titleRules.length, 2);
+  for (const r of titleRules) assert.match(r.selector, /\.is-collapsed|\.was-collapsed/, `${r.selector}: Blende ohne Zustand`);
+  const ux = publicSource('utils/ux.js');
+  assert.match(ux, /if \(top > 24\) toolbar\.classList\.add\(\.\.\.states, 'was-collapsed'\);/, 'der Merker faellt beim ersten Einklappen');
+  assert.match(ux, /classList\.remove\('page-toolbar--stacked', 'page-toolbar--capped', 'is-collapsed', 'is-docked', 'was-collapsed',/, 'und geht mit dem Abbau');
+  // Weiterhin keine font-size-Transition am Titel (R16).
+  for (const file of ['layout.css', 'typography.css']) {
+    for (const r of eachRule(css(file))) {
+      if (!/page-toolbar__title/.test(r.selector)) continue;
+      assert.doesNotMatch(r.body, /transition[^;]*font-size/, `${file}: ${r.selector} animiert font-size`);
+    }
+  }
+  // Der angedockte Titel blendet ein und aus (Muster des Popover-Menues).
+  const dock = ruleBodies('layout.css', '.page-toolbar--stacked > .page-toolbar__dock-title').join(';');
+  assert.match(dock, /opacity:\s*0/);
+  assert.match(dock, /transition:\s*opacity var\(--duration-xs\) var\(--ease-out\),\s*display var\(--duration-xs\) allow-discrete/);
+  assert.match(css('layout.css'), /@starting-style \{\s*\.page-toolbar--stacked\.is-docked > \.page-toolbar__dock-title \{\s*opacity: 0;/);
+  assert.match(ruleBodies('layout.css', '.page-toolbar--stacked.is-docked > .page-toolbar__dock-title').join(';'), /opacity:\s*1/);
+});
+
+test('Zeitraum-Wisch: das Budget blaettert seine Monats-Reiter wie der Kalender, ohne zweiten Uebergang', () => {
+  const budget = pageSource('budget');
+  assert.match(budget, /import \{ wirePeriodSwipe \} from '\/utils\/period-swipe\.js';/);
+  const wire = budget.slice(budget.indexOf('wirePeriodSwipe(bodyEl(), {'), budget.indexOf('wirePeriodSwipe(bodyEl(), {') + 260);
+  assert.match(wire, /enabled: \(\) => Boolean\(tabCaps\(\)\.month\) && !state\.loadError,/, 'nur Reiter mit Zeitachse (TAB_CAPS.month)');
+  assert.match(wire, /ignore: PERIOD_SWIPE_IGNORE,/);
+  assert.match(wire, /onStep: \(step\) => stepPeriod\(step, \{ swap: false \}\),/, 'derselbe Stepper wie die Pfeile; der Wisch gleitet selbst herein');
+  // Was selbst waagerecht arbeitet, behaelt seinen Finger.
+  const ignore = budget.match(/const PERIOD_SWIPE_IGNORE = '([^']+)';/)?.[1] ?? '';
+  for (const sel of ['.u-scroll-fade', '.budget-stats__points', 'input']) {
+    assert.ok(ignore.split(',').map((s) => s.trim()).includes(sel), `${sel} fehlt in PERIOD_SWIPE_IGNORE`);
+  }
+  assert.match(publicSource('pages/budget-stats.js'), /class="budget-stats__points"/, 'die Diagrammflaeche heisst noch so');
+  // Senkrecht scrollt, waagerecht gehoert dem Wisch - wie #cal-body.
+  assert.match(ruleBodies('budget.css', '#budget-body').join(';'), /touch-action:\s*pan-y pinch-zoom/);
+  // Das Hereingleiten steht im geteilten Blatt: calendar.css laedt nur mit dem Kalender.
+  assert.ok(globalSheets.includes('layout.css'));
+  assert.ok([...eachRule(css('layout.css'))].some((r) => /\.period-swipe-in--next/.test(r.selector) && /animation:\s*period-swipe-in var\(--duration-md\) var\(--ease-out\)/.test(r.body)));
+  assert.match(css('layout.css'), /@keyframes period-swipe-in\b/);
+  assert.doesNotMatch(css('calendar.css').replace(/\/\*[\s\S]*?\*\//g, ''), /period-swipe-in/, 'keine zweite Fassung im Modul-Blatt');
+});
+
+test('Kalender: das Filter-Popover hat Ein- und Ausgang wie das Popover-Menue', () => {
+  const base = ruleBodies('calendar.css', '.cal-filters-popover').join(';');
+  assert.match(base, /opacity:\s*0/);
+  assert.match(base, /transform:\s*scale\(0\.96\)/);
+  assert.match(base, /overlay var\(--duration-xs\) allow-discrete,\s*display var\(--duration-xs\) allow-discrete/, 'der Ausgang haelt es im Top-Layer');
+  // Rueckfall: die erste transition-Deklaration kommt ohne allow-discrete aus.
+  const transitions = [...base.matchAll(/transition:\s*([^;]+)/g)].map((m) => m[1]);
+  assert.equal(transitions.length, 2);
+  assert.doesNotMatch(transitions[0], /allow-discrete/);
+  const open = ruleBodies('calendar.css', '.cal-filters-popover:popover-open').join(';');
+  assert.match(open, /opacity:\s*1/);
+  assert.match(open, /transform:\s*none/);
+  assert.match(open, /opacity var\(--duration-md\) var\(--ease-out\)/, 'die Einfahrt ist laenger als der Ausgang');
+  assert.match(css('calendar.css'), /@starting-style \{\s*\.cal-filters-popover:popover-open \{\s*opacity: 0;\s*transform: scale\(0\.96\);/);
+  // Der Ursprung kommt mit der Position aus JS (keine physische Seite im Blatt, RTL-Guard in test:calendar).
+  assert.doesNotMatch(base, /transform-origin/);
+  assert.match(pageSource('calendar'), /pop\.style\.transformOrigin = `\$\{Math\.round\(Math\.min\(Math\.max\(0, rect\.right - left\), width\)\)\}px 0`;/);
+  // Ein sofortiges remove() im toggle schnitt den Ausgang ab.
+  const cal = pageSource('calendar');
+  const toggle = cal.slice(cal.indexOf("pop.addEventListener('toggle'"), cal.indexOf('pop.showPopover();'));
+  assert.doesNotMatch(toggle.replace(/\/\/.*$/gm, ''), /^\s*pop\.remove\(\);/m, 'das Popover geht erst nach dem Ausgang aus dem Baum');
+  assert.match(toggle, /setTimeout\(\(\) => pop\.remove\(\), durationToken\('--duration-xs', 120\) \+ 40\);/);
+});
+
+test('Erststart: die Karte steht, der Schritt wechselt ueber swapContent mit fester Hoehe', () => {
+  const dash = pageSource('dashboard');
+  const fn = dash.slice(dash.indexOf('function showOnboarding('), dash.indexOf('function maybeHintCustomize('));
+  assert.doesNotMatch(fn, /overlay\.replaceChildren\(\)/, 'die Karte wird nicht mehr je Schritt neu gebaut');
+  assert.match(fn, /swapContent\(stepEl, \(\) => \{ next = fillStep\(\); \}, \{ direction: 1 \}\);\s*next\?\.focus\(\);/, 'Tausch, dann Fokus auf den neuen Hauptknopf');
+  assert.match(fn, /function fitSteps\(\) \{[\s\S]{0,420}tallest = Math\.max\(tallest, stepEl\.offsetHeight\);[\s\S]{0,200}stepEl\.style\.minBlockSize = `\$\{tallest\}px`;/, 'die Hoehe ist die des hoechsten Schritts');
+  assert.match(fn, /appContainer\.appendChild\(overlay\);[\s\S]{0,120}fitSteps\(\);/, 'gemessen wird im Baum');
+  const step = ruleBodies('dashboard.css', '.onboarding-step').join(';');
+  assert.match(step, /display:\s*flex/);
+  assert.match(ruleBodies('dashboard.css', '.onboarding-step > .onboarding-body').join(';'), /flex:\s*1 0 auto/, 'der Text nimmt den Rest, Punkte und Knoepfe stehen');
+});
+
+test('Diagramme: Kurven und Ring der Berichte zeichnen sich einmal ein (drawChartOnce)', () => {
+  const stats = publicSource('pages/budget-stats.js');
+  assert.match(stats, /import \{ growBars, drawChartOnce \} from '\/utils\/ux\.js';/);
+  // Die Kurven stehen in EINER Gruppe - an ihr haengt der Beschnitt, Raster und Achse bleiben stehen.
+  // Seit R17 (Zukunft punktiert) stehen bis zu vier Linien in der Gruppe - alle zeichnen sich mit ein.
+  // Seit R18 dazu die Flaeche unter den Einnahmen und der Punkt mit Wert - auch sie in der Gruppe.
+  assert.match(stats, /<g class="budget-stats__lines">\s*<polygon[\s\S]{0,200}<polyline[\s\S]{0,400}<polyline[\s\S]{0,1400}<\/g>/);
+  assert.match(stats, /drawChartOnce\('budget-stats-trend', \{ lines: host\.querySelector\('\.budget-stats__lines'\) \}\);/);
+  assert.match(stats, /drawChartOnce\('budget-stats-donut', \{ arcs: host\.querySelectorAll\('\.budget-stats__donut circle'\) \}\);/);
+  // Das Ringsegment traegt "Laenge Umfang" - daraus liest der Helfer den Startwert.
+  assert.match(stats, /stroke-dasharray="\$\{\(frac \* C\)\.toFixed\(2\)\} \$\{C\.toFixed\(2\)\}"/);
+  // Der Helfer selbst: ohne fill (Endzustand = Markup), einmal je Sitzung.
+  const ux = publicSource('utils/ux.js');
+  const fn = ux.slice(ux.indexOf('export function drawChartOnce('), ux.indexOf('function settleAnimation('));
+  assert.doesNotMatch(fn, /fill:/, 'kein fill - faellt die Animation aus, steht das Diagramm');
+  assert.match(fn, /prefers-reduced-motion: reduce/);
+  assert.match(fn, /durationToken\('--duration-xl', 300\), easing: easingToken\('--ease-out'/);
+});
+
 test('Schichtplan: Laden zeigt das geteilte Skelett, Blaettern haelt den Inhalt bis zur Antwort', () => {
   const schedule = pageSource('schedule');
   assert.doesNotMatch(schedule, /card card--padded schedule-stat-loading/, 'keine Textkarte "Laedt..." mehr');
@@ -1138,4 +1317,778 @@ test('Schichtplan: Laden zeigt das geteilte Skelett, Blaettern haelt den Inhalt 
   const fn = schedule.slice(schedule.indexOf('async function activateView('), schedule.indexOf('async function activateView(') + 1500);
   assert.match(fn, /const hold = step !== null && !overview\.loading && !overview\.error;/);
   assert.match(fn, /if \(hold\) swapPeriod\(bodyEl\(\), step, renderPage\);/);
+});
+
+// --------------------------------------------------------------------------
+// R18: KEINE DREHUNG AUF EINEM KNOTEN, DER TEXT TRAEGT.
+//
+// `.page-fab[aria-expanded="true"] { transform: rotate(45deg) }` (dashboard.css)
+// sollte aus dem Plus ein X machen und drehte den ganzen Knopf. Am runden FAB
+// faellt das nicht auf; dieselbe Klasse traegt am Desktop aber die Kapsel
+// "+ Neu" (`.page-fab--docked`), und die kippte samt Wort um 45 Grad.
+//
+// Knoepfe sind die Knoten, die ein Etikett tragen KOENNEN: `.page-fab`
+// (angedockt beschriftet), `.btn`, der Popover-Ausloeser. Eine Drehung gehoert
+// an das Icon darin, nie an den Knopf - gleich in welcher Datei.
+// --------------------------------------------------------------------------
+const LABEL_BEARERS = ['page-fab', 'btn', 'popover-menu__trigger', 'toolbar-new-btn'];
+
+/** Der letzte zusammengesetzte Selektor - der Knoten, den die Regel trifft. */
+function subjectOf(selector) {
+  return selector.trim().split(/\s*[>+~]\s*|\s+/).pop();
+}
+
+function rotatedLabelBearers() {
+  const hits = [];
+  for (const file of allSheets) {
+    for (const { selector, body } of eachRule(css(file))) {
+      if (!/(?:^|[;\s])(?:transform|rotate)\s*:[^;]*(?:rotate[XYZ]?\(|\d(?:deg|turn|rad))/.test(body)) continue;
+      for (const part of selector.split(',')) {
+        const subject = subjectOf(part);
+        // Ein Pseudo-Element ist ein eigener Kasten ohne Text - das darf drehen.
+        if (/::|:(?:before|after)\b/.test(subject)) continue;
+        const classes = (subject.match(/\.[\w-]+/g) ?? []).map((c) => c.slice(1));
+        if (classes.some((c) => LABEL_BEARERS.includes(c))) hits.push(`${file}: ${part.trim()}`);
+      }
+    }
+  }
+  return hits;
+}
+
+test('R18: keine Drehung auf einem Knopf, der Text tragen kann - es dreht das Icon', () => {
+  assert.deepEqual(rotatedLabelBearers(), [],
+    'eine Drehung am Knopf kippt seine Beschriftung mit (Kapsel "+ Neu" am Desktop)');
+
+  // Reichweite: das Plus-zu-X gibt es weiterhin, am Icon.
+  const dash = [...eachRule(css('dashboard.css'))];
+  const turn = dash.find((r) => r.selector.split(',').some((s) => s.trim() === '.page-fab[aria-expanded="true"] > svg'));
+  assert.ok(turn, 'die Regel fuer das gedrehte Icon fehlt');
+  assert.match(turn.body, /transform:\s*rotate\(45deg\)/);
+
+  // Das Grau des offenen Speed-Dials erreicht die angedockte Kapsel nicht.
+  const grey = dash.filter((r) => /\.page-fab\[aria-expanded="true"\]/.test(r.selector) && /background(?:-color)?\s*:/.test(r.body));
+  assert.ok(grey.length > 0, 'Reichweite: der offene Speed-Dial faerbt sich weiterhin um');
+  for (const r of grey) {
+    assert.match(r.selector, /:not\(\.page-fab--docked\)/, `${r.selector} wuerde die violette Kapsel ergrauen lassen`);
+  }
+});
+
+// --------------------------------------------------------------------------
+// R18, Bewegung: DIE QUITTUNG HAENGT AN DER BERUEHRUNG, NICHT AM ZUSTAND.
+//
+// `check-pop` stand als `animation` an `.item-check--checked`,
+// `.task-status-btn--done`, `.subtask-item__checkbox--done` und
+// `.note-md-check.is-checked`. Eine Animation an einer Zustandsklasse startet
+// jedes Mal, wenn ein Knoten MIT der Klasse entsteht - also bei jedem
+// Neuzeichnen. Gemessen im Einkauf: beim Anlegen, Loeschen und beim Aufklappen
+// einer Gruppe zuckten alle laengst abgehakten Haken. Das Projekt kannte die
+// Fehlerklasse (#467, das Zustandszeichen) und hatte sie je Stelle mit einer
+// Gegenregel geflickt.
+//
+// Die Regel: eine Zustandsklasse traegt Aussehen, keine Animation. Die
+// Quittung startet der Handler (`acknowledgeCheck` in utils/ux.js), am
+// beruehrten Element, einmal.
+// --------------------------------------------------------------------------
+
+/** Klassen, die einen ZUSTAND nennen - er steht, solange die Daten ihn tragen. */
+const STATE_CLASS = /\.(?:[\w-]+--(?:checked|done|selected|active|current|open|expanded|completed|pinned|archived|collapsed|on)|(?:is|was|has)-[\w-]+)(?![\w-])/;
+
+/** `datei: selektor` -> Grund. Ein Eintrag, der nichts mehr trifft, macht den Guard rot. */
+const STATE_ANIMATION_EXCEPTIONS = new Map([
+  ['layout.css: .page-toolbar--capped.is-collapsed > .page-toolbar__title', 'Large Title: der Zustand folgt dem Scrollstand am selben, nie neu gezeichneten Knoten; die Blende ist sein Uebergang (Guard "Large Title")'],
+  ['layout.css: .page-toolbar--capped.was-collapsed:not(.is-collapsed) > .page-toolbar__title', 'Rueckweg derselben Blende; `was-collapsed` faellt erst nach dem ersten Einklappen, ein Seitenaufbau spielt sie nicht'],
+]);
+
+function stateAnimations() {
+  const hits = [];
+  for (const file of allSheets) {
+    for (const rule of eachRule(css(file))) {
+      const decl = rule.body.match(/(?:^|;)\s*animation(?:-name)?\s*:\s*([^;]+)/);
+      if (!decl || /^none\b/.test(decl[1].trim())) continue;
+      // Endlos-Schleifen (Spinner an `.is-loading`) SIND der Zustand.
+      if (/(?<![\w-])infinite(?![\w-])/.test(decl[1])) continue;
+      for (const part of selectorList(rule.selector)) {
+        if (STATE_CLASS.test(part)) hits.push(`${file}: ${part.replace(/\s+/g, ' ')}`);
+      }
+    }
+  }
+  return hits;
+}
+
+test('R18: keine Animation an einer Zustandsklasse - ein Neuzeichnen spielte sie an unberuehrten Zeilen', () => {
+  // Reichweite des Musters, an Text geprueft.
+  for (const sel of ['.item-check--checked', '.task-status-btn--done', '.note-md-check.is-checked .note-md-box', '.a.was-collapsed:not(.is-collapsed) > .b']) {
+    assert.match(sel, STATE_CLASS, `${sel} muss als Zustand gelten`);
+  }
+  for (const sel of ['.modal-panel--closing', '.toast--out', '.btn--shaking', '.detail-pane--enter', '.history-list']) {
+    assert.doesNotMatch(sel, STATE_CLASS, `${sel} ist ein kurzlebiger Moment, kein Zustand`);
+  }
+  const hits = stateAnimations();
+  const offenders = hits.filter((hit) => !STATE_ANIMATION_EXCEPTIONS.has(hit));
+  assert.deepEqual(offenders, [], `Animation an einer Zustandsklasse - im Handler ausloesen (acknowledgeCheck) oder benannt ausnehmen:\n  ${offenders.join('\n  ')}`);
+  const dead = [...STATE_ANIMATION_EXCEPTIONS.keys()].filter((key) => !hits.includes(key));
+  assert.deepEqual(dead, [], `Ausnahme trifft nichts mehr - streichen:\n  ${dead.join('\n  ')}`);
+  // Die alte Kurve (fuenf Stuetzpunkte, vier Richtungswechsel in 200ms) ist weg.
+  assert.ok(!keyframeNames().has('check-pop'), '@keyframes check-pop ist in acknowledgeCheck aufgegangen');
+});
+
+/** Skalierungen der Stuetzpunkte: `scale(1.16)` -> 1.16. */
+const scalesOf = (keyframes) => keyframes.map((k) => Number(String(k.transform).match(/^scale\(([\d.]+)\)$/)?.[1]));
+
+test('acknowledgeCheck: eine Quittung am beruehrten Element, ein Ueberschwinger, auch beim Zuruecknehmen', async () => {
+  const restore = motionEnv();
+  try {
+    const { acknowledgeCheck } = await import('../public/utils/ux.js');
+    const el = motionEl('haken');
+    const started = Date.now();
+    await acknowledgeCheck(el, { checked: true }); // `finished` loest in motionEl NIE auf
+    assert.ok(Date.now() - started < 1000, 'der Timer loest auf, nicht das Ereignis - der Aufrufer wartet darauf vor dem Neuzeichnen');
+    assert.equal(el.calls.length, 1, 'genau eine Animation');
+    const up = scalesOf(el.calls[0].keyframes);
+    assert.equal(up.length, 3, 'Ruhe - Ausschlag - Ruhe: ein Richtungswechsel, nicht vier');
+    assert.equal(up[0], 1);
+    assert.equal(up[2], 1);
+    assert.ok(up[1] > 1 && up[1] <= 1.2, `Abhaken schwingt einmal ueber (${up[1]})`);
+    assert.equal(el.calls[0].timing.duration, 200, '--duration-md');
+    assert.equal(el.calls[0].timing.fill, undefined, 'kein fill: am Ende gilt das Stylesheet');
+    assert.deepEqual(el.style, {}, 'kein Inline-Stil, keine Klasse');
+
+    const back = motionEl('zurueck');
+    await acknowledgeCheck(back, { checked: false });
+    const down = scalesOf(back.calls[0].keyframes);
+    assert.ok(down[1] < 1 && down[1] >= 0.85, `Zuruecknehmen gibt einmal nach (${down[1]})`);
+    assert.equal(back.calls[0].timing.duration, 150, '--duration-sm: der Rueckweg ist kuerzer');
+
+    // Ein zweiter Tipp auf denselben Haken bricht die laufende Quittung ab.
+    const twice = motionEl('doppelt');
+    acknowledgeCheck(twice, { checked: true });
+    await acknowledgeCheck(twice, { checked: false });
+    assert.equal(twice.cancelled, 1);
+    assert.equal(twice.calls.length, 2);
+
+    await acknowledgeCheck(null); // nichts zu tun
+  } finally { restore(); }
+});
+
+test('acknowledgeCheck: reduzierte Bewegung und verdeckter Tab bewegen nichts und halten niemanden auf', async () => {
+  for (const env of [{ reduced: true }, { visibility: 'hidden' }]) {
+    const restore = motionEnv(env);
+    try {
+      const { acknowledgeCheck } = await import('../public/utils/ux.js');
+      const el = motionEl('haken');
+      await acknowledgeCheck(el, { checked: true });
+      assert.equal(el.calls.length, 0, JSON.stringify(env));
+    } finally { restore(); }
+  }
+});
+
+test('R18: jeder Abhak-Handler quittiert selbst - die Zeilen-Auffrischung nicht', () => {
+  const shopping = pageSource('shopping');
+  const toggle = shopping.slice(shopping.indexOf('async function toggleShoppingItem('), shopping.indexOf('async function toggleShoppingItem(') + 2600);
+  assert.match(toggle, /updateItemRow\(container, item\);[\s\S]{0,400}acknowledgeCheck\(checkOf\(container, id\), \{ checked: newVal === 1 \}\);/, 'Einkauf: Quittung im Tipp');
+  // updateItemRow laeuft auch fuer fremde Aenderungen (Live-Auffrischung) und
+  // beim Zuruecksetzen nach einem Fehler: dort hat niemand etwas beruehrt.
+  const refresh = shopping.slice(shopping.indexOf('function updateItemRow('), shopping.indexOf('function refreshItemName('));
+  assert.doesNotMatch(stripComments(refresh), /acknowledgeCheck/);
+
+  const tasks = pageSource('tasks');
+  assert.match(tasks, /const settled = acknowledgeCheck\(target, \{ checked: nextStatus === 'done' \}\);/, 'Aufgabe: Quittung laeuft neben dem Roundtrip');
+  assert.match(tasks, /await toggleTaskStatus\(id, status\);\s*await settled;/, 'und das Neuzeichnen wartet auf sie');
+  assert.match(tasks, /const settled = acknowledgeCheck\(target, \{ checked: subtaskDone \}\);[\s\S]{0,200}await toggleSubtaskStatus\(id, target\.dataset\.status\);\s*await settled;/, 'Teilaufgabe ebenso');
+  assert.match(pageSource('housekeeping'), /const settled = acknowledgeCheck\(button, \{ checked: true \}\);/);
+  assert.match(pageSource('notes'), /paintCheck\(noteId, line, checked\);\s*acknowledgeCheck\(box, \{ checked \}\);/, 'Notiz-Checkliste: am angetippten Kasten, nicht an jeder Ansicht');
+  assert.match(publicSource('components/task-detail.js'), /paint\(checked\);\s*acknowledgeCheck\(box, \{ checked \}\);/, 'Checkliste in der Aufgabenbeschreibung');
+  // Der alte Warter hing an `animationend` - das feuert die Web Animations API nicht.
+  assert.doesNotMatch(publicSource('utils/ux.js'), /export function animationSettled/);
+});
+
+// --------------------------------------------------------------------------
+// R18, Bewegung: "NEUE AUFGABE" SCHLIESST SOFORT. Der Dialog zeigte nach dem
+// Speichern 700ms einen Haken im Knopf und schloss dann (gemessen: Ausgang
+// beginnt 739-750ms nach dem Klick, Zeile sichtbar nach 887-901ms; Notizen
+// schliessen in 25ms). Die Quittung einer angelegten Aufgabe ist die Zeile,
+// die aufzieht - nicht ein Knopf, hinter dem sie wartet.
+// --------------------------------------------------------------------------
+test('R18: der Aufgaben-Dialog schliesst mit dem Speichern - die aufziehende Zeile ist die Quittung', () => {
+  const tasks = stripComments(pageSource('tasks'));
+  const save = tasks.slice(tasks.indexOf("const res = await api.post('/tasks', body);"), tasks.indexOf('async function handleRenameSubtask('));
+  assert.ok(save.length > 500, 'Vorbedingung: der Speicherpfad ist gefunden');
+  assert.doesNotMatch(save, /btnSuccess\(/, 'kein Haken im Knopf eines Dialogs, der schliesst');
+  assert.doesNotMatch(save, /setTimeout\(\(\) => closeModal/, 'kein verzoegertes Schliessen');
+  // Das Neuzeichnen steht in einem eigenen try: sein Fehler gehoert auf die
+  // Seite, nicht an den geschlossenen Dialog (Review zu #1794, Test weiter unten).
+  assert.match(save, /closeModal\(\{ force: true \}\);\s*try \{\s*await refreshTags\(\);\s*await onChanged\(\);/, 'schliessen, dann neu zeichnen');
+  // Die Reihenfolge der Enthuellung bleibt: erst der Dialog weg, dann die
+  // History wieder bei der Seite, dann die Zeile (sonst traegt `back()` die
+  // alte Adresse wieder herein).
+  assert.match(save, /whenModalClosed\(\)\s*\.then\(\(\) => whenHistorySettled\(\)\)\s*\.then\(\(\) => \{\s*revealCreatedTask\(container, savedTaskId\);\s*refocusAfterRender\(\);\s*\}\);/);
+  // Der Dialog ist jetzt vor dem Neuzeichnen zu - der Fokus-Rueckweg muss nachgezogen werden.
+  assert.match(save, /await onChanged\(\);\s*refocusAfterRender\(\);/);
+  // Der Fehlerpfad der Dokument-Verknuepfung haelt das Formular weiter offen.
+  assert.match(save, /resetSubmit\(t\('tasks\.documentsLinkFailed'\)\);\s*btnError\(submitBtn\);/);
+  // btnSuccess bleibt als Baustein fuer Formulare, die OFFEN bleiben.
+  assert.match(publicSource('components/modal.js'), /export function btnSuccess\(/);
+});
+
+// --------------------------------------------------------------------------
+// R18, Bewegung: DRILL-DOWN HAT EINE RICHTUNG. Einstellungen mobil, Uebersicht
+// <-> Blatt: 0 Animationen in drei Messungen (der Soft-Update-Zweig des
+// Routers ruft `startViewTransition` nie). Gesundheit, Bereich hin und
+// zurueck: nur die richtungslose Blende.
+//
+// BENANNTE AUSNAHME zur Regel "der Seiteninhalt blendet nur - kein Versatz"
+// (Guard weiter oben): die gilt dem TAB-WECHSEL - Geschwister ohne Raumbezug,
+// das Chrome steht. Ein Drill-down ist eine Ebene tiefer im SELBEN Modul; dort
+// sagt die Richtung, wohin Zurueck fuehrt. Er laeuft nicht ueber
+// `.page-transition--*`, sondern ueber `swapContent(host, ..., { direction })`:
+// 8px, RTL-fest, unter reduzierter Bewegung nur die Blende (alles oben am
+// Helfer getestet). Hinein +1, zurueck -1 - und nur dort, wo die Ebenen
+// einander ERSETZEN: neben der Seitenleiste bzw. in der Split-Ansicht bleibt
+// es bei der Blende.
+// --------------------------------------------------------------------------
+const DRILL_DOWN_HOSTS = [
+  ['settings/shell.js', /const drill = existingShell && !isSplit\(shell\) && wasLeaf !== Boolean\(activeLeaf\)\s*\? \(activeLeaf \? 1 : -1\)\s*: 0;/, 'Einstellungen: Uebersicht <-> Blatt, nur ohne Seitenleiste'],
+  ['settings/shell.js', /if \(drill\) swapContent\(content, null, \{ direction: drill \}\);\s*if \(toolbar\) renderToolbar\(toolbar, content, \{ activeLeaf, domain: leafDomain \}\);\s*await renderLeafContent\(/, 'Einstellungen: das Blatt gleitet mit seinem Geruest herein - vor dem Laden gestartet, nicht danach'],
+  ['settings/shell.js', /renderOverview\(content, domains, user\);[\s\S]{0,200}if \(drill\) swapContent\(content, null, \{ direction: drill \}\);/, 'Einstellungen: zurueck zur Uebersicht'],
+  ['pages/health.js', /const drill = !narrow \? 0 : id === HEALTH_OVERVIEW_ID \? -1 : previous === HEALTH_OVERVIEW_ID \? 1 : 0;\s*if \(previous && previous !== id\) markAreaEntering\(route, drill\);/, 'Gesundheit: Uebersicht <-> Bereich, nur schmal'],
+  ['pages/health.js', /if \(panel\) swapContent\(panel, null, \{ direction \}\);/, 'Gesundheit: ueber den geteilten Helfer'],
+];
+
+test('R18: Drill-down gleitet mit Richtung - hinein +1, zurueck -1, ueber swapContent', () => {
+  const missing = DRILL_DOWN_HOSTS.filter(([file, pattern]) => !pattern.test(publicSource(file))).map(([file, , what]) => `${file}: ${what}`);
+  assert.deepEqual(missing, [], `Drill-down ohne Richtung:\n  ${missing.join('\n  ')}`);
+  // Die Ausnahme oeffnet die Tab-Regel nicht: keine `.page-transition--*`-Regel
+  // versetzt, und kein Drill-down haengt eine solche Klasse an.
+  for (const [file] of DRILL_DOWN_HOSTS) assert.doesNotMatch(publicSource(file), /page-transition--/, `${file} greift in die Seitenblende`);
+  // Kein Doppel: das Blatt, das hereingleitet, traegt nicht zusaetzlich die Blattwechsel-Blende.
+  assert.match(publicSource('settings/shell.js'), /const swapping = Boolean\(content\.querySelector\(':scope > \.settings-leaf'\)\);/);
+});
+
+// --------------------------------------------------------------------------
+// R18, Bewegung: ZEILEN UND KARTEN QUITTIEREN DEN TIPP, UND HOVER KLEBT NICHT.
+//
+// Gemessen: keine `:active`-Regel an Listenzeilen, Aufgabenkarten, Heute-
+// Karten, Einstellungszeilen; rund 250 `:hover`-Regeln, davon 5 unter
+// `@media (hover: hover)`. Auf einem Touch-Geraet bleibt `:hover` nach dem
+// Tipp am Element haengen, bis woanders getippt wird - die Zeile sah nach dem
+// Loslassen weiter "beruehrt" aus und hatte waehrenddessen nichts gezeigt.
+//
+// Die Regel fuer die GETEILTEN Bausteine (nicht fuer alle 250 Stellen):
+//   - ihre Hover-Flaeche steht unter `@media (hover: hover)`;
+//   - sie tragen ein `:active` - ueber den einen Press-Baustein in
+//     list-row.css oder (Karten mit eigenem Druckbild) ueber eine eigene Regel.
+// Fuer den Rest gilt ein Ratchet: die Zahl der ungeschuetzten `:hover`-Regeln
+// darf nicht steigen.
+// --------------------------------------------------------------------------
+const SHARED_PRESSABLE = [
+  // [Selektor des Bausteins, Selektor im Press-Baustein | 'own' fuer eine eigene :active-Regel]
+  ['.list-row', 'a.list-row'],
+  ['.task-card', '.task-card'],
+  ['.tasks-page .task-card', '.task-card'],
+  ['.shopping-page .shopping-item', '.shopping-item:not(.shopping-item--static)'],
+  ['.today-cockpit-card[data-route]', '.today-cockpit-card[data-route]'],
+  ['.today-cockpit-card--group', '.today-cockpit-card--group'],
+  ['.today-cockpit__more--link', '.today-cockpit__more--link'],
+  ['.quick-link-tile', '.quick-link-tile'],
+  ['.widget__link', '.widget__link'],
+  ['.settings-shell__navigation-link', '.settings-shell__navigation-link'],
+  ['.settings-overview__row', '.settings-overview__row'],
+  ['.metric-card--tile', 'own'],
+  ['.card--interactive', 'own'],
+  ['.more-item', 'own'],
+];
+/** Hoechststand der `:hover`-Regeln ausserhalb von `@media (hover: hover)`. Nur senken. */
+const UNGUARDED_HOVER_MAX = 240;
+
+function hoverRules() {
+  const out = [];
+  for (const file of allSheets) {
+    for (const rule of eachRule(css(file))) {
+      if (!/:hover/.test(rule.selector)) continue;
+      out.push({ file, selectors: selectorList(rule.selector), guarded: rule.at.some((a) => /\(hover:\s*hover\)/.test(a)) });
+    }
+  }
+  return out;
+}
+
+function pressRule() {
+  return [...eachRule(css('list-row.css'))].find((r) => /^:is\(/.test(r.selector.trim()) && /:active/.test(r.selector) && /--duration-2xs/.test(r.body));
+}
+
+test('R18: geteilte Zeilen und Karten tragen Hover nur unter (hover: hover) und quittieren den Druck', () => {
+  const hovers = hoverRules();
+  const press = pressRule();
+  assert.ok(press, 'der Press-Baustein in list-row.css fehlt');
+  const pressSelectors = selectorList(press.selector.trim().replace(/^:is\(/, '').replace(/\):active[\s\S]*$/, ''));
+  const failures = [];
+  for (const [base, via] of SHARED_PRESSABLE) {
+    const own = hovers.filter((h) => h.selectors.includes(`${base}:hover`));
+    if (!own.length) failures.push(`${base}: keine Hover-Regel mehr - Eintrag streichen`);
+    for (const h of own) if (!h.guarded) failures.push(`${h.file}: ${base}:hover steht ausserhalb von @media (hover: hover)`);
+    if (via === 'own') {
+      const leaf = base.split(/\s+/).pop();
+      const has = allSheets.some((file) => [...eachRule(css(file))].some((r) => selectorList(r.selector).some((s) => s.replace(/\s+/g, ' ') === `${leaf}:active`)));
+      if (!has) failures.push(`${base}: keine eigene :active-Regel`);
+    } else if (!pressSelectors.includes(via)) {
+      failures.push(`${base}: ${via} fehlt im Press-Baustein`);
+    }
+  }
+  assert.deepEqual(failures, [], failures.join('\n'));
+});
+
+test('R18: der Press-Baustein - vorhandene Zustandsflaeche, hinein 80ms, nie unter dem Wisch und nie fuer ein inneres Ziel', () => {
+  const press = pressRule();
+  assert.match(press.body, /background-color:\s*var\(--color-surface-hover\)/, 'die vorhandene neutrale Zustandsstufe - ihre Kontraste sind gehalten, keine neue Zahl');
+  assert.match(press.body, /transition-duration:\s*var\(--duration-2xs\)/, 'hinein schnell; heraus gilt die Dauer der Ruhe-Regel');
+  assert.match(press.selector, /:not\(\.swipe-row--swiping \*\)/, 'eine gezogene Wischzeile sieht nicht gedrueckt aus');
+  assert.match(press.selector, /:not\(:has\(:is\([^)]*button[^)]*\):not\(\.u-row-title\):active\)\)/, 'ein Knopf IN der Zeile drueckt die Zeile nicht mit - ausser ihr Titel');
+  // Zurueckgenommene Zeilen behalten ihre Flaeche (#1230) - der Baustein schluege sie sonst mit (0,4,1).
+  for (const word of ['done', 'checked', 'archived', 'paused', 'inactive', 'completed']) {
+    assert.ok(press.selector.includes(`[class*="--${word}"]`), `--${word} ist nicht vom Druckbild ausgenommen`);
+  }
+  // Heraus langsamer: die Bausteine tragen in Ruhe eine laengere Dauer.
+  const out = ruleBodies('list-row.css', '.list-row').join(';');
+  assert.match(out, /transition:\s*background-color var\(--transition-fast\)/);
+  const tokens = css('tokens.css');
+  const ms = (name) => Number(tokens.match(new RegExp(`${name}:\\s*(\\d+)ms`))?.[1]);
+  assert.ok(ms('--duration-2xs') < ms('--duration-sm'), 'Druck schneller als Loslassen');
+  // Keine Bewegung: reduzierte Bewegung braucht keinen eigenen Zweig.
+  assert.doesNotMatch(press.body, /transform|scale|translate/);
+});
+
+test('R18: die Zahl der ungeschuetzten :hover-Regeln steigt nicht (Ratchet)', () => {
+  const open = hoverRules().filter((h) => !h.guarded);
+  assert.ok(open.length <= UNGUARDED_HOVER_MAX,
+    `${open.length} :hover-Regeln ausserhalb von @media (hover: hover), erlaubt sind ${UNGUARDED_HOVER_MAX}. Neue Hover-Flaechen gehoeren unter (hover: hover) - auf Touch klebt :hover nach dem Tipp.`);
+  // Wer aufraeumt, senkt die Zahl mit: ein zu hoher Deckel liesse neue Stellen durch.
+  assert.ok(open.length >= UNGUARDED_HOVER_MAX - 3, `nur noch ${open.length} ungeschuetzt - UNGUARDED_HOVER_MAX auf ${open.length} senken`);
+});
+
+// --------------------------------------------------------------------------
+// R18, Bewegung: DAS CHROME STEHT BEIM SEITENWECHSEL (mobil gemessen).
+//
+//  a) Die Kapsel verlor fuer die Dauer der Blende ihr Glas: der Name
+//     `nav-bottom` sass am ELTERNKNOTEN `.nav-bottom`, der damit Backdrop Root
+//     war - der `backdrop-filter` der Kapsel darin sah nur noch Transparenz,
+//     Zeilentext lief scharf durch sie hindurch (Zwischenbild bei 67ms).
+//     Jetzt traegt das GLAS-ELEMENT selbst den Namen: der Browser uebernimmt
+//     dessen `backdrop-filter` an die Gruppe des Uebergangs, und die blurrt
+//     das Wurzelbild darunter. Die Pille daneben bekommt ihren eigenen Namen,
+//     sonst laege sie im Wurzelbild UNTER dem Glas.
+//  b) Der FAB poppte bei JEDEM Tab-Wechsel neu herein (`fab-in`, 4 von 4): er
+//     ist ein neuer Knoten je Seite. Jetzt steht er wie der Kopf (eigener Name
+//     nur fuer die Dauer), und `fab-in` spielt nur, wenn die Vorseite keinen
+//     hatte - also auch beim Kaltstart.
+//  c) Die Tab-Leiste sprang, wenn die Zielseite ihren FAB erst nach den Daten
+//     anlegt: die FAB-Reserve der Kapsel fiel dazwischen weg. Sie haelt jetzt
+//     bis zum Ende des Aufbaus.
+//  d) Das gestaffelte Einblenden der Zeilen lief UNTER der Blende mit - zwei
+//     Einblendungen fuer einen Wechsel. Waehrend `html.page-swapping` staffelt
+//     nichts; die Blende traegt die Zeilen.
+// --------------------------------------------------------------------------
+const namedRules = () => {
+  const out = [];
+  for (const file of allSheets) {
+    for (const rule of eachRule(css(file))) {
+      const name = declValue(rule.body, 'view-transition-name');
+      if (!name || name === 'none') continue;
+      for (const sel of selectorList(rule.selector)) out.push({ file, selector: sel.replace(/\s+/g, ' '), name });
+    }
+  }
+  return out;
+};
+
+test('R18: die Kapsel behaelt ihr Glas - der Name sitzt am Glas-Element, nicht an seinem Elternknoten', () => {
+  const named = namedRules();
+  const byName = (name) => named.filter((r) => r.name === name).map((r) => r.selector);
+  assert.deepEqual(byName('nav-bottom'), ['html.page-swapping .nav-bottom__items'], 'genau EIN Traeger je Name - ein doppelter verwirft die ganze Transition');
+  assert.deepEqual(byName('nav-bottom-indicator'), ['html.page-swapping .nav-bottom__indicator']);
+  assert.deepEqual(byName('page-fab'), ['html.page-swapping .fab-layer .page-fab'], 'nur der schwebende FAB der Ebene: dort steht hoechstens einer');
+  // Das benannte Element IST das Glas (sonst haette die Gruppe nichts zu uebernehmen).
+  const glass = [...glassAncestors().keys()];
+  assert.ok(glass.some((k) => k.endsWith(': .nav-bottom__items')), 'die Kapsel traegt den backdrop-filter selbst');
+  // Jeder Name nur waehrend des Wechsels.
+  for (const r of named.filter((n) => /^(?:nav-|page-fab)/.test(n.name))) assert.match(r.selector, TRANSIENT_GATE, `${r.selector} traegt ${r.name} dauerhaft`);
+
+  // Die Gruppen stehen (kein Gleiten), das alte Bild entfaellt, das neue lebt ohne Blende.
+  const layout = [...eachRule(css('layout.css'))];
+  const rule = (needle) => layout.filter((r) => selectorList(r.selector).some((s) => s.replace(/\s+/g, ' ') === needle));
+  for (const name of ['nav-bottom', 'nav-bottom-indicator', 'page-fab']) {
+    assert.ok(rule(`::view-transition-group(${name})`).some((r) => /animation:\s*none/.test(r.body)), `Gruppe ${name} gleitet`);
+    assert.ok(rule(`::view-transition-old(${name}):not(:only-child)`).some((r) => /display:\s*none/.test(r.body)), `altes Bild von ${name} bleibt als Geist stehen`);
+    assert.ok(rule(`::view-transition-new(${name}):not(:only-child)`).some((r) => /animation:\s*none/.test(r.body)), `neues Bild von ${name} blendet`);
+  }
+  // Der backdrop-filter der Gruppe folgt ihrem Kasten: ohne Radius blurrte ein
+  // Rechteck ueber die Rundung der Kapsel hinaus (im Zwischenbild gesehen).
+  for (const name of ['nav-bottom', 'page-fab']) {
+    assert.ok(rule(`::view-transition-group(${name})`).some((r) => /border-radius:\s*var\(--radius-full\)/.test(r.body)), `Gruppe ${name} ohne Rundung`);
+  }
+  assert.match(ruleBodies('layout.css', '.nav-bottom__items').join(';'), /border-radius:\s*var\(--radius-full\)/, 'die Kapsel selbst ist voll gerundet - sonst passt die Gruppe nicht');
+});
+
+test('R18: der FAB steht ueber den Wechsel, poppt nur ohne Vorgaenger, und seine Reserve haelt bis zum Ende des Aufbaus', () => {
+  const router = stripComments(publicSource('router.js'));
+  const swap = router.slice(router.indexOf('const swap = () => {'), router.indexOf('await swapPage(swap,'));
+  assert.ok(swap.length > 300, 'Vorbedingung: der Tausch-Callback ist gefunden');
+  // VOR dem Tausch gefragt - danach gibt es den alten FAB nicht mehr: der
+  // schwebende faellt mit clearPageFab(), der im Kopf angedockte (Desktop)
+  // schon mit `content.replaceChildren()`. (Im Browser gesehen: an der zweiten
+  // Stelle gefragt, poppte die Kapsel "+ Neu" am Desktop weiter bei jedem Wechsel.)
+  const held = swap.indexOf('holdFabAcrossSwap(');
+  assert.ok(held >= 0 && held < swap.indexOf('content.replaceChildren(pageWrapper)') && held < swap.indexOf('clearPageFab();'), 'der Vorgaenger wird vor dem Inhaltstausch festgehalten');
+  const hold = router.slice(router.indexOf('function holdFabAcrossSwap('), router.indexOf('function holdFabAcrossSwap(') + 700);
+  assert.match(hold, /classList\.toggle\('fab-steady', /, 'fab-in nur ohne Vorgaenger');
+  assert.match(hold, /classList\.toggle\('fab-holding', /, 'die Reserve der Kapsel haelt');
+  // Losgelassen wird nach dem letzten adoptPageFab() - und auch, wenn der Aufbau scheitert.
+  assert.match(router, /const pageFab = adoptPageFab\(\);\s*releaseFabHold\(\);/);
+  const render = router.slice(router.indexOf('async function renderPage('), router.indexOf('const pageFab = adoptPageFab();'));
+  const tail = router.slice(router.indexOf('const pageFab = adoptPageFab();'));
+  assert.match(tail.slice(0, tail.indexOf('\nasync function ') > 0 ? tail.indexOf('\nasync function ') : 6000), /\} catch \(err\) \{[\s\S]{0,400}releaseFabHold\(\);/, 'ein gescheiterter Aufbau laesst die Reserve nicht stehen');
+  assert.ok(render.length > 0);
+
+  assert.match(ruleBodies('layout.css', 'html.fab-steady .page-fab').join(';'), /animation:\s*none/);
+  const reserve = [...eachRule(css('layout.css'))].find((r) => /padding-inline-end:\s*calc\(var\(--fab-size\)/.test(r.body) && /\.nav-bottom__items/.test(r.selector));
+  assert.ok(reserve, 'die FAB-Reserve der Kapsel fehlt');
+  assert.ok(selectorList(reserve.selector).map((s) => s.replace(/\s+/g, ' ')).includes('html.fab-holding .nav-bottom__items'), 'die Reserve haelt waehrend des Aufbaus');
+  // Kaltstart: die Einfahrt gibt es weiter.
+  assert.match(ruleBodies('layout.css', '.page-fab').join(';'), /animation:\s*fab-in var\(--duration-xl\) var\(--ease-out\) backwards/);
+});
+
+test('R18: stagger startet nicht unter der Seitenblende - und holt es danach nicht nach', async () => {
+  const restore = motionEnv();
+  const classes = new Set(['page-swapping']);
+  globalThis.document.documentElement.classList = { contains: (c) => classes.has(c) };
+  try {
+    const { stagger } = await import('../public/utils/ux.js');
+    const host = motionEl('host');
+    const rows = [motionEl('a'), motionEl('b')];
+    stagger(rows, { host });
+    assert.equal(rows[0].style.opacity, undefined, 'unter der Blende setzt nichts die Zeilen auf 0');
+    assert.equal(rows[0].style.transform, undefined);
+    // Die Blende WAR das Einblenden dieses Aufbaus: ein spaeteres Neuzeichnen staffelt nicht nach.
+    classes.delete('page-swapping');
+    const again = [motionEl('a'), motionEl('b')];
+    stagger(again, { host });
+    assert.equal(again[0].style.opacity, undefined, 'der Merker ist verbraucht');
+    // Ohne Seitenwechsel (Kaltstart, Reiter im Modul) staffelt es wie bisher.
+    const fresh = [motionEl('x')];
+    stagger(fresh, { host: motionEl('anderer') });
+    assert.equal(fresh[0].style.opacity, '0');
+  } finally { restore(); }
+  await new Promise((r) => setTimeout(r, 500));
+});
+
+// --------------------------------------------------------------------------
+// R18, Bewegung: DIE BLATT-GESTE WIRD ZU ENDE GEFUEHRT.
+//
+// Nach einem Flick loeste sich das Blatt AM ORT auf: der Tipp-Ausgang
+// (`sheet-out`: 24px + Deckkraft) lief dort los, wo der Finger es liess - rund
+// 150px unter der Ruhelage. Das Tempo des Fingers entschied nur Ja/Nein und
+// ging dann verloren, die Abdunklung blieb waehrend des Zugs voll.
+//
+// Die Guards (1) und (4) oben gelten den KEYFRAMES des Tipp- und Esc-Ausgangs
+// (kurzer Hub, entschieden am 05.10.) - die bleiben. Der GESTEN-Ausgang ist ein
+// eigener Fall: per Web Animations API auf `translate` (setzt sich mit dem
+// `transform` der Keyframes zusammen), von der Lage des Fingers aus dem Bild.
+// --------------------------------------------------------------------------
+function gestureSheet({ height = 500, top = 300, animate = true } = {}) {
+  const handlers = {};
+  const attrs = {};
+  const calls = [];
+  let translate = '';
+  let clock = 1000;
+  const panel = {
+    addEventListener: (type, fn) => { handlers[type] = fn; },
+    removeEventListener: () => {},
+    getBoundingClientRect: () => ({ top, height }),
+    setAttribute: (k, v) => { attrs[k] = v; },
+    removeAttribute: (k) => { delete attrs[k]; },
+    getAttribute: (k) => attrs[k] ?? null,
+    style: { get translate() { return translate; }, set translate(v) { translate = v; } },
+  };
+  if (animate) {
+    panel.animate = (keyframes, timing) => {
+      const anim = { keyframes, timing, cancelled: false, finished: new Promise(() => {}), cancel() { anim.cancelled = true; } };
+      calls.push(anim);
+      return anim;
+    };
+  }
+  const at = (y, dt = 16) => { clock += dt; return { timeStamp: clock, touches: [{ clientY: y }], changedTouches: [{ clientY: y }] }; };
+  return {
+    panel, attrs, calls,
+    get translate() { return translate; },
+    start: (y) => handlers.touchstart(at(y, 0)),
+    move: (y, dt) => handlers.touchmove(at(y, dt)),
+    end: (y, dt) => handlers.touchend(at(y, dt)),
+  };
+}
+
+function dimEl() {
+  const props = new Map();
+  const calls = [];
+  return {
+    props, calls,
+    style: { setProperty: (k, v) => props.set(k, String(v)), removeProperty: (k) => props.delete(k) },
+    animate: (keyframes, timing) => { calls.push({ keyframes, timing }); return { finished: new Promise(() => {}), cancel() {} }; },
+  };
+}
+
+test('Blatt-Geste: nach dem Flick faehrt das Blatt von der Lage des Fingers aus dem Bild - Dauer aus Reststrecke und Tempo', async () => {
+  const restore = motionEnv();
+  globalThis.requestAnimationFrame = (fn) => fn();
+  try {
+    const { wireSheetDrag, travelDuration } = await import('../public/utils/sheet-drag.js');
+    let dismissed = 0;
+    const sheet = gestureSheet({ height: 500 });
+    wireSheetDrag(sheet.panel, { onDismiss: () => { dismissed += 1; } });
+    // 60px in 32ms, dann los: 1,875px/ms. Versatz 50px (60 minus Schwelle).
+    sheet.start(600);
+    sheet.move(630, 16);
+    sheet.move(660, 16);
+    sheet.end(660, 1);
+    assert.equal(dismissed, 1);
+    assert.equal(sheet.calls.length, 1, 'genau ein Flug');
+    const fly = sheet.calls[0];
+    assert.deepEqual(fly.keyframes, [{ translate: '0px 50px', opacity: 1 }, { translate: '0px 500px', opacity: 1 }], 'von der Lage des Fingers ueber die eigene Hoehe hinaus - ohne Aufloesen');
+    assert.equal(fly.timing.fill, 'forwards', 'bleibt draussen, bis das Blatt abgebaut bzw. zurueckgesetzt ist');
+    // (500 - 50) / ~1,82 px/ms waeren rund 247ms -> geklemmt auf die Dauer des Ausgangs.
+    assert.equal(fly.timing.duration, 200, 'hoechstens --duration-md: der Ausgang bleibt kuerzer als die Einfahrt (300ms)');
+    // Die Klemme selbst.
+    assert.equal(travelDuration(450, 3, { min: 120, max: 200 }), 150, 'Weg / Tempo');
+    assert.equal(travelDuration(450, 30, { min: 120, max: 200 }), 120, 'nie kuerzer als --duration-xs');
+    assert.equal(travelDuration(450, 0, { min: 120, max: 200 }), 200, 'ohne Tempo (langsam ueber die Schwelle gezogen) die volle Dauer');
+    assert.equal(travelDuration(450, -2, { min: 120, max: 200 }), 200, 'ein Tempo gegen die Richtung beschleunigt nichts');
+  } finally { delete globalThis.requestAnimationFrame; restore(); }
+});
+
+test('Blatt-Geste: ein schneller Flick an einem kurzen Blatt ist schneller draussen', async () => {
+  const restore = motionEnv();
+  globalThis.requestAnimationFrame = (fn) => fn();
+  try {
+    const { wireSheetDrag } = await import('../public/utils/sheet-drag.js');
+    const sheet = gestureSheet({ height: 300 });
+    wireSheetDrag(sheet.panel, { onDismiss: () => {} });
+    sheet.start(600);
+    sheet.move(660, 16);
+    sheet.move(720, 16);
+    sheet.end(720, 1); // ~3,6px/ms, Rest 190px -> ~52ms -> geklemmt auf 120
+    assert.equal(sheet.calls[0].timing.duration, 120);
+  } finally { delete globalThis.requestAnimationFrame; restore(); }
+});
+
+test('Blatt-Geste: unter der Schwelle federt es mit dem Tempo des Loslassens zurueck - der Endzustand haengt an keiner Animation', async () => {
+  const restore = motionEnv();
+  globalThis.requestAnimationFrame = (fn) => fn();
+  try {
+    const { wireSheetDrag } = await import('../public/utils/sheet-drag.js');
+    let dismissed = 0;
+    const sheet = gestureSheet({ height: 500 });
+    wireSheetDrag(sheet.panel, { onDismiss: () => { dismissed += 1; } });
+    sheet.start(600);
+    sheet.move(630, 200);
+    sheet.move(650, 200);
+    sheet.end(650, 400); // 50px, Finger steht: kein Schliessen
+    assert.equal(dismissed, 0);
+    assert.equal(sheet.translate, '', 'der Versatz ist sofort weg - die Feder liegt nur darueber');
+    assert.equal(sheet.calls.length, 1);
+    const back = sheet.calls[0];
+    assert.deepEqual(back.keyframes, [{ translate: '0px 40px' }, { translate: '0px 0px' }]);
+    assert.equal(back.timing.fill, undefined, 'kein fill: am Ende gilt das Stylesheet');
+    assert.equal(back.timing.duration, 250, 'ohne Tempo --duration-lg, wie die Transition davor');
+    assert.equal(sheet.attrs['data-sheet-drag'], 'drag', 'solange die Feder laeuft, schweigt die CSS-Transition darunter - sonst spraenge das Blatt an ihrem Ende');
+    await new Promise((r) => setTimeout(r, 400));
+    assert.equal(sheet.attrs['data-sheet-drag'], undefined, 'die Marke faellt per Timer, nicht per finish');
+  } finally { delete globalThis.requestAnimationFrame; restore(); }
+});
+
+test('Blatt-Geste: die Abdunklung folgt dem Zug, kehrt beim Zurueckfedern zurueck und haelt beim Schliessen', async () => {
+  const restore = motionEnv();
+  globalThis.requestAnimationFrame = (fn) => fn();
+  try {
+    const { wireSheetDrag } = await import('../public/utils/sheet-drag.js');
+    const dim = dimEl();
+    const sheet = gestureSheet({ height: 400 });
+    const drag = wireSheetDrag(sheet.panel, { onDismiss: () => {}, dim: () => dim, resetAfterDismiss: true });
+    sheet.start(600);
+    sheet.move(710, 300); // Versatz 100px von 400px
+    assert.equal(dim.props.get('--sheet-pull'), '0.25', 'Anteil des Zugs an der Blatthoehe - das Stylesheet macht daraus opacity');
+    sheet.move(650, 300); // zurueck auf 40px
+    assert.equal(dim.props.get('--sheet-pull'), '0.1');
+    sheet.end(650, 400);
+    assert.equal(dim.props.has('--sheet-pull'), false, 'zurueckgefedert: volle Abdunklung');
+    assert.deepEqual(dim.calls[0]?.keyframes, [{ opacity: 0.9 }, { opacity: 1 }], 'und sie kehrt mit dem Blatt zurueck, nicht in einem Sprung');
+
+    // Schliessen: der Wert bleibt, bis das Blatt zurueckgesetzt ist - sonst
+    // spraenge die Abdunklung auf voll, waehrend das Blatt hinausfaehrt.
+    sheet.start(600);
+    sheet.move(760, 300);
+    sheet.end(760, 100);
+    assert.equal(dim.props.get('--sheet-pull'), '0.375');
+    const fly = sheet.calls.at(-1);
+    assert.equal(fly.timing.fill, 'forwards');
+    drag.reset();
+    assert.equal(dim.props.has('--sheet-pull'), false);
+    assert.equal(fly.cancelled, true, 'das Mehr-Blatt bleibt im DOM: der Flug darf es beim naechsten Oeffnen nicht draussen halten');
+  } finally { delete globalThis.requestAnimationFrame; restore(); }
+});
+
+test('Blatt-Geste: ohne animate oder unter reduzierter Bewegung bleibt es beim Ausgang des Stylesheets', async () => {
+  for (const [name, env, opts] of [['reduzierte Bewegung', { reduced: true }, {}], ['kein animate', {}, { animate: false }]]) {
+    const restore = motionEnv(env);
+    globalThis.requestAnimationFrame = (fn) => fn();
+    try {
+      const { wireSheetDrag } = await import('../public/utils/sheet-drag.js');
+      let dismissed = 0;
+      const sheet = gestureSheet(opts);
+      wireSheetDrag(sheet.panel, { onDismiss: () => { dismissed += 1; } });
+      sheet.start(600); sheet.move(700, 16); sheet.end(700, 1);
+      assert.equal(dismissed, 1, name);
+      assert.equal(sheet.calls.length, 0, `${name}: kein Flug`);
+      sheet.start(600); sheet.move(640, 300); sheet.end(640, 400);
+      assert.equal(sheet.calls.length, 0, `${name}: keine Feder`);
+      assert.equal(sheet.attrs['data-sheet-drag'], undefined, `${name}: die Transition des Stylesheets federt`);
+    } finally { delete globalThis.requestAnimationFrame; restore(); }
+  }
+});
+
+test('Blatt-Geste: Verdrahtung - das Mehr-Blatt reicht seinen Backdrop durch, dessen Deckkraft folgt der Custom Property', () => {
+  assert.match(publicSource('router.js'), /wireSheetDrag\(sheet, \{[\s\S]{0,200}resetAfterDismiss: true,[\s\S]{0,160}dim: \(\) => backdrop,/);
+  const backdrop = ruleBodies('layout.css', '.more-backdrop').join(';');
+  assert.match(backdrop, /opacity:\s*calc\(1 - var\(--sheet-pull, 0\)\)/, 'nur opacity - kein Layout, kein Neuzeichnen der Flaeche');
+  // Der Tipp-/Esc-Ausgang bleibt der kurze Hub (Entscheidung 05.10.).
+  assert.match(keyframesBody('sheet-out'), /translateY\(var\(--sheet-lift\)\)/);
+  // Der Helfer schreibt weiter `translate`, nie `transform` (eine gefuellte Einfahrt schluege es).
+  const src = stripComments(publicSource('utils/sheet-drag.js'));
+  assert.doesNotMatch(src, /transform/);
+  // Und er mutiert das DOM nicht im touchend: Marke und Versatz fallen im rAF.
+  const end = src.slice(src.indexOf('const end = (e) => {'), src.indexOf("sheet.addEventListener('touchend', end);"));
+  assert.match(end, /raf\(\(\) => settle\(/);
+});
+
+// --------------------------------------------------------------------------
+// R18, Bewegung: KLEINE HARTE KANTEN.
+// --------------------------------------------------------------------------
+test('R18: das Backdrop des FAB-Menues blendet ein und aus - und liegt in Ruhe weiter nicht im Baum (#166)', () => {
+  const base = ruleBodies('dashboard.css', '.fab-backdrop').join(';');
+  // #166: kein dauerhaft fixiertes Vollbild-Overlay - in Ruhe `display: none`.
+  assert.match(base, /display:\s*none/);
+  assert.match(base, /opacity:\s*0/);
+  const transitions = [...base.matchAll(/transition:\s*([^;]+)/g)].map((m) => m[1]);
+  assert.equal(transitions.length, 2, 'zwei Deklarationen: die erste ist der Rueckfall ohne allow-discrete');
+  assert.doesNotMatch(transitions[0], /allow-discrete/);
+  assert.match(transitions[1], /opacity var\(--duration-xs\) var\(--ease-out\),\s*display var\(--duration-xs\) allow-discrete/, 'der Ausgang haelt es fuer seine Dauer im Baum');
+  const open = ruleBodies('dashboard.css', '.fab-backdrop--visible').join(';');
+  assert.match(open, /display:\s*block/);
+  assert.match(open, /opacity:\s*1/);
+  assert.match(open, /opacity var\(--duration-md\) var\(--ease-out\)/, 'die Einfahrt ist laenger als der Ausgang');
+  assert.match(css('dashboard.css'), /@starting-style \{\s*\.fab-backdrop--visible \{\s*opacity: 0;/);
+});
+
+test('R18: das Detail-Popover hat einen Ausgang - in der Grammatik des Popover-Menues', () => {
+  const rules = animationRules();
+  const exit = winner(rules, ['detail-popover', 'detail-popover--closing'], 1024);
+  assert.ok(exit?.has.includes('detail-popover--closing'), 'der Ausgang schlaegt die Einfahrt');
+  assert.match(exit.value, /^detail-popover-out var\(--duration-xs\) var\(--ease-out\) forwards$/);
+  const out = keyframesBody('detail-popover-out');
+  assert.match(out, /opacity:\s*0/);
+  assert.match(out, /transform:\s*scale\(0\.96\)/, 'nimmt die 4 % zurueck wie das Menue');
+  // Die Einfahrt bleibt die Blende: die Karte wird im selben Takt VERMESSEN
+  // (positionPopover), und eine Startskalierung verfaelschte ihre Masse um 4 %.
+  const enter = ruleBodies('detail-view.css', '.detail-popover').join(';');
+  assert.match(enter, /animation:\s*detail-pane-enter var\(--duration-sm\) var\(--ease-out\)/, 'Einfahrt (150ms) laenger als der Ausgang (120ms)');
+  assert.match(ruleBodies('detail-view.css', '.detail-popover.detail-popover--closing').join(';'), /pointer-events:\s*none/, 'der Ausgang nimmt keinen Zeiger mehr');
+  // Der Ursprung kommt mit der Position aus JS - die Karte waechst vom Anker aus.
+  const dv = publicSource('components/detail-view.js');
+  assert.match(dv, /popover\.style\.transformOrigin = /);
+  // Schliessen: Zustand sofort (Marker, Fokus, onClose), der Knoten geht nach dem Ausgang.
+  const close = dv.slice(dv.indexOf('export function closeDetailView('), dv.indexOf('export function closeDetailView(') + 1800);
+  assert.match(close, /leavePopover\(el\);/);
+  assert.doesNotMatch(stripComments(close), /^\s*el\.remove\(\);/m, 'ein sofortiges remove() schnitte den Ausgang ab');
+  const leave = dv.slice(dv.indexOf('function leavePopover('), dv.indexOf('function leavePopover(') + 900);
+  assert.match(leave, /el\.removeAttribute\('id'\);/, 'die Kennung ist sofort frei - das naechste Popover traegt sie');
+  assert.match(leave, /setTimeout\(\(\) => el\.remove\(\), durationToken\('--duration-xs', 120\) \+ 40\);/);
+});
+
+test('R18: der Leerzustand bleibt in der 300-ms-Regel - keine Verzoegerung am Knopf', () => {
+  const tokens = css('tokens.css');
+  const ms = (name) => Number(tokens.match(new RegExp(`${name}:\\s*(\\d+)ms`))?.[1]);
+  const items = motionItems().filter((m) => !m.reduced && /^\.empty-state(?:__[\w-]+)?$/.test(m.selector) && m.kind === 'animation' && m.item !== 'none');
+  assert.ok(items.some((m) => m.selector === '.empty-state'), 'Vorbedingung: der Leerzustand blendet weiter ein');
+  for (const m of items) {
+    const durations = [...m.item.matchAll(/var\((--duration-[\w-]+)\)/g)].map((d) => ms(d[1]));
+    assert.ok(durations.length >= 1, `${m.selector}: Dauer aus einem Token`);
+    assert.ok(durations.reduce((a, b) => a + b, 0) <= 300, `${m.selector}: ${m.item} - Dauer plus Verzoegerung ueber 300ms`);
+  }
+});
+
+test('R18: die Vitalwert-Kurven zeichnen sich einmal ein (drawChartOnce), Raster und Achse stehen', () => {
+  const health = pageSource('health');
+  assert.match(health, /import \{[^}]*\bdrawChartOnce\b[^}]*\} from '\/utils\/ux\.js';/);
+  const chart = health.slice(health.indexOf('function chartMarkup(metric, series'), health.indexOf('// Erfassungs-Modal'));
+  assert.match(chart, /\$\{grid\}\s*<g class="health-chart__lines">\s*\$\{area\}\s*\$\{seriesSvg\}\s*<\/g>\s*\$\{xLabels\}/, 'Flaeche und Kurven in EINER Gruppe - an ihr haengt der Beschnitt');
+  assert.match(health, /drawChartOnce\(`health-vitals-\$\{metric\.type\}`, \{ lines: host\.querySelector\('\.health-chart__lines'\) \}\);/, 'einmal je Messgroesse und Sitzung');
+});
+
+test('R18: der Theme-Wechsel blendet ueber die Wurzel - nur der gewaehlte, nicht der Nachtwechsel der Wand', async () => {
+  const router = publicSource('router.js');
+  const apply = router.slice(router.indexOf('applyTheme: (value) => {'), router.indexOf('applyTheme: (value) => {') + 2600);
+  assert.match(apply, /swapTheme\(\(\) => \{/, 'der sichtbare Wechsel laeuft im Callback');
+  assert.doesNotMatch(publicSource('utils/wall-mode.js').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, ''), /swapTheme|startViewTransition/, 'die Wand schaltet nachts ohne Blende');
+
+  const { swapTheme } = await import('../public/utils/view-transition.js');
+  // Mit API: der Tausch laeuft im Callback, die Klasse steht fuer die Dauer.
+  const env = stubDocument();
+  const classes = new Set();
+  env.doc.documentElement = { classList: { add: (c) => classes.add(c), remove: (c) => classes.delete(c), contains: (c) => classes.has(c) } };
+  globalThis.document = env.doc;
+  globalThis.matchMedia = () => ({ matches: false });
+  try {
+    let ran = 0;
+    const done = swapTheme(() => { ran += 1; assert.equal(classes.has('theme-swapping'), true); });
+    assert.equal(ran, 0, 'erst das alte Bild, dann der Tausch');
+    await Promise.resolve(); await Promise.resolve();
+    assert.equal(ran, 1);
+    assert.equal(classes.has('page-swapping'), false, 'kein Seitenwechsel: die Chrome-Namen bleiben aus');
+    env.finish();
+    await done;
+    assert.equal(classes.has('theme-swapping'), false);
+  } finally { delete globalThis.document; delete globalThis.matchMedia; }
+  // Ohne API, verdeckt oder unter reduzierter Bewegung: direkt und synchron.
+  for (const [name, e, reduce] of [['ohne API', stubDocument({ api: false }), false], ['verdeckt', stubDocument({ visibility: 'hidden' }), false], ['reduzierte Bewegung', stubDocument(), true]]) {
+    globalThis.document = e.doc;
+    globalThis.matchMedia = () => ({ matches: reduce });
+    try {
+      let ran = 0;
+      swapTheme(() => { ran += 1; });
+      assert.equal(ran, 1, `${name}: synchron`);
+      assert.deepEqual(e.log, [], `${name}: keine Transition`);
+    } finally { delete globalThis.document; delete globalThis.matchMedia; }
+  }
+  // Ein werfender Tausch (localStorage im Privatmodus) kommt beim Aufrufer an.
+  globalThis.document = stubDocument({ api: false }).doc;
+  globalThis.matchMedia = () => ({ matches: false });
+  try { assert.throws(() => swapTheme(() => { throw new Error('quota'); }), /quota/); } finally { delete globalThis.document; delete globalThis.matchMedia; }
+});
+
+// --------------------------------------------------------
+// Der Dialog ist zu - ein Fehler danach braucht einen Ort, den man sieht
+// --------------------------------------------------------
+// Seit "Neue Aufgabe" sofort schliesst, laeuft das Neuladen der Liste NACH dem
+// Schliessen. Scheitert es, fing es der aeussere catch und schrieb die Meldung
+// an Knopf und Fehlerzeile eines Dialogs, den es nicht mehr gibt: oben stand
+// der gruene Toast "angelegt", die Liste blieb alt, und niemand erfuhr es
+// (Codex zu #1794). Gespeichert IST die Aufgabe - deshalb eine Meldung auf der
+// Seite und kein zweiter Versuch am Formular.
+test('tasks: a failing reload after the dialog closed is reported on the page, not on the closed dialog', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../public/pages/tasks.js', import.meta.url), 'utf8');
+  const submit = src.slice(src.indexOf('async function handleFormSubmit('));
+  const closed = submit.indexOf('closeModal({ force: true });');
+  assert.ok(closed > 0, 'der Dialog schliesst vor dem Neuladen');
+  const after = submit.slice(closed, submit.indexOf('\n  } catch (err) {\n    resetSubmit(err.message);', closed));
+  const reload = after.match(/try \{\s*await refreshTags\(\);\s*await onChanged\(\);[\s\S]*?\n    \} catch \((\w+)\) \{([\s\S]*?)\n    \}/);
+  assert.ok(reload, 'das Neuladen nach dem Schliessen hat einen eigenen catch');
+  assert.match(reload[2], /showToast\([\s\S]*?'danger'\)/, 'der Fehler steht als Toast auf der Seite');
+  assert.doesNotMatch(reload[2], /resetSubmit|btnError/, 'nicht an Bedienelementen des geschlossenen Dialogs');
+  assert.match(reload[2], /return;/, 'ohne frische Liste wird keine neue Zeile gesucht');
 });

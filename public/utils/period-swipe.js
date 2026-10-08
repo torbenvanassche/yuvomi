@@ -37,7 +37,7 @@ import { SWIPE_THRESHOLD, SWIPE_MAX_VERT } from '/utils/swipe-row.js';
 /** Abstand zur Bildschirmkante, in dem ein Kontakt der Systemgeste gehoert. */
 export const PERIOD_SWIPE_EDGE = 20;
 
-/** Dauer des Hereingleitens = --duration-md der Keyframe-Regel in calendar.css. */
+/** Dauer des Hereingleitens = --duration-md der Keyframe-Regel in layout.css. */
 const SLIDE_IN_MS = durationToken('--duration-md', 200);
 
 /**
@@ -101,7 +101,10 @@ function overlayOpen() {
  * @param {HTMLElement} surface
  * @param {Object} opts
  * @param {() => boolean} opts.enabled        - gilt die Geste gerade (Ansicht, Suche)?
- * @param {(step: 1 | -1) => Promise<void>|void} opts.onStep - blaettert und rendert neu
+ * @param {(step: 1 | -1) => Promise<boolean|void>|boolean|void} opts.onStep - blaettert und
+ *   rendert neu. Liefert es `false`, hat es NICHT gezeichnet (der Schritt wurde
+ *   ueberholt) - dann gleitet nichts herein. Alles andere, auch gar keine
+ *   Rueckgabe, heisst: gezeichnet.
  * @param {string} [opts.ignore]              - Selektor, an dem die Geste einem anderen Zweck gehoert
  * @returns {() => void} Abbau
  */
@@ -113,6 +116,7 @@ export function wirePeriodSwipe(surface, { enabled, onStep, ignore } = {}) {
   let lock = null;       // null = unentschieden, 'swipe' | 'scroll' | 'off'
   let thresholdHit = false;
   let moving = null;     // das Element, das dem Finger folgt
+  let stepping = false;  // ein Schritt laedt noch (onStep ist nicht zurueck)
 
   const reset = (animate) => {
     const el = moving;
@@ -135,6 +139,13 @@ export function wirePeriodSwipe(surface, { enabled, onStep, ignore } = {}) {
     // und der Inhalt bliebe verschoben stehen (PR #1460, Review).
     if (moving) reset(true);
     lock = 'off';
+    // EIN SCHRITT ZUR ZEIT (#1775). Der Aufrufer leitet sein Ziel aus dem
+    // Zeitraum ab, den er ZEIGT, und der wandert erst, wenn seine Anfragen da
+    // sind: ein zweiter Wisch davor verlangte denselben Zeitraum noch einmal
+    // statt des uebernaechsten, und zwei gegenlaeufige liessen stehen, was
+    // zuletzt antwortete. Solange ein Schritt laedt, gehoert der Finger dem
+    // Scrollen - die Geste beginnt gar nicht erst.
+    if (stepping) return;
     if (e.touches.length !== 1) return;
     if (enabled && !enabled()) return;
     if (overlayOpen()) return;
@@ -188,15 +199,21 @@ export function wirePeriodSwipe(surface, { enabled, onStep, ignore } = {}) {
     // sein Transform trotzdem weg.
     const outgoing = moving;
     moving = null;
+    stepping = true;
+    let drawn;
     try {
-      await onStep(step);
+      drawn = await onStep(step);
     } finally {
+      stepping = false;
       if (outgoing?.isConnected) {
         outgoing.style.transition = '';
         outgoing.style.transform = '';
         outgoing.style.willChange = '';
       }
     }
+    // Nicht gezeichnet (#1781): im Traeger steht noch das ALTE Panel. Es als
+    // "hereinkommend" zu animieren zeigte einen Wechsel, den es nicht gab.
+    if (drawn === false) return;
     if (prefersReducedMotion()) return;
     const incoming = surface.firstElementChild;
     if (!incoming) return;

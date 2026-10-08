@@ -57,6 +57,13 @@ export function stagger(elements, { host = null, delay = 30, duration = duration
     if (staggeredHosts.has(root)) return;
     staggeredHosts.add(root);
   }
+  // NICHT UNTER DER SEITENBLENDE (Critique R18). Solange der Router die Seite
+  // als View Transition ueberblendet (`html.page-swapping`,
+  // utils/view-transition.js), IST die Blende das Einblenden dieses Aufbaus -
+  // gemessen liefen beide uebereinander: die Zeilen fuhren von 8px unten ein,
+  // waehrend die Seite noch blendete. Der Merker oben ist verbraucht, ein
+  // spaeteres Neuzeichnen holt es nicht nach.
+  if (typeof document !== 'undefined' && document.documentElement?.classList?.contains('page-swapping')) return;
   els.forEach((el, i) => {
     const itemDelay = i < max ? i * delay : max * delay;
     el.style.opacity = '0';
@@ -98,46 +105,59 @@ export function vibrate(pattern) {
   navigator.vibrate(pattern);
 }
 
+/** Haken -> laufende Quittung: ein zweiter Tipp bricht die erste ab. */
+const checkPops = new WeakMap();
+
 /**
- * Wartet, bis eine Quittungs-Animation auf `el` ausgespielt ist.
+ * Die Quittung eines Hakens - ausgeloest vom HANDLER, am beruehrten Element,
+ * genau einmal (Critique R18, Bewegung).
  *
- * DER ANLASS (Critique 2026-08-28, P0): das Abhaken einer Aufgabe zeigte nie
- * eine Quittung, obwohl `check-pop` an `.task-status-btn--done` verdrahtet ist
- * (tasks.css:703). Gemessen feuerte sie in 0 von 6 Versuchen. Der Grund war
- * kein fehlendes Bauteil, sondern ein WETTLAUF: die Klasse wurde gesetzt, und
- * der Re-Render der Liste ersetzte das Element, bevor die 200ms einen Frame
- * bekamen. Eine gebaute Animation, die nie zu sehen ist, ist teurer als keine -
- * sie sieht im Stylesheet nach erledigter Arbeit aus.
+ * WARUM NICHT MEHR PER CSS: die Quittung hing als `animation: check-pop` an
+ * den Zustandsklassen (`.item-check--checked`, `.task-status-btn--done` ...).
+ * Eine Animation an einer Zustandsklasse startet, sobald ein Knoten MIT der
+ * Klasse entsteht - also bei jedem Neuzeichnen. Gemessen im Einkauf: beim
+ * Anlegen, beim Loeschen und beim Aufklappen einer Gruppe zuckten alle laengst
+ * abgehakten Haken. Dieselbe Fehlerklasse wie #467 (Zustandszeichen), dort je
+ * Stelle mit einer Gegenregel geflickt. Jetzt traegt die Klasse nur noch das
+ * Aussehen; `test:motion` verbietet eine Animation an einer Zustandsklasse.
  *
- * DER FALLBACK IST PFLICHT, NICHT VORSICHT: unter `prefers-reduced-motion`
- * feuert `animationend` NIE, weil es gar keine Animation gibt (dieselbe Lehre
- * wie bei `transitionend` in detail-view.js:250 und router.js:1554). Ohne den
- * Timer bliebe der Aufrufer dort für immer hängen.
+ * EIN UEBERSCHWINGER. Die alte Kurve hatte fuenf Stuetzpunkte und vier
+ * Richtungswechsel in 200ms (1 - 0,8 - 1,3 - 0,95 - 1): ein Zittern. Jetzt
+ * Ruhe - Ausschlag - Ruhe. Abhaken schwingt ueber, Zuruecknehmen gibt nach und
+ * ist kuerzer - auch der Rueckweg bekommt seine Antwort.
  *
- * Der Rückgabewert ist bewusst ein Promise und kein Callback: der Aufrufer
- * startet ihn VOR seinem Server-Roundtrip und wartet danach auf beides. So
- * kostet die Quittung keine zusätzliche Zeit, solange das Netz langsamer ist
- * als sie - und sie bleibt sichtbar, wenn es schneller ist.
+ * DER WETTLAUF MIT DEM NEUZEICHNEN (Critique 2026-08-28, P0): wer nach dem
+ * Tipp die Liste neu baut, ersetzt den Haken, bevor die Quittung einen Frame
+ * bekommt (gemessen: 0 von 6 sichtbar). Deshalb das Promise: der Aufrufer
+ * startet sie VOR seinem Roundtrip und wartet danach auf beides - sie kostet
+ * keine Zeit, solange das Netz langsamer ist als sie. Es loest per Timer auf,
+ * nicht per Ereignis: im verdeckten Tab und an einem abgehaengten Knoten kommt
+ * `finish` nicht verlaesslich, und der Aufrufer bliebe haengen.
  *
- * @param {Element} el                 - Element, das die Animation trägt
+ * Reduzierte Bewegung: nichts - der Farbwechsel des Zustands traegt die
+ * Rueckmeldung allein (Audit F-07).
+ *
+ * @param {Element|null} el              der beruehrte Haken
  * @param {Object} [opts]
- * @param {number} [opts.fallback=260] - ms, nach denen ohne Event aufgelöst wird
- * @returns {Promise<void>}
+ * @param {boolean} [opts.checked=true]  true: abgehakt, false: zurueckgenommen
+ * @returns {Promise<void>} aufgeloest, wenn die Quittung ausgespielt ist
  */
-export function animationSettled(el, { fallback = 260 } = {}) {
-  if (!el) return Promise.resolve();
+export function acknowledgeCheck(el, { checked = true } = {}) {
+  if (!el || typeof el.animate !== 'function') return Promise.resolve();
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      el.removeEventListener('animationend', finish);
-      resolve();
-    };
-    el.addEventListener('animationend', finish, { once: true });
-    setTimeout(finish, fallback);
-  });
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return Promise.resolve();
+  const previous = checkPops.get(el);
+  if (previous) {
+    try { previous.cancel(); } catch { /* schon beendet */ }
+  }
+  const duration = checked ? durationToken('--duration-md', 200) : durationToken('--duration-sm', 150);
+  const anim = el.animate([
+    { transform: 'scale(1)' },
+    { transform: `scale(${checked ? 1.16 : 0.9})`, offset: 0.4 },
+    { transform: 'scale(1)' },
+  ], { duration, easing: easingToken('--ease-out', 'ease-out') });
+  checkPops.set(el, anim);
+  return settleAnimation(anim, duration);
 }
 
 /**
@@ -211,13 +231,24 @@ export function collapseOut(el, { duration = durationToken('--duration-lg', 250)
  * Das Gegenstueck: ein gerade eingesetztes Element von null auf seine Hoehe
  * aufziehen (aufgeklappte Gruppe, eine per „Rueckgaengig" zurueckgekehrte
  * Zeile). Ohne `fill` - am Ende gilt wieder das Stylesheet.
+ *
+ * `absorbGap`: das Element ist Kind eines Flex- oder Grid-Traegers mit `gap`.
+ * Der Abstand gehoert dem Traeger und steht im selben Frame da, in dem das
+ * Kind erscheint - die Nachbarn spraengen um genau diesen Betrag, bevor die
+ * Hoehe ueberhaupt waechst. Ein negativer Aussenabstand im ersten Frame nimmt
+ * ihn mit auf null (Feldmeldung im `.form-field`, gap 4px, R18).
  */
-export function expandIn(el, { duration = durationToken('--duration-lg', 250) } = {}) {
+export function expandIn(el, { duration = durationToken('--duration-lg', 250), absorbGap = false } = {}) {
   if (!el || typeof el.animate !== 'function') return Promise.resolve();
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return Promise.resolve();
   const prevOverflow = el.style.overflow;
   el.style.overflow = 'hidden';
-  const anim = el.animate([closedFrame(), blockFrame(el)], {
+  const closed = closedFrame();
+  if (absorbGap && el.parentElement) {
+    const gap = parseFloat(getComputedStyle(el.parentElement).rowGap);
+    if (gap > 0) closed.marginTop = `${-gap}px`;
+  }
+  const anim = el.animate([closed, blockFrame(el)], {
     duration, easing: easingToken('--ease-in-out', 'ease-in-out'),
   });
   return settleAnimation(anim, duration).then(() => { el.style.overflow = prevOverflow; });
@@ -328,6 +359,54 @@ export function growBars(root, { selector, memo }) {
   requestAnimationFrame(settle);
   setTimeout(settle, 120);
   return moving.length;
+}
+
+/** Diagramme, die sich in dieser Sitzung schon eingezeichnet haben (`memo`). */
+const drawnCharts = new Set();
+
+/**
+ * Laesst ein Diagramm sich EINMAL einzeichnen - beim ersten Erscheinen in
+ * dieser Sitzung, danach nie wieder (Critique R17, Bewegung). Das Geschwister
+ * von `growBars`: dort wachsen Balken an ihren Wert, hier zeichnet sich eine
+ * Linie von der Zeitachse her ein und ein Ring fuellt sich im Uhrzeigersinn.
+ *
+ * EINMAL, NICHT BEI JEDEM ZEITRAUM: wer blaettert, vergleicht - eine Kurve,
+ * die sich bei jedem Schritt neu einzeichnet, hielte die Antwort 300ms zurueck
+ * und waere beim dritten Mal Dekoration. Den Zeitraumwechsel traegt der
+ * gerichtete Inhaltswechsel (utils/content-swap.js). `memo` benennt das
+ * Diagramm; ein Aufruf ohne Marken (leeres Diagramm) verbraucht ihn nicht.
+ *
+ * DER ENDZUSTAND STEHT IM MARKUP. Beide Bewegungen laufen ueber die Web
+ * Animations API ohne `fill`: faellt sie aus (kein `animate`, verdeckter Tab,
+ * reduzierte Bewegung), steht das Diagramm fertig da. Nur Zeichnen, kein
+ * Layout: `clip-path` an der Liniengruppe, `stroke-dasharray`/`-dashoffset` an
+ * den Ringsegmenten.
+ *
+ * @param {string} memo  Name des Diagramms
+ * @param {Object} marks
+ * @param {Element|null} [marks.lines]  Gruppe der Linien (zeichnet sich in Leserichtung der Zeitachse ein)
+ * @param {Iterable<Element>} [marks.arcs]  Ringsegmente (`<circle>` mit stroke-dasharray "Laenge Umfang")
+ * @returns {number} wie viele Marken sich einzeichnen
+ */
+export function drawChartOnce(memo, { lines = null, arcs = [] } = {}) {
+  const segments = [...(arcs ?? [])].filter((el) => typeof el?.animate === 'function');
+  const group = typeof lines?.animate === 'function' ? lines : null;
+  if (!group && !segments.length) return 0;
+  if (drawnCharts.has(memo)) return 0;
+  if (typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return 0;
+  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return 0;
+  drawnCharts.add(memo);
+  const timing = { duration: durationToken('--duration-xl', 300), easing: easingToken('--ease-out', 'ease-out') };
+  if (group) group.animate([{ clipPath: 'inset(0 100% 0 0)' }, { clipPath: 'inset(0 0 0 0)' }], timing);
+  for (const el of segments) {
+    const dash = el.getAttribute('stroke-dasharray') ?? '';
+    const total = dash.trim().split(/[\s,]+/)[1] ?? '0';
+    el.animate([
+      { strokeDasharray: `0 ${total}`, strokeDashoffset: '0' },
+      { strokeDasharray: dash, strokeDashoffset: el.getAttribute('stroke-dashoffset') ?? '0' },
+    ], timing);
+  }
+  return (group ? 1 : 0) + segments.length;
 }
 
 function settleAnimation(anim, duration) {
@@ -602,6 +681,8 @@ export function wireCollapsingHeader(toolbar, opts = {}) {
   let lead = 0;
   // Hoehe einer Faltzeile (siehe `foldRow` in update), ohne ihre Linie.
   let foldH = 0;
+  // Hoehe des Kopfs bei der letzten AUSGEKLAPPTEN Messung (siehe onInnerScroll).
+  let openH = 0;
   let dockTitle = null;
   let headSeal = null;
   // Die Kinder der Lead-Zone, die im Band-Modus angedockt ausblenden.
@@ -699,9 +780,18 @@ export function wireCollapsingHeader(toolbar, opts = {}) {
     // mit einem aufgeklappten Rezept: 166px ausgeklappt, 102px gefaltet) beim
     // naechsten Scroll-Ereignis wieder aus - und dann wieder ein. Der
     // berechnete Rand gilt auch mitten in der Bewegung.
+    // Dasselbe gilt fuer einen gedeckelten Kopf, der eingeklappt wirklich
+    // kuerzer ist (Kalender mobil seit R17: 117 -> 65px): der Port ist dann um
+    // die Differenz hoeher und die Reserve um genau so viel kleiner. Gegen die
+    // eingeklappte Reserve gemessen, pendelte eine Liste, deren Reserve
+    // zwischen Schwelle und Schwelle + Differenz liegt. `openH` ist die Hoehe
+    // der letzten ausgeklappten Messung.
+    const shorter = !fold && toolbar.classList.contains('is-collapsed') && openH > 0
+      ? Math.max(0, openH - toolbar.getBoundingClientRect().height)
+      : 0;
     const unfolded = fold
       ? reserve - Math.min(0, parseFloat(getComputedStyle(toolbar).marginBlockEnd) || 0)
-      : reserve;
+      : reserve + shorter;
     if (unfolded < (fold ? foldH : lead) + 48) {
       toolbar.classList.remove(...states);
       return;
@@ -709,7 +799,9 @@ export function wireCollapsingHeader(toolbar, opts = {}) {
     // Ab hier nur noch der Nutzer (siehe `gestureTarget` oben).
     if (!gestureTarget || !port.contains(gestureTarget)) return;
     const top = port.scrollTop;
-    if (top > 24) toolbar.classList.add(...states);
+    // `was-collapsed`: ab jetzt darf der Titel beim Ausklappen einblenden
+    // (layout.css, `page-title-settle-back`) - nicht schon beim Seitenaufbau.
+    if (top > 24) toolbar.classList.add(...states, 'was-collapsed');
     else if (top < 8) toolbar.classList.remove(...states);
   };
   const update = () => {
@@ -736,6 +828,7 @@ export function wireCollapsingHeader(toolbar, opts = {}) {
         && c.getBoundingClientRect().height > 0,
     );
     const tb = toolbar.getBoundingClientRect();
+    openH = tb.height;
     const padTop = parseFloat(getComputedStyle(toolbar).paddingBlockStart) || 0;
     // WAS EINE ZEILE IST, ENTSCHEIDET DIE ÜBERLAPPUNG, NICHT DIE OBERKANTE.
     // Ein Vergleich der `top`-Werte hält jeden vertikalen Versatz für einen
@@ -825,27 +918,29 @@ export function wireCollapsingHeader(toolbar, opts = {}) {
     // DIE FALTZEILE (R17 K1, Re-Critique 2026-09-28 A4 P2-4 / A8 P3-2). Unter
     // einer Gruppen-Leiste (Kueche) steht der Kopf der Seite als EINE Zeile
     // ohne Titel - in Rezepte und Vorrat traegt sie mobil nur Werkzeuge (Lupe,
-    // "...") und kostet 65px fuer ein bis zwei Icons. Angedockt gibt sie diese
+    // "..."), im Essensplan die Woche, im Einkauf die Listen - und kostet 65px
+    // ueber der Liste. Angedockt gibt sie diese
     // Hoehe frei, an derselben Schwelle und mit derselben Klasse wie der Kopf
     // der gedeckelten Module (`is-collapsed`, onInnerScroll); zurueck oben
     // kommt sie wieder. Das ist Apples `hidesSearchBarWhenScrolling` fuer eine
     // Zeile, deren Inhalt die Suche IST.
     //
-    // NUR EINE ZEILE, DIE NICHTS BENENNT: steht im Center-Slot etwas anderes
-    // als die Suche (Wochenstepper im Essensplan, Listen-Kapseln im Einkauf),
-    // beantwortet die Zeile beim Scrollen weiter „wo bin ich" und bleibt -
-    // dieselbe Abgrenzung wie der Zeitraum im Kalender. Gezaehlt wird ueber
-    // `classList`, nicht per Selektor: die Regel ist eine Aussage ueber den
-    // Inhalt des Slots.
+    // JEDE ZEILE UNTER DER LEISTE FALTET, AUCH EINE, DIE ETWAS BENENNT (R17
+    // Schritt 5, Critique 2026-10-07 A1 P2 / A4). Bis dahin blieben
+    // Essensplan (Wochenstepper) und Einkauf (Listen-Kapseln) stehen, mit der
+    // Begruendung, ihre Zeile beantworte beim Scrollen weiter „wo bin ich" -
+    // gemessen kostete das in beiden 121px Kopf in JEDEM Scrollstand, waehrend
+    // der Vorrat daneben auf 56px faltet. Die Leiste darueber nennt den Ort
+    // (Mahlzeiten, Einkauf); Woche und Liste kommen oben wieder, wie die
+    // Suche. Fokus in der Zeile, ein Suchbegriff und ein offenes Menue halten
+    // sie offen (layout.css) - wer gerade die Woche blaettert, behaelt sie.
     //
     // KEINE LEAD-ZONE: die Zeile ist einzeilig, und eine Lead-Zone auf einem
     // einzeiligen Kopf verbirgt seine Linie (Sonde 8). Die Hoehe steht deshalb
     // in einer eigenen Variablen, gemessen OHNE die Linie - die bleibt
     // gefaltet als Kante unter der Leiste stehen.
-    const center = [...toolbar.children].find((c) => c.classList.contains('page-toolbar__center'));
     const foldRow = Boolean(capped) && lines.length === 1 && !heading
-      && toolbar.classList.contains('page-toolbar--in-group')
-      && (!center || center.classList.contains('page-search'));
+      && toolbar.classList.contains('page-toolbar--in-group');
     toolbar.classList.toggle('page-toolbar--fold-row', foldRow);
     foldH = foldRow ? Math.round(tb.height - (parseFloat(getComputedStyle(toolbar).borderBottomWidth) || 0)) : 0;
     if (foldH > 0) toolbar.style.setProperty('--fold-row-h', `${foldH}px`);
@@ -1000,9 +1095,27 @@ export function wireCollapsingHeader(toolbar, opts = {}) {
   const onMenuToggle = (e) => {
     const panel = e.target;
     if (!(panel instanceof Element) || !panel.matches('.popover-menu')) return;
+    // DIE GEDECKELTE FALTUNG (R17 Schritt 5, Kalender). Ein eingeklappter Kopf
+    // der gedeckelten Architektur darf Werkzeuge abgeben, wenn sein Menue sie
+    // aufnimmt: das Modul markiert sie (`data-collapse-fold`) und das Menue
+    // (`data-collapse-fold-menu`), sein Stylesheet blendet sie eingeklappt
+    // aus. Hier entstehen - wie bei der Faltung der scrollenden Koepfe - nur
+    // die Stellvertreter, und nur fuer das, was gerade WIRKLICH nicht zu
+    // sehen ist: wo das Stylesheet nichts ausblendet (breiter Kopf, aktiver
+    // Filter), entsteht auch kein zweiter Weg zur selben Handlung.
+    const foldMenu = capped ? toolbar.querySelector('[data-collapse-fold-menu][popovertarget]') : null;
+    if (foldMenu && foldMenu.getAttribute('popovertarget') === panel.id) {
+      clearDockFoldItems(panel, foldMenu);
+      if (e.newState === 'open' && toolbar.classList.contains('is-collapsed')) {
+        fillDockFoldItems(panel, [...toolbar.querySelectorAll('[data-collapse-fold]')]
+          .filter((el) => el.getClientRects().length === 0));
+      }
+      return;
+    }
     const actions = toolbar.querySelector(':scope > .page-toolbar__actions');
-    if (!actions || dockFoldMenu(actions)?.panel !== panel) return;
-    clearDockFoldItems(panel);
+    const menu = actions ? dockFoldMenu(actions) : null;
+    if (menu?.panel !== panel) return;
+    clearDockFoldItems(panel, menu.trigger);
     if (e.newState === 'open'
       && toolbar.classList.contains('page-toolbar--dock-fold')
       && toolbar.classList.contains('is-docked')) {
@@ -1046,7 +1159,7 @@ export function wireCollapsingHeader(toolbar, opts = {}) {
       toolbar.style.removeProperty('--page-toolbar-lead');
       toolbar.style.removeProperty('--fold-row-h');
       foldH = 0;
-      toolbar.classList.remove('page-toolbar--stacked', 'page-toolbar--capped', 'is-collapsed', 'is-docked', 'page-toolbar--dock-fold', 'page-toolbar--dock-band', 'page-toolbar--fold-row');
+      toolbar.classList.remove('page-toolbar--stacked', 'page-toolbar--capped', 'is-collapsed', 'is-docked', 'was-collapsed', 'page-toolbar--dock-fold', 'page-toolbar--dock-band', 'page-toolbar--fold-row');
     },
   };
 }
@@ -1093,7 +1206,18 @@ function dockFoldLabel(btn) {
     .replace(/\s+/g, ' ').trim();
 }
 
-function clearDockFoldItems(panel) {
+function clearDockFoldItems(panel, trigger = null) {
+  // DER FOKUS GEHT VOR DEM ABBAU ZUM AUSLOESER. Das Menue schliesst, sobald
+  // ein Eintrag gewaehlt ist, und der Stellvertreter faellt hier aus dem DOM,
+  // BEVOR die Popover-API den Fokus zurueckgibt - sie gibt ihn nur zurueck,
+  // solange er noch im Panel steht. Ohne diesen Schritt landete er nach
+  // "Heute" auf dem Dokument (R17 Schritt 5, Kalender; genauso bei der
+  // Faltung der Aufgaben). Oeffnet das Original danach selbst etwas (Suche,
+  // Filter), nimmt es den Fokus wie immer mit.
+  const active = document.activeElement;
+  if (trigger && active?.parentElement === panel && active.classList?.contains('page-toolbar__fold-item')) {
+    trigger.focus?.({ preventScroll: true });
+  }
   panel.querySelectorAll(':scope > .page-toolbar__fold-item').forEach((el) => el.remove());
 }
 
@@ -1115,14 +1239,21 @@ function fillDockFoldItems(panel, controls) {
     const choice = !single && buttons.some((b) => b.hasAttribute('aria-pressed')
       || ['radio', 'tab', 'menuitemradio'].includes(b.getAttribute('role')));
     for (const btn of buttons) {
-      if (btn.disabled || !dockFoldLabel(btn)) continue;
+      // `inert` wie `disabled`: ein Reset, der gerade nichts zuruecksetzt
+      // ("Heute" im laufenden Zeitraum), ist kein Eintrag.
+      if (btn.disabled || btn.inert || !dockFoldLabel(btn)) continue;
       const item = document.createElement('button');
       item.type = 'button';
       item.className = 'popover-menu__item page-toolbar__fold-item';
       const on = ['aria-pressed', 'aria-checked', 'aria-selected'].some((a) => btn.getAttribute(a) === 'true');
       item.setAttribute('role', choice ? 'menuitemradio' : 'menuitem');
       if (choice) item.setAttribute('aria-checked', String(on));
-      const glyph = btn.querySelector('svg')?.cloneNode(true);
+      // Ein Knopf, der nur Text traegt ("Heute"), nennt sein Zeichen selbst
+      // (`data-fold-icon`, Lucide-Name in PascalCase) - sonst stuende er im
+      // Menue als einziger ohne Zeichen und um dessen Breite versetzt.
+      const named = btn.dataset?.foldIcon ? window.lucide?.icons?.[btn.dataset.foldIcon] : null;
+      const glyph = btn.querySelector('svg')?.cloneNode(true)
+        ?? (named ? window.lucide.createElement(named) : null);
       if (glyph) {
         glyph.setAttribute('class', 'icon-md');
         glyph.setAttribute('aria-hidden', 'true');

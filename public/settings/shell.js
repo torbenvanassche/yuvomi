@@ -2,6 +2,7 @@ import { t } from '/i18n.js';
 import { moduleAccentVar } from '/utils/module-accent.js';
 import { renderSkeletonList } from '/utils/skeleton.js';
 import { renderPageSearch, wirePageSearch } from '/utils/page-search.js';
+import { swapContent } from '/utils/content-swap.js';
 import { createRetryState } from './components.js';
 import { watchLeafForms } from './dirty-guard.js';
 import { KITCHEN_CHILD_IDS } from './module-order.js';
@@ -830,6 +831,7 @@ function createSheetJump(leaf, user, leafContainer, headingId) {
     const link = document.createElement('a');
     link.className = 'filter-chip filter-chip--sm settings-sheet-jump__link';
     link.href = target.url;
+    link.dataset.jumpSection = target.id;
     link.textContent = t(target.labelKey);
     link.addEventListener('click', (event) => {
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0) return;
@@ -847,6 +849,33 @@ function createSheetJump(leaf, user, leafContainer, headingId) {
 }
 
 /**
+ * DIE MARKE HEISST WIE DIE UEBERSCHRIFT, AN DIE SIE SPRINGT (R17, E9).
+ *
+ * Bis dahin trug sie den Namen des Abschnitts aus der Registry - den Namen des
+ * Blatts, das der Abschnitt vor R10 war. Im Kalender-Blatt standen damit oben
+ * "Termin-Vorgaben, Kalender-Abos, Feed-Abos, Kalender, Kalender-
+ * Synchronisation" und darunter "Termine, ICS-Abonnements, Kalender-Feed
+ * exportieren, Termine, CalDAV Kalender": zwei Listen fuer dasselbe, und wer
+ * auf "Kalender-Abos" tippte, suchte danach ein Wort, das nirgends stand.
+ * Gelesen wird die erste sichtbare Abschnittsueberschrift im Traeger; der
+ * Registry-Name bleibt nur der Rueckfall fuer einen Abschnitt ohne
+ * Ueberschrift oder im Fehlerzustand. Die Suche und die Umleitungen fuehren
+ * weiter ueber die Registry - dort ist der alte Blattname der Suchbegriff.
+ */
+function syncJumpLabels(leafContainer) {
+  const links = leafContainer?.querySelectorAll?.('.settings-sheet-jump__link[data-jump-section]') ?? [];
+  for (const link of links) {
+    const host = leafContainer.querySelector(`#${CSS.escape(sheetSectionId(link.dataset.jumpSection))}`);
+    // Ein Abschnitt ohne eigene Ueberschrift (ein Feed: ein Schalter, der
+    // seinen Namen selbst traegt) heisst wie seine erste Zeile.
+    const heading = host?.querySelector('.settings-section__title, .settings-navigation-panel__title')
+      ?? host?.querySelector('.settings-group .toggle-row__label, .settings-group .settings-setting-row__label');
+    const text = collapseText(heading?.textContent);
+    if (text && link.textContent !== text) link.textContent = text;
+  }
+}
+
+/**
  * Rendert EINEN Abschnitt in seinen Traeger. Ein Fehler bleibt im Abschnitt:
  * scheitert die Kalender-Synchronisation, stehen die Termin-Vorgaben darueber
  * trotzdem (vorher war ein Blatt ein Abschnitt, und der Fehler nahm das Blatt).
@@ -859,6 +888,9 @@ async function renderSheetSection(host, section, user, query) {
       host.replaceChildren();
       await module.render(host, { user, query });
       hydrateIcons(host);
+      // Jeder fertige Abschnitt zieht seine Sprungmarke nach - auch einer, der
+      // erst nach der Wartefrist des Blatts ankommt.
+      syncJumpLabels(host.closest?.('.settings-leaf'));
     } catch (error) {
       console.error(`[Settings] Failed to render ${section.id}:`, error);
       const retryState = createRetryState({
@@ -923,6 +955,10 @@ async function renderLeafContent(content, leaf, domain, user, query) {
   if (!heading.id) heading.id = `settings-sheet-title-${leaf.id}`;
   const jump = createSheetJump(leaf, user, leafContainer, heading.id);
   if (jump) {
+    // Die Marken nehmen ihren Namen aus den Ueberschriften der Abschnitte, und
+    // die stehen erst nach dem Laden: bis dahin haelt die Zeile ihren Platz,
+    // ohne den Rueckfallnamen kurz zu zeigen (settings.css).
+    jump.classList.add('settings-sheet-jump--pending');
     leafContainer.appendChild(jump);
     // Die Marken nennen, was im Blatt steht - mobil ersetzen sie die
     // Beschreibung im Bild (settings.css, `.settings-leaf-header--jump`).
@@ -976,6 +1012,8 @@ async function renderLeafContent(content, leaf, domain, user, query) {
     if (!leafContainer.isConnected) return;
     leafContainer.removeAttribute('aria-busy');
     levelScopedHeadings(leafContainer);
+    syncJumpLabels(leafContainer);
+    jump?.classList.remove('settings-sheet-jump--pending');
     watchLeafForms(leafContainer);
     hydrateIcons(content);
 
@@ -996,6 +1034,9 @@ async function renderLeafContent(content, leaf, domain, user, query) {
     hosts.map(([host, section]) => renderSheetSection(host, section, user, query)),
     finishLeaf,
   );
+  // Nach der Frist stehen die Marken in jedem Fall, notfalls mit dem
+  // Rueckfallnamen eines Abschnitts, der noch laedt.
+  jump?.classList.remove('settings-sheet-jump--pending');
 }
 
 /**
@@ -1138,7 +1179,20 @@ export async function renderSettingsShell(container, {
   }
 
   const page = shell.closest('.settings-page');
+  const wasLeaf = Boolean(page?.classList.contains('settings-page--leaf'));
   page?.classList.toggle('settings-page--leaf', Boolean(activeLeaf));
+  // DRILL-DOWN MIT RICHTUNG (Critique R18, Bewegung). Ohne Seitenleiste ist die
+  // Uebersicht die Seite und ein Blatt eine Ebene tiefer - der Wechsel war ein
+  // harter Schnitt (gemessen mobil: 0 Animationen, der Soft-Update-Zweig des
+  // Routers startet keine View Transition). Hinein kommt das Blatt von der
+  // Seite, zu der man geht (+1), zurueck die Uebersicht von der anderen (-1);
+  // der Helfer spiegelt in RTL und laesst unter reduzierter Bewegung nur die
+  // Blende. Neben der Seitenleiste (Split) gibt es keine Ebene: dort bleibt die
+  // Blattwechsel-Blende aus renderLeafContent. Der erste Aufbau kommt mit der
+  // Seitenblende des Routers.
+  const drill = existingShell && !isSplit(shell) && wasLeaf !== Boolean(activeLeaf)
+    ? (activeLeaf ? 1 : -1)
+    : 0;
   const toolbar = page?.querySelector(':scope > .page-toolbar');
 
   const focusDomain = view === 'domain'
@@ -1158,12 +1212,18 @@ export async function renderSettingsShell(container, {
 
   if (activeLeaf && leafDomain) {
     // Kopf zuerst: der Rueckweg steht, bevor das Blatt geladen ist.
+    // Die Bewegung haengt am TRAEGER und startet vor dem Laden: der synchrone
+    // Teil von renderLeafContent setzt Kopf und Blatt noch in diesem Takt ein,
+    // das Blatt gleitet also mit seinem Geruest herein, nicht erst nach den
+    // Abschnitten.
+    if (drill) swapContent(content, null, { direction: drill });
     if (toolbar) renderToolbar(toolbar, content, { activeLeaf, domain: leafDomain });
     await renderLeafContent(content, activeLeaf, leafDomain, user, query);
     return;
   }
   renderOverview(content, domains, user);
   hydrateIcons(content);
+  if (drill) swapContent(content, null, { direction: drill });
   if (toolbar) renderToolbar(toolbar, content, {});
   revealOverviewSection(content, focusDomain?.id);
   if (page) watchSplit(container, page, { user, domainId: focusDomain?.id ?? null });

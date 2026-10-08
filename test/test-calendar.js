@@ -794,6 +794,48 @@ test('eventWhenText: mehrtägiges Zeit-Event nennt Enddatum und Enduhrzeit', () 
   assert(whenRange(text).to === '2026-09-12 2026-09-12T11:00', `Enddatum steht vor der Uhrzeit: ${text}`);
 });
 
+// R18: der Kopf der Leseansicht nennt die Zeit in Worten. Relativ wird nur der
+// EINTAEGIGE Termin; eine Spanne behaelt die Fassung von eventWhenText.
+// (`test()` dieser Datei wartet nicht - die Importe stehen deshalb davor.)
+const { dayHeading, dayHeadingLabel } = await import('/utils/day-label.js');
+const { todayKey: headToday } = await import('/utils/timezone.js');
+const { addLocalDays: headAddDays } = await import('/utils/date.js');
+test('eventWhenRelative: der eintägige Termin nennt den Tag in Worten, die Spanne bleibt absolut', () => {
+  const { eventWhenRelative, eventDetailHead, agendaDayHeadHtml } = calendarHelpers;
+  const addLocalDays = headAddDays;
+  const today = headToday();
+  const tomorrow = addLocalDays(today, 1);
+  const far = addLocalDays(today, 16);
+  assert(dayHeadingLabel(today) === 'common.today', `heute: ${dayHeadingLabel(today)}`);
+  assert(dayHeadingLabel(tomorrow) === 'common.tomorrow', `morgen: ${dayHeadingLabel(tomorrow)}`);
+  assert(dayHeadingLabel(addLocalDays(today, -1)) === 'common.yesterday', 'gestern');
+  assert(!/common\./.test(dayHeadingLabel(far)) && dayHeadingLabel(far) === dayHeading(far).full, `sonst Wochentag mit Datum: ${dayHeadingLabel(far)}`);
+  assert(dayHeading(today).full && dayHeading(today).full !== 'common.today', 'auch heute kennt seinen Wochentag mit Datum');
+
+  const timed = eventWhenRelative({ start_datetime: `${today}T20:00`, end_datetime: `${today}T22:00`, all_day: 0 });
+  assert(timed.startsWith('common.today, calendar.dayRangeLabel'), `"Heute, 20:00 - 22:00": ${timed}`);
+  assert(whenRange(timed).from === `${today}T20:00` && whenRange(timed).to === `${today}T22:00`, timed);
+  assert(!timed.startsWith(today), 'kein Tagesschluessel vorn - der Tag steht in Worten');
+  const allDay = eventWhenRelative({ start_datetime: tomorrow, end_datetime: tomorrow, all_day: 1 });
+  assert(allDay === 'common.tomorrow · calendar.allDay', `ganztaegig: ${allDay}`);
+  const span = { start_datetime: `${today}T14:00`, end_datetime: `${addLocalDays(today, 2)}T11:00`, all_day: 0 };
+  assert(eventWhenRelative(span) === eventWhenText(span), 'ueber mehrere Tage bleibt die absolute Spanne');
+
+  // Der Kopf: Farbpunkt, Zeit, Personen - und "Wann" fuer Screenreader.
+  const head = eventDetailHead({ start_datetime: `${today}T20:00`, end_datetime: `${today}T22:00`, all_day: 0, color: '#00668F', assigned_users: [{ display_name: 'Emma' }] });
+  assert(head.subtitle === timed && head.subtitleLabel === 'calendar.detailWhen', JSON.stringify(head));
+  assert(typeof head.dot === 'string' && head.dot.length > 0, 'der Punkt traegt die Kalenderfarbe');
+  assert(head.people.length === 1 && head.peopleLabel === 'calendar.assignedLabel', 'Personen als Avatare');
+
+  // Agenda: das relative Wort fuehrt, dahinter Wochentag und Datum.
+  const heute = agendaDayHeadHtml(today);
+  assert(/<span class="agenda-day__date">common\.today<\/span>\s*<span class="agenda-day__weekday">[^<]+<\/span>/.test(heute), `"Heute - Donnerstag, 8. Oktober": ${heute}`);
+  assert(heute.includes(dayHeading(today).full), 'der volle Tag steht dahinter');
+  const spaeter = agendaDayHeadHtml(far);
+  assert(spaeter === `<span class="agenda-day__date">${dayHeading(far).full}</span>`, `ohne relatives Wort nur der volle Tag: ${spaeter}`);
+  assert(!/\d{4}-\d{2}-\d{2}|\d{2}\.\d{2}\.\d{4}/.test(spaeter), 'kein Zahlendatum mehr im Tageskopf');
+});
+
 test('eventWhenText: Zeit-Event bis 00:00 des Folgetags bleibt eintägig', () => {
   const text = eventWhenText({ start_datetime: '2026-09-10T21:00', end_datetime: '2026-09-11T00:00', all_day: 0 });
   assert(whenRange(text).to === '2026-09-11T00:00', `21:00-24:00 gehört dem Abend (#804): ${text}`);
@@ -3708,6 +3750,93 @@ test('Zeitraum-Wisch: ein zweiter Finger mitten im Wisch setzt den Inhalt zuruec
   }
 });
 
+/* Ein zweiter Wisch, WAEHREND der erste noch laedt (#1775). Das Budget leitet
+ * das Ziel aus `state.month` ab, und der wandert erst nach den Anfragen: zwei
+ * schnelle Wische verlangten denselben Monat zweimal. Gemessen wird die Geste
+ * als Programm - ein onStep, das haengt, bis der Test es loslaesst. */
+// `test()` dieser Datei ist synchron: ein async-Rumpf waere gruen, bevor er
+// etwas gemessen hat. Deshalb hier ausgeschrieben und am Dateikopf abgewartet.
+await (async () => {
+  const name = 'Zeitraum-Wisch: waehrend ein Schritt laedt, beginnt keine zweite Geste';
+  const same = (a, b, msg) => assert(JSON.stringify(a) === JSON.stringify(b), `${msg} - ist ${JSON.stringify(a)}`);
+  try {
+  await (async () => {
+  const zuvor = { window: globalThis.window, document: globalThis.document };
+  try {
+    globalThis.window = { matchMedia: () => ({ matches: false }), innerWidth: 375 };
+    globalThis.document = { getElementById: () => null, documentElement: { dir: '' } };
+    const handlers = {};
+    const child = { style: {}, isConnected: true, classList: { add() {}, remove() {} } };
+    const surface = {
+      firstElementChild: child,
+      addEventListener: (type, fn) => { handlers[type] = fn; },
+      removeEventListener() {},
+      closest: () => null,
+    };
+    const steps = [];
+    let release = null;
+    periodSwipe.wirePeriodSwipe(surface, {
+      enabled: () => true,
+      onStep: (step) => { steps.push(step); return new Promise((resolve) => { release = resolve; }); },
+    });
+    const target = { closest: () => null };
+    const at = (x, y) => ({ clientX: x, clientY: y });
+    const swipe = (fromX, toX) => {
+      handlers.touchstart({ touches: [at(fromX, 300)], target });
+      handlers.touchmove({ touches: [at(toX, 302)], cancelable: true, preventDefault() {} });
+      return handlers.touchend({ touches: [] });
+    };
+
+    const first = swipe(250, 100);
+    same(steps, [1], 'Vorbedingung: der erste Wisch blaettert vor');
+
+    // Zweiter Wisch vor, dritter zurueck - beide, waehrend der erste haengt.
+    // Der alte Inhalt steht noch, wo der erste Finger ihn losliess - ein
+    // zweiter, kuerzerer Weg darf ihn nicht dorthin nachziehen.
+    const parked = child.style.transform;
+    swipe(250, 160);
+    same(steps, [1], 'der zweite Wisch darf keinen zweiten Schritt ausloesen');
+    assert(child.style.transform === parked, `der Inhalt folgt dem zweiten Finger nicht: ${parked} -> ${child.style.transform}`);
+    swipe(100, 250);
+    same(steps, [1], 'auch kein gegenlaeufiger');
+
+    release();
+    await first;
+    // Danach gilt die Geste wieder - die Sperre darf nicht kleben bleiben.
+    const next = swipe(250, 100);
+    same(steps, [1, 1], 'nach dem Laden blaettert der naechste Wisch wieder');
+    release();
+    await next;
+
+    // Auch ein Schritt, der SCHEITERT, gibt die Geste wieder frei.
+    let fail = true;
+    const handlers2 = {};
+    const surface2 = { ...surface, addEventListener: (type, fn) => { handlers2[type] = fn; } };
+    let calls = 0;
+    periodSwipe.wirePeriodSwipe(surface2, {
+      enabled: () => true,
+      onStep: async () => { calls++; if (fail) throw new Error('offline'); },
+    });
+    const swipe2 = () => {
+      handlers2.touchstart({ touches: [at(250, 300)], target });
+      handlers2.touchmove({ touches: [at(100, 302)], cancelable: true, preventDefault() {} });
+      return handlers2.touchend({ touches: [] });
+    };
+    let thrown = null;
+    try { await swipe2(); } catch (err) { thrown = err; }
+    assert(thrown?.message === 'offline', 'Vorbedingung: der Schritt scheitert');
+    fail = false;
+    await swipe2();
+    assert(calls === 2, `nach einem Fehler ist die Geste nicht tot (Aufrufe: ${calls})`);
+  } finally {
+    globalThis.window = zuvor.window;
+    globalThis.document = zuvor.document;
+  }
+})();
+    console.log(`  ✓ ${name}`); passed++;
+  } catch (err) { console.error(`  ✗ ${name}: ${err.message}`); failed++; }
+})();
+
 // --------------------------------------------------------
 // Tastatur und Screenreader (Critique 2026-09-24, P1, Schritt 3)
 //
@@ -5059,6 +5188,33 @@ test('Zeitraum-Kopf (R17 Z1): Filter, Lupe und „..." tragen EINE Icon-Knopffor
   const own = [...eachRule(calendarCss)].filter((r) => r.selector.split(',').some((s) =>
     /^\.cal-toolbar__(?:filter|search|tools)-btn$/.test(s.trim())) && /(?:^|[;{\s])(?:color|background(?:-color)?|border(?:-color)?)\s*:/.test(r.body));
   assert(own.length === 0, `keine eigene Ruhe-Tinte fuer einen Kopfknopf: ${own.map((r) => r.selector.trim()).join(' | ')}`);
+});
+
+// R17 E11 (Critique 2026-10-07, A2 P2): mobil stand die Ansichtswahl hinter
+// "...", und der Kopf sagte nirgends, welche Ansicht offen ist.
+test('E11: der Ansichtswahl-Knopf traegt Glyphe und Namen der aktiven Ansicht, das Menue bleibt', () => {
+  const ICONS = { month: 'calendar-days', week: 'calendar-range', day: 'calendar-1', agenda: 'list' };
+  const names = new Set();
+  for (const [view, icon] of Object.entries(ICONS)) {
+    const html = calendarHelpers.viewMenuHtml(view);
+    const btn = buttonTag(html, 'cal-views-menu');
+    assert(btn.whole.includes(`data-lucide="${icon}"`), `${view}: der Knopf zeigt die Glyphe der Ansicht (${icon})`);
+    assert(!btn.whole.includes('data-lucide="ellipsis"'), `${view}: kein "..." mehr`);
+    const item = html.match(new RegExp(`data-cal-view="${view}"[\\s\\S]*?</button>`))[0];
+    assert(item.includes(`data-lucide="${icon}"`), `${view}: dieselbe Glyphe wie der Menue-Eintrag`);
+    const name = btn.tag.match(/aria-label="([^"]*)"/)[1];
+    assert(name.startsWith('calendar.viewSwitcher: ') && name.length > 'calendar.viewSwitcher: '.length, `${view}: der Name nennt die Ansicht (${name})`);
+    assert(btn.tag.includes(`title="${name}"`), 'Tooltip = Name');
+    assert(btn.tag.includes(`data-view="${view}"`));
+    names.add(name);
+    assert((html.match(/role="menuitemradio"/g) ?? []).length === 4, 'das Menue mit allen vier Ansichten bleibt');
+    assert(new RegExp(`aria-checked="true"[^>]*data-cal-view="${view}"`).test(html.replace(/\s+/g, ' ')), `${view}: der Eintrag ist gewaehlt`);
+  }
+  assert(names.size === 4, 'vier Ansichten, vier Namen');
+  // Der Wechsel zieht den Knopf nach, nicht nur den Haken.
+  const sync = readFileSync(new URL('../public/pages/calendar.js', import.meta.url), 'utf8').match(/function syncViewMenu\([\s\S]*?\n\}/)[0];
+  assert(/trigger\.setAttribute\('aria-label', label\)/.test(sync) && /trigger\.replaceChildren\(glyph\)/.test(sync),
+    'syncViewMenu() setzt Name und Glyphe des Ausloesers');
 });
 
 test('Zeitraum-Kopf (R17 Z1): der Filterknopf traegt den geteilten Zaehler und nennt ihn', () => {

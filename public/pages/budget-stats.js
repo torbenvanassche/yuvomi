@@ -7,11 +7,11 @@ import { t, formatDate, getLocale } from '/i18n.js';
 import { wireTablist } from '/utils/tablist.js';
 import { attachSegmentIndicator } from '/utils/segment-indicator.js';
 import { renderSkeletonChart } from '/utils/skeleton.js';
-import { growBars } from '/utils/ux.js';
+import { growBars, drawChartOnce } from '/utils/ux.js';
 import { mountEmptyState, mountLoadError } from '/utils/empty-state.js';
-import { CHART, chartX, chartY, chartGridMarkup, chartXLabelsMarkup, niceDomain } from '/utils/chart.js';
+import { CHART, chartX, chartY, chartGridMarkup, chartXLabelsMarkup, calmDomain } from '/utils/chart.js';
 import { formatMoneyAxis, formatSignedAmount } from '/utils/money.js';
-import { addLocalDays } from '/utils/date.js';
+import { addLocalDays, todayKey } from '/utils/date.js';
 import { trendMarkup } from '/utils/metric-card.js';
 
 // Zeitraum und Anker gehören dem Modul (budget.js) und kommen über ctx herein.
@@ -42,6 +42,37 @@ function scopeQuery() {
   return view.ctx?.budgetMode === 'personal' ? `&scope=${view.ctx.scope}` : '';
 }
 
+/* DIE LETZTE ANFRAGE GEWINNT, NICHT DIE LETZTE ANTWORT (#1775, Review). `view`
+ * ist EIN geteilter Zustand, und jeder Schritt am Stepper (Pfeil oder Wisch)
+ * startet eine neue Ladung, ohne auf die vorige zu warten: kam die aeltere
+ * Antwort spaeter an, schrieb sie ihren Zeitraum ueber den neueren - der Kopf
+ * zeigte April, die Auswertung Maerz. Jede Ladung zieht deshalb eine Nummer
+ * und schreibt nur, wenn sie noch die juengste ist. Liefert `false` fuer eine
+ * ueberholte Ladung; die zeichnet dann auch nichts. */
+let loadSeq = 0;
+async function fetchStats() {
+  const seq = ++loadSeq;
+  let data = null;
+  let prev = null;
+  let error = false;
+  try {
+    const res = await api.get(`/budget/stats?range=${view.range}&anchor=${view.anchor}${scopeQuery()}`);
+    data = res.data;
+    prev = await loadPrevious(res.data);
+  } catch (err) {
+    console.error('[Budget] stats load error:', err);
+    data = null;
+    // Das Fehlerobjekt selbst, nicht nur `true`: `mountLoadError` liest daraus
+    // den Statuscode - die einzige Angabe, die dem Selbsthoster hier weiterhilft.
+    error = err;
+  }
+  if (seq !== loadSeq) return false;
+  view.data = data;
+  view.prev = prev;
+  view.error = error;
+  return true;
+}
+
 async function loadStats() {
   const body = view.root.querySelector('#budget-stats-body');
   // Ladezustand statt leerer Fläche — der Budget-Tab zeigt beim Monatswechsel
@@ -51,18 +82,7 @@ async function loadStats() {
     // Diagrammfoermig, nicht als Liste: danach stehen hier Verlauf und Anteile.
     body.insertAdjacentHTML('beforeend', renderSkeletonChart({ charts: 2 }));
   }
-  try {
-    const res = await api.get(`/budget/stats?range=${view.range}&anchor=${view.anchor}${scopeQuery()}`);
-    view.data = res.data;
-    view.error = false;
-    view.prev = await loadPrevious(res.data);
-  } catch (err) {
-    console.error('[Budget] stats load error:', err);
-    view.data = null;
-    // Das Fehlerobjekt selbst, nicht nur `true`: `mountLoadError` liest daraus
-    // den Statuscode - die einzige Angabe, die dem Selbsthoster hier weiterhilft.
-    view.error = err;
-  }
+  if (!(await fetchStats())) return;
   renderBodyContent(body);
 }
 
@@ -152,11 +172,23 @@ function renderBodyContent(body) {
   const d = view.data;
   if (!d || (d.totals.income === 0 && d.totals.expenses === 0 && !d.series.some((s) => s.income || s.expenses))) {
     body.replaceChildren();
-    mountEmptyState(body, {
+    // EIN LEERZUSTAND MIT HANDLUNG (Critique R17): „Keine Daten im Zeitraum"
+    // endete in einer Sackgasse - der Reiter hat keinen Anlege-Knopf im Kopf.
+    // Wer schreiben darf, legt von hier den Eintrag an, der die Statistik
+    // fuellt (derselbe Dialog und dasselbe Wort wie im Leerzustand der
+    // Uebersicht); bei `read` bleibt die Auskunft.
+    const box = mountEmptyState(body, {
       icon: 'chart-column',
       title: t('budget.statsEmptyTitle'),
       description: t('budget.statsEmptyDescription'),
+      action: typeof view.ctx.onAddEntry === 'function'
+        ? { label: t('budget.emptyAction'), icon: 'plus', attrs: { id: 'budget-stats-empty-add' } }
+        : undefined,
     });
+    box?.querySelector('#budget-stats-empty-add')?.addEventListener('click', () => view.ctx.onAddEntry?.(
+      // Der Zeitraum, den der Server fuer DIESE Ansicht gemeldet hat (#1775).
+      view.data ? { from: view.data.from, to: view.data.to } : null,
+    ));
     return;
   }
   /* KEINE ZWEITE UEBERSICHT (Critique 2026-09-25). Hier standen dieselben
@@ -191,6 +223,7 @@ function renderBodyContent(body) {
     <div class="budget-stats__export"></div>
   `);
   renderTrendChart();
+  watchTrendBreakpoint(view.root);
   renderCatBars();
   renderDonut();
   renderExport();
@@ -366,7 +399,7 @@ function renderDonut() {
     const frac = e.value / total;
     const seg = `
       <circle r="60" cx="80" cy="80" fill="none" stroke="${DONUT_COLORS[i]}"
-        stroke-width="22" stroke-dasharray="${(frac * C).toFixed(2)} ${C.toFixed(2)}"
+        stroke-width="16" stroke-dasharray="${(frac * C).toFixed(2)} ${C.toFixed(2)}"
         stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 80 80)" />`;
     offset += frac * C;
     return seg;
@@ -374,9 +407,18 @@ function renderDonut() {
   // KEINE ZWEITE LEGENDE (R14 P8): Betrag und Anteil je Kategorie stehen an
   // den Balken, die dieselbe Farbe tragen (categoryColorIndex). Die
   // Donut-Legende zaehlte alles ein zweites Mal auf. Die Zusammenfassung
-  // (Zahl der Segmente, groesstes, Summe) steht seit R16 SICHTBAR neben dem
+  // (Zahl der Segmente, groesstes, Summe) stand seit R16 SICHTBAR neben dem
   // Ring: sie war nur fuer Screenreader da, und der Ring stand ohne ein Wort
   // neben 198px Leere.
+  //
+  // DIE SUMME STEHT IN DER RINGMITTE (Critique R18, 2026-10-07). Der Satz
+  // "7 Segmente · Groesstes: ..." war Fliesstext neben einem leeren Ring - das
+  // eine Wort, das der Ring braucht, ist seine Summe, und die gehoert in seine
+  // Mitte. Was R16 schuetzte, bleibt: der Ring steht nicht stumm da (er nennt
+  // jetzt sichtbar, WAS er teilt und wie viel), und er steht nicht neben Leere
+  // (er sitzt mittig auf seinem Traeger). Der Satz geht zurueck in die
+  // zugaengliche Beschreibung - mit der genauen Summe; die Mitte rundet auf
+  // ganze Einheiten, damit auch sechsstellige Betraege in 104px passen.
   const summary = t('budget.statsDonutSummary', {
     count: exp.length,
     top: exp[0].label,
@@ -388,11 +430,17 @@ function renderDonut() {
   host.insertAdjacentHTML('beforeend', `
     <div class="budget-chart-section">
       <h2 class="budget-chart-section__title">${t('budget.statsDonutTitle')}</h2>
-      <div class="budget-stats__donut-wrap">
-        <svg viewBox="0 0 160 160" class="budget-stats__donut" aria-hidden="true">${segs}</svg>
-        <p class="budget-stats__donut-note">${view.ctx.esc(summary)}</p>
+      <p class="sr-only">${view.ctx.esc(summary)}</p>
+      <div class="budget-stats__card budget-stats__donut-wrap">
+        <svg viewBox="0 0 160 160" class="budget-stats__donut" aria-hidden="true">
+          <g class="budget-stats__donut-arcs">${segs}</g>
+          <text class="budget-stats__donut-total" x="80" y="77" text-anchor="middle">${view.ctx.esc(formatMoneyAxis(total, view.ctx.currency))}</text>
+          <text class="budget-stats__donut-label" x="80" y="77" dy="1.5em" text-anchor="middle">${view.ctx.esc(t('budget.statsExpenses'))}</text>
+        </svg>
       </div>
     </div>`);
+  // Der Ring fuellt sich einmal, beim ersten Erscheinen (ux.js, drawChartOnce).
+  drawChartOnce('budget-stats-donut', { arcs: host.querySelectorAll('.budget-stats__donut circle') });
 }
 
 function renderExport() {
@@ -426,11 +474,35 @@ function renderTrendChart() {
   const expenses = cumulative ? running(rawExpenses) : rawExpenses;
   const shown = s.map((p, i) => ({ period: p.period, income: incomes[i], expenses: expenses[i] }));
   const max = Math.max(1, ...incomes, ...expenses);
-  // Runde Achse (C4): 0 / 2.000 / 4.000 / 6.000 statt Vierteln des Hoechstwerts
-  // (5.550 / 4.163 / 2.775 / 1.388). `max` bleibt der echte Spitzenwert fuer
-  // die Zusammenfassung, die Kurve misst gegen die gerundete Obergrenze.
-  const axis = niceDomain(0, max, { integer: true });
-  const points = (arr) => arr.map((v, i) => `${chartX(i, s.length).toFixed(1)},${chartY(v, 0, axis.max).toFixed(1)}`).join(' ');
+  // Ruhige Achse (R18): drei Linien - 0 / 3.000 / 6.000. `max` bleibt der echte
+  // Spitzenwert fuer die Zusammenfassung, die Kurve misst gegen die Obergrenze.
+  const axis = calmAxis(max);
+  // MOBIL EINE HOEHERE FLAECHE (Critique R17). Die Geometrie skaliert mit der
+  // Breite: 600x200 wurden bei 390px Fenster 324x108 - eine Kurve, die zwischen
+  // zwei Gitterlinien kaum Hub hat. Unter 640px rechnet das Diagramm auf
+  // 600x300 (dieselben Raender, utils/chart.js `geo`) und steht damit bei
+  // mindestens 160px. Entschieden beim Zeichnen, wie die uebrigen Flaechen.
+  const geo = trendGeometry();
+  // HEUTE TEILT DIE KURVE (Critique R17). Aufsummiert lief sie durchgezogen bis
+  // zum Monatsende - ab heute eine waagerechte Linie, die behauptet, es sei
+  // schon gebucht. EIN Strichprinzip (R18): was war, ist durchgezogen, was
+  // kommt, punktiert - fuer beide Serien. Die Serien selbst trennt die Farbe,
+  // die Flaeche unter den Einnahmen und der beschriftete Punkt am heutigen Tag;
+  // die Ausgaben trugen bis dahin zusaetzlich eine Strichelung, und mit der
+  // punktierten Zukunft standen drei Strichmuster in einem Bild.
+  const todayIndex = cumulative ? futureStartIndex(s.map((p) => p.period), todayKey()) : -1;
+  const lastPast = todayIndex >= 0 ? todayIndex : s.length - 1;
+  const points = (arr, from = 0, to = arr.length - 1) => arr
+    .map((v, i) => (i < from || i > to ? null : `${chartX(i, s.length, geo).toFixed(1)},${chartY(v, 0, axis.max, geo).toFixed(1)}`))
+    .filter(Boolean).join(' ');
+  // Die Flaeche unter den Einnahmen reicht bis heute: die Linie, unten
+  // geschlossen auf der Grundlinie (Bauart der Abo-Prognose, subscriptions.js).
+  const baseY = chartY(0, 0, axis.max, geo).toFixed(1);
+  const areaPoints = `${chartX(0, s.length, geo).toFixed(1)},${baseY} ${points(incomes, 0, lastPast)} ${chartX(lastPast, s.length, geo).toFixed(1)},${baseY}`;
+  // DER PUNKT MIT WERT (R18): am heutigen Tag, ohne Zukunft am letzten Tag mit
+  // Daten. Er traegt, was die Kurve sonst nur ueber die Achse hergab.
+  let markIndex = lastPast;
+  if (todayIndex < 0 && !cumulative) while (markIndex > 0 && !rawIncomes[markIndex] && !rawExpenses[markIndex]) markIndex -= 1;
   const sum = (arr) => arr.reduce((a, b) => a + b, 0);
   const pointKey = cumulative ? 'budget.statsPointLabelCumulative' : 'budget.statsPointLabel';
 
@@ -445,8 +517,9 @@ function renderTrendChart() {
   // ein 600x180-viewBox auf 720x216 gestreckt). Die geteilte Geometrie bringt den
   // linken Gutter mit, damit fällt beides weg.
   //
-  // Zweiter Kanal neben der Farbe (Critique P2): Einnahmen solide, Ausgaben
-  // gestrichelt - so trennen sich die Serien auch bei Rot-Grün-Schwäche. Der
+  // Zweiter Kanal neben der Farbe (Critique P2, seit R18 ohne Strichelung): die
+  // Einnahmen tragen die Flaeche, beide Serien einen beschrifteten Punkt, die
+  // Legende nennt sie - so trennen sie sich auch bei Rot-Grün-Schwäche. Der
   // Screenreader-Zugang liegt in der sr-only-Summary + den Punkt-Buttons; das
   // rein visuelle SVG bleibt daher bewusst aria-hidden.
   const summary = t('budget.statsTrendSummary', {
@@ -466,27 +539,48 @@ function renderTrendChart() {
       income: fmtAmount(p.income),
       expenses: fmtAmount(p.expenses),
     });
-    const frac = chartX(i, s.length) / CHART.W;
+    const frac = chartX(i, s.length, geo) / geo.W;
     return `<button type="button" class="budget-stats__point" data-index="${i}"
               style="--point-x:${frac.toFixed(4)};--point-slots:${s.length}"
               tabindex="${i === s.length - 1 ? '0' : '-1'}"
               aria-label="${view.ctx.esc(label)}"></button>`;
   }).join('');
 
+  // `.chart` traegt 600 / 200 als Seitenverhaeltnis (panel.css); die hoehere
+  // Flaeche sagt ihres selbst an (wie die Gesundheits-Diagramme).
+  const { W, H } = geo;
+  const ratio = H === CHART.H ? '' : ` style="aspect-ratio: ${W} / ${H}"`;
   host.replaceChildren();
   host.insertAdjacentHTML('beforeend', `
     <div class="budget-chart-section">
       <h2 class="budget-chart-section__title">${t(cumulative ? 'budget.statsTrendTitleCumulative' : 'budget.statsTrendTitle')}</h2>
       <p class="sr-only">${view.ctx.esc(summary)}</p>
+      <div class="budget-stats__card">
       <div class="budget-stats__trend-wrap">
         <div class="budget-stats__plot">
-          <svg class="chart budget-stats__trend" viewBox="0 0 ${CHART.W} ${CHART.H}" aria-hidden="true">
-            ${chartGridMarkup(0, axis.max, (val) => formatMoneyAxis(val, view.ctx.currency), CHART, axis.steps)}
-            ${chartXLabelsMarkup(s.map((p) => periodLabel(p.period)))}
-            <polyline fill="none" stroke="var(--color-success)" stroke-width="2"
-                      vector-effect="non-scaling-stroke" points="${points(incomes)}" />
-            <polyline fill="none" stroke="var(--color-text-secondary)" stroke-width="2" stroke-dasharray="6 4"
-                      vector-effect="non-scaling-stroke" points="${points(expenses)}" />
+          <svg class="chart budget-stats__trend" viewBox="0 0 ${W} ${H}"${ratio} aria-hidden="true">
+            <defs>
+              <linearGradient id="budget-stats-area" x1="0" y1="0" x2="0" y2="1">
+                <stop class="budget-stats__area-from" offset="0" />
+                <stop class="budget-stats__area-to" offset="1" />
+              </linearGradient>
+            </defs>
+            ${chartGridMarkup(0, axis.max, (val) => formatMoneyAxis(val, view.ctx.currency), geo, axis.steps)}
+            ${chartXLabelsMarkup(axisLabels(s.map((p) => p.period)), geo)}
+            ${todayIndex >= 0 ? todayMarkerMarkup(chartX(todayIndex, s.length, geo), geo) : ''}
+            <g class="budget-stats__lines">
+              <polygon class="budget-stats__area" fill="url(#budget-stats-area)" points="${areaPoints}" />
+              <polyline class="budget-stats__line budget-stats__line--income" fill="none" stroke-width="2"
+                        vector-effect="non-scaling-stroke" points="${points(incomes, 0, lastPast)}" />
+              <polyline class="budget-stats__line budget-stats__line--expense" fill="none" stroke-width="2"
+                        vector-effect="non-scaling-stroke" points="${points(expenses, 0, lastPast)}" />
+              ${todayIndex >= 0 ? `
+              <polyline class="budget-stats__line budget-stats__line--income budget-stats__future" fill="none" stroke-width="2"
+                        vector-effect="non-scaling-stroke" points="${points(incomes, todayIndex)}" />
+              <polyline class="budget-stats__line budget-stats__line--expense budget-stats__future" fill="none" stroke-width="2"
+                        vector-effect="non-scaling-stroke" points="${points(expenses, todayIndex)}" />` : ''}
+              ${markMarkup({ x: chartX(markIndex, s.length, geo), income: incomes[markIndex], expenses: expenses[markIndex], axisMax: axis.max, geo })}
+            </g>
           </svg>
           <div class="budget-stats__points" role="group" aria-label="${t('budget.statsPointsLabel')}">${hotspots}</div>
         </div>
@@ -496,6 +590,7 @@ function renderTrendChart() {
         <span class="budget-stats__legend-item"><i class="budget-stats__swatch budget-stats__swatch--income"></i>${t('budget.statsIncome')} · ${fmtAmount(sum(rawIncomes))}${totalTrend(sum(rawIncomes), comparison?.income, 'higher')}</span>
         <span class="budget-stats__legend-item"><i class="budget-stats__swatch budget-stats__swatch--expense"></i>${t('budget.statsExpenses')} · ${fmtAmount(sum(rawExpenses))}${totalTrend(sum(rawExpenses), comparison && Math.abs(comparison.expenses), 'lower')}</span>
       </div>
+      </div>
     </div>`);
   // Der Gutter folgt dem breitesten Achsenwert (#1607): "₩6,000,000" ist breiter
   // als die Mindestbreite, die an "5.550 €" bemessen ist. Gemessen wird ohne
@@ -503,6 +598,181 @@ function renderTrendChart() {
   // es im Dokument steht (#1722).
   if (window.lucide) lucide.createIcons({ el: host });
   wireTrendPoints(host, shown, pointKey, s);
+  // Die Kurven zeichnen sich einmal ein, beim ersten Erscheinen - nicht bei
+  // jedem Zeitraum (ux.js, drawChartOnce). Raster und Achse stehen.
+  drawChartOnce('budget-stats-trend', { lines: host.querySelector('.budget-stats__lines') });
+}
+
+/** Die Flaeche des Verlaufs: mobil hoeher (siehe renderTrendChart). */
+const TREND_CHART_NARROW = Object.freeze({ ...CHART, H: 300 });
+
+/**
+ * Die Geometrie haengt an der Breite, also zeichnet der Verlauf neu, wenn das
+ * Fenster die Schwelle kreuzt (Telefon gedreht, Fenster geteilt): sonst blieb
+ * die Flaeche der alten Breite stehen - 600x200 auf dem Telefon ist genau das
+ * gedrungene Diagramm, das die hoehere Flaeche abloest. EIN Lauscher je
+ * Modul; er meldet sich ab, sobald sein Panel aus dem Dokument ist.
+ */
+let trendWatch = null;
+function watchTrendBreakpoint(panel) {
+  const mql = globalThis.window?.matchMedia?.('(max-width: 639px)');
+  if (!mql?.addEventListener) return;
+  trendWatch?.mql.removeEventListener('change', trendWatch.onChange);
+  const onChange = () => {
+    if (!panel.isConnected) {
+      mql.removeEventListener('change', onChange);
+      if (trendWatch?.onChange === onChange) trendWatch = null;
+      return;
+    }
+    renderTrendChart();
+  };
+  mql.addEventListener('change', onChange);
+  trendWatch = { mql, onChange };
+}
+
+function trendGeometry() {
+  return globalThis.window?.matchMedia?.('(max-width: 639px)')?.matches === true ? TREND_CHART_NARROW : CHART;
+}
+
+/**
+ * Der Punkt, an dem die Zukunft beginnt: der Index des letzten Tages bis
+ * heute. `-1`, wenn der Zeitraum keine Zukunft hat (heute ist der letzte Tag
+ * oder liegt dahinter) oder ganz in ihr liegt (heute vor dem ersten Tag) -
+ * dann gibt es nichts zu teilen. Tagesschluessel vergleichen sich als Text.
+ * @param {string[]} periods  'YYYY-MM-DD', aufsteigend
+ * @param {string} today      Tagesschluessel der Haushaltszone (todayKey())
+ */
+function futureStartIndex(periods, today) {
+  if (!periods.length || today < periods[0] || today >= periods[periods.length - 1]) return -1;
+  let index = -1;
+  for (let i = 0; i < periods.length; i += 1) {
+    if (periods[i] <= today) index = i;
+    else break;
+  }
+  return index;
+}
+
+/**
+ * Die ruhige Achse des Verlaufs: drei Linien, ganzzahlige Schritte (die
+ * Geldachse beschriftet ohne Nachkommastellen). Regel und Begruendung stehen
+ * an `calmDomain` (utils/chart.js) - die Aktivitaet der Gesundheit nutzt sie auch.
+ * @param {number} max  groesster Datenwert
+ * @returns {{ max: number, step: number, steps: 2 }}
+ */
+function calmAxis(max) {
+  const { max: top, step, steps } = calmDomain(max, { integer: true });
+  return { max: top, step, steps };
+}
+
+/**
+ * Senkrechte Marke am heutigen Tag, das Wort UEBER der Flaeche.
+ *
+ * DAS WORT STEHT UEBER DER OBERSTEN LINIE, NICHT DARAUF (R18). Es hing an der
+ * Oberkante des Plots (`dominant-baseline: hanging` bei PAD_T) - genau auf der
+ * obersten Gitterlinie, und wo die Einnahmen am Monatsanfang schon oben
+ * liefen, auch auf der Kurve: gemessen bei 390px war "Heute" durchgestrichen.
+ * Jetzt sitzt es mittig ueber der Marke, eine halbe Schrifthoehe ueber der
+ * Linie (`dy` in em, die Achsenschrift ist fest); das SVG zeigt seinen
+ * Ueberlauf (`svg.chart`, panel.css), der Traeger haelt den Platz frei
+ * (`.budget-stats__trend-wrap`, budget.css).
+ */
+function todayMarkerMarkup(x, geo) {
+  const top = geo.PAD_T;
+  const bottom = geo.H - geo.PAD_B;
+  const anchor = todayAnchor(x, geo);
+  return `
+            <line class="budget-stats__today" x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${top}" y2="${bottom}" vector-effect="non-scaling-stroke" />
+            <text class="chart__axis budget-stats__today-label" x="${x.toFixed(1)}" y="${top}" dy="-0.5em" text-anchor="${anchor}">${view.ctx.esc(t('common.today'))}</text>`;
+}
+
+/** An den Raendern steht das Wort buendig zur Marke, sonst liefe es aus dem Bild. */
+function todayAnchor(x, geo) {
+  if (x > geo.W - geo.PAD_R - 40) return 'end';
+  if (x < geo.PAD_L + 40) return 'start';
+  return 'middle';
+}
+
+/**
+ * Wo die Werte der beiden Punkte stehen. Die hoehere Serie traegt ihren Wert
+ * UEBER dem Punkt, die tiefere DARUNTER - so stossen die beiden nie aneinander.
+ * Liegt die tiefere zu nah an der Grundlinie (unter 15 % der Achse), stuende
+ * ihr Wert in der Zeile der X-Beschriftung: dann wandert er ueber den Punkt,
+ * sofern zwischen beiden Punkten Platz ist (20 % der Achse), sonst entfaellt
+ * er - Legende und Ableselinie nennen ihn weiter.
+ * @returns {{ income: 'above'|'below'|null, expenses: 'above'|'below'|null }}
+ */
+function markLabelPlan(income, expenses, axisMax) {
+  const hi = income >= expenses ? 'income' : 'expenses';
+  const lo = hi === 'income' ? 'expenses' : 'income';
+  const value = { income, expenses };
+  const plan = { income: null, expenses: null };
+  plan[hi] = 'above';
+  if (value[lo] / axisMax >= 0.15) plan[lo] = 'below';
+  else if ((value[hi] - value[lo]) / axisMax >= 0.2) plan[lo] = 'above';
+  return plan;
+}
+
+/**
+ * Die zwei Punkte am markierten Tag samt Wert. Jeder Punkt ist eine Linie der
+ * Laenge null mit runder Kappe und `non-scaling-stroke`: so bleibt er bei jeder
+ * Breite 8px gross (ein `<circle>` skalierte mit dem viewBox auf 4 bis 12px),
+ * darunter derselbe in Flaechenfarbe als 2px-Ring, damit er sich von der Linie
+ * loest. Die Werte tragen Textfarbe, nicht die der Serie, und einen Hof in
+ * Flaechenfarbe (`paint-order`), damit keine Linie durch eine Ziffer laeuft.
+ */
+function markMarkup({ x, income, expenses, axisMax, geo }) {
+  const plan = markLabelPlan(income, expenses, axisMax);
+  // Am rechten Rand stehen die Werte links vom Punkt.
+  const flip = x > geo.W - geo.PAD_R - 90;
+  const dot = (series, value) => {
+    const y = chartY(value, 0, axisMax, geo).toFixed(1);
+    const at = `x1="${x.toFixed(1)}" x2="${x.toFixed(1)}" y1="${y}" y2="${y}" vector-effect="non-scaling-stroke"`;
+    const where = plan[series];
+    const label = where
+      ? `<text class="chart__axis budget-stats__mark-value" x="${x.toFixed(1)}" y="${y}" dx="${flip ? '-0.7em' : '0.7em'}" dy="${where === 'above' ? '-0.6em' : '1.4em'}" text-anchor="${flip ? 'end' : 'start'}">${view.ctx.esc(formatMoneyAxis(value, view.ctx.currency))}</text>`
+      : '';
+    return `<line class="budget-stats__mark-ring" ${at} /><line class="budget-stats__mark budget-stats__mark--${series}" ${at} />${label}`;
+  };
+  return [['income', income], ['expenses', expenses]].map(([series, value]) => dot(series, value)).join('');
+}
+
+/**
+ * DIE ZEITACHSE SAGT NUR, WAS DER KOPF NICHT SAGT (R18). Unter einem Kopf, der
+ * "Oktober 2026" nennt, stand dreimal das volle Datum ("01.10.2026"). Jetzt
+ * der Tag allein ("1.", "16.", "31." - in der Schreibweise der Sprache); laeuft
+ * der Zeitraum ueber eine Monatsgrenze (Woche), kommt der Monat dazu, im Jahr
+ * steht der Monatsname und das Jahr nur, wenn die Reihe zwei Jahre beruehrt.
+ * Ableselinie und Punkt-Labels nennen weiter das volle Datum (`periodLabel`).
+ * @param {string[]} periods  'YYYY-MM-DD' oder 'YYYY-MM', aufsteigend
+ */
+function axisLabels(periods) {
+  if (!periods.length) return [];
+  const first = periods[0];
+  const last = periods[periods.length - 1];
+  const daily = /^\d{4}-\d{2}-\d{2}$/.test(first);
+  const sameYear = first.slice(0, 4) === last.slice(0, 4);
+  const options = daily
+    ? (first.slice(0, 7) === last.slice(0, 7) ? { day: 'numeric' } : { day: 'numeric', month: 'numeric' })
+    : (sameYear ? { month: 'short' } : { month: 'short', year: '2-digit' });
+  // Mittags statt Mitternacht: der Schluessel ist ein Kalendertag, kein
+  // Zeitpunkt - so kippt er in keiner Zone auf den Nachbartag.
+  const fmt = new Intl.DateTimeFormat(getLocale(), options);
+  // DER TAG ALLEIN TRAEGT DEN PUNKT SEINER SPRACHE. Intl schreibt den Tag ohne
+  // Monat als nackte Zahl ("1"), auch wo die Sprache ihn als Ordnungszahl
+  // setzt ("1." in de, fi, hu). Ob sie das tut, steht im Tag-Monat-Muster:
+  // folgt dem Tag dort ein Punkt, gehoert er zum Tag. Sprachen mit eigenem
+  // Zeichen ("1日", "1일") bringen es schon mit und bleiben unberuehrt.
+  let suffix = '';
+  if (daily && options.month === undefined) {
+    const parts = new Intl.DateTimeFormat(getLocale(), { day: 'numeric', month: 'numeric' }).formatToParts(new Date(2026, 0, 2, 12));
+    const at = parts.findIndex((part) => part.type === 'day');
+    if (parts[at + 1]?.type === 'literal' && parts[at + 1].value.startsWith('.')) suffix = '.';
+  }
+  return periods.map((p) => {
+    const [y, m, d = 1] = p.split('-').map(Number);
+    const text = fmt.format(new Date(y, m - 1, d, 12));
+    return /^\d+$/.test(text) ? `${text}${suffix}` : text;
+  });
 }
 
 // Bucket-Schlüssel der Serie: 'YYYY-MM' (Monatsraster) oder 'YYYY-MM-DD' (Tage).
@@ -603,4 +873,4 @@ function updatePeriodLabel() {
 }
 
 // Nur fuer Tests: die Farbzuordnung von Balken und Donut (R14 P8).
-export const __test = { categoryColorIndex, DONUT_SEGMENTS };
+export const __test = { fetchStats, statsView: () => view, categoryColorIndex, DONUT_SEGMENTS, futureStartIndex, TREND_CHART_NARROW, calmAxis, markLabelPlan, todayAnchor, axisLabels };

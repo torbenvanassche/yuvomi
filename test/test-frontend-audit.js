@@ -11,6 +11,10 @@ import { SETTINGS_DOMAINS, SETTINGS_LEAVES } from '../public/settings/registry.j
 import { eachRule } from './css-rules.js';
 import { keySetDiff } from './i18n-plural-keys.js';
 import { withoutHtmlComments, withoutBlockComments, withoutCommentsKeepingLines } from './source-text.js';
+import {
+  dialogSegments, submitOutsideFooter, footerWithoutCancel, saveBranchPartners,
+  fixedSaveOnTwoCaseDialog, foreignCreateVerbs, aliasFieldClasses,
+} from './dialog-grammar.js';
 
 const read = (path) => readFileSync(new URL(path, import.meta.url), 'utf8').replace(/\r/g, '');
 
@@ -456,7 +460,12 @@ test('settings information-architecture keys exist in every locale', () => {
   assertKeysExistInEveryLocale([...keys]);
 });
 
-test('service worker precaches every supported locale file', () => {
+test('service worker knows every supported locale file', () => {
+  // Seit R18 (Entscheidung 2026-10-07) ist APP_LOCALES die ZULASSUNG, nicht mehr
+  // die Precache-Liste: vorab gecacht wird nur die Rueckfallsprache
+  // (PRECACHED_LOCALES), jede andere beim ersten Abruf oder auf Zuruf der Seite
+  // (CACHE_LOCALE) - und der Worker nimmt nur an, was in APP_LOCALES steht.
+  // Gelesen wird deshalb der Block dieser einen Liste, nicht jedes Literal der Datei.
   const i18n = read('../public/i18n.js');
   const sw = read('../public/sw.js');
   const supportedLocales = [...i18n.match(/SUPPORTED_LOCALES\s*=\s*\[([^\]]+)\]/)?.[1].matchAll(/'([^']+)'/g)].map((match) => match[1]);
@@ -464,10 +473,12 @@ test('service worker precaches every supported locale file', () => {
     .filter((file) => file.endsWith('.json'))
     .map((file) => file.replace(/\.json$/, ''))
     .sort();
-  const precachedLocales = [...sw.matchAll(/'\/locales\/([^']+)\.json'/g)].map((match) => match[1]).sort();
+  const appLocalesBlock = sw.match(/const APP_LOCALES = \[([\s\S]*?)\];/)?.[1] ?? '';
+  const knownLocales = [...appLocalesBlock.matchAll(/'\/locales\/([^']+)\.json'/g)].map((match) => match[1]).sort();
 
   assert.deepEqual(supportedLocales.sort(), localeFiles, 'SUPPORTED_LOCALES must match public/locales/*.json');
-  assert.deepEqual(precachedLocales, supportedLocales.sort(), 'Service worker APP_LOCALES must precache every supported locale');
+  assert.deepEqual(knownLocales, supportedLocales.sort(), 'Service worker APP_LOCALES must list every supported locale');
+  assert.match(sw, /const PRECACHED_LOCALES = \['\/locales\/de\.json'\];/, 'the fallback locale is precached');
 });
 
 test('service worker release caches track package and deployment revisions and include the early locale bootstrap', () => {
@@ -648,8 +659,8 @@ test('die geteilte Sub-Tab-Leiste verlangt eine erklärte Semantik und versprich
  *
  * HIER STEHT NUR DIE BAUFORM. Die eigentliche Groesse - waechst die Zahl der
  * Ebenen mit der Zeilenzahl? - kann ein Stylesheet-Scanner nicht sehen:
- * `.nav-sidebar__indicator` und `.lg-blob--1` tragen dasselbe `will-change`
- * und sind einmalig, `.task-card` ist es nicht, und dem Selektor sieht man das
+ * `.nav-sidebar__indicator` und `.nav-bottom__indicator` tragen dasselbe
+ * `will-change` und sind einmalig, `.task-card` ist es nicht, und dem Selektor sieht man das
  * nicht an. Diese Frage misst Sonde 9 der Dokument-Guards am gerenderten
  * Dokument, ueber die Wiederholung der Klassensignatur.
  */
@@ -662,11 +673,14 @@ test('die geteilte Sub-Tab-Leiste verlangt eine erklärte Semantik und versprich
  * die Seite offen ist, auch wenn niemand sie bedient. Gemessener Anlass:
  * `.lg-blob` trug `filter: blur(90px)` neben `animation: lg-drift ... infinite`
  * ueber vier Flaechen von 30-46vw; im Leerlauf fielen 60 auf ~20 fps, ein Melder
- * sah 100 % GPU (Issue #716). Die Reparatur trennt beides auf zwei Knoten.
+ * sah 100 % GPU (Issue #716). Die Reparatur trennte beides auf zwei Knoten. Den
+ * Backdrop selbst gibt es seit R18 (2026-10-07) nicht mehr - die Regel bleibt,
+ * weil sie fuer jedes kuenftige Lichtfeld gilt (das der Zugangsseiten steht
+ * still und traegt keinen Filter).
  *
  * DIESER GUARD SIEHT NUR DEN FALL, IN DEM BEIDES IN EINER REGEL STEHT - und das
  * ist genau der Bestandsfall, aber nicht die ganze Regel: Filter und Animation
- * koennen ueber zwei Regeln zusammenkommen (`.lg-blob` und `.lg-blob--2`), und
+ * koennen ueber zwei Regeln zusammenkommen (Basis- und Variantenklasse), und
  * welche Werte am Ende auf einem Kasten liegen, weiss nur das gerenderte
  * Dokument. Die vollstaendige Fassung ist Sonde 16 der Dokument-Guards; sie ist
  * genauer und laeuft nicht in dieser Kette mit. Was hier steht, ist die
@@ -703,7 +717,7 @@ test('kein endlos animiertes Element traegt in derselben Regel einen filter', ()
     'Bewegung und Filter liegen auf demselben Element: der Browser rastert den Filter '
     + 'damit pro Frame neu, im Leerlauf und solange die Seite offen ist (Issue #716). '
     + 'Beides gehoert auf zwei Knoten - die aeussere Huelle bewegt sich, das Kind traegt '
-    + `den Filter und steht still (Vorbild: .lg-blob / .lg-blob__ink in glass.css).\n${offenders.join('\n')}`);
+    + `den Filter und steht still.\n${offenders.join('\n')}`);
 });
 
 /**
@@ -1146,6 +1160,44 @@ test('der Hinweis am Formularlabel ist eine Klasse, kein Inline-Design-Wert', ()
     'die abgestufte Label-Ergaenzung gehoert ins Stylesheet');
   assert.match(read('../public/pages/notes.js'), /<span class="form-label__hint">/,
     'notes.js muss die Klasse nutzen statt drei Werte inline zu schreiben');
+});
+
+// R18: AN DER AUSLOESESCHWELLE IST DAS ETIKETT GANZ ZU LESEN. Das Reveal-Panel
+// ist die halbe Zeile breit und zentrierte Icon und Wort in dieser Haelfte -
+// bei 390px also 97px von der Kante, waehrend die Geste nach 80px ausloest. Bei
+// 86px aufgedeckter Breite standen "Abh" und ein halber Haken. Der Inhalt
+// gehoert in den Streifen, den die Schwelle aufdeckt; die Flaeche darf breiter
+// bleiben. Gehalten wird die RECHNUNG, nicht ein Wortlaut: Schwelle in JS und
+// CSS sind derselbe Wert, und der Inhaltskasten jeder Seite ist genau sie breit.
+test('R18: das Wisch-Etikett steht im Streifen, den die Ausloeseschwelle aufdeckt', () => {
+  const swipe = read('../public/utils/swipe-row.js');
+  const threshold = Number(swipe.match(/export const SWIPE_THRESHOLD = (\d+);/)?.[1]);
+  assert.ok(threshold > 0, 'SWIPE_THRESHOLD in swipe-row.js nicht gefunden');
+  const token = read('../public/styles/tokens.css').match(/--swipe-threshold:\s*(\d+)px;/)?.[1];
+  assert.equal(Number(token), threshold, '--swipe-threshold (tokens.css) und SWIPE_THRESHOLD (swipe-row.js) sind derselbe Weg');
+
+  const rules = [...eachRule(read('../public/styles/layout.css'))];
+  const bodies = (selector) => rules.filter((r) => r.at.length === 0 && r.selector.trim() === selector).map((r) => r.body).join(';');
+  const base = bodies('.swipe-reveal');
+  const width = base.match(/(?:^|;)\s*width:\s*(\d+)%/)?.[1];
+  assert.ok(width, 'Reichweite: die Panelbreite steht in Prozent der Zeile');
+
+  // Was vom Panel hinter der Karte bleibt, wird Polster: Panelbreite minus
+  // Schwelle, auf der Seite, die NICHT aufgedeckt wird.
+  const hidden = new RegExp(`calc\\(\\s*${width}%\\s*-\\s*var\\(--swipe-threshold\\)\\s*\\)`);
+  for (const [side, prop, wrong] of [
+    ['leading', 'padding-inline-end', 'padding-inline-start'],
+    ['trailing', 'padding-inline-start', 'padding-inline-end'],
+  ]) {
+    const body = bodies(`.swipe-reveal--${side}`);
+    assert.match(body, new RegExp(`${prop}:\\s*${hidden.source}`),
+      `.swipe-reveal--${side}: der Inhalt steht nicht im aufgedeckten Streifen (${prop} fehlt)`);
+    assert.doesNotMatch(body, new RegExp(`${wrong}\\s*:`), `.swipe-reveal--${side}: Polster auf der aufgedeckten Seite`);
+    assert.doesNotMatch(body, /padding-(?:left|right)\s*:/, 'logische Seiten - in RTL liegt der Streifen am anderen Ende');
+  }
+  // Und das Wort darf im Streifen umbrechen, statt ueber seine Kante zu laufen.
+  assert.match(base, /overflow-wrap:\s*anywhere/);
+  assert.match(base, /text-align:\s*center/);
 });
 
 test('die Wischgeste setzt und loest das Compositor-Versprechen selbst', () => {
@@ -1735,7 +1787,9 @@ test('module-specific settings leaves preserve their required controls and behav
   // deshalb zählt das Blatt keine `<input>`-Literale mehr. Fuenf statt vier
   // Fundstellen im QUELLTEXT, nicht Aufrufe zur Laufzeit: die drei
   // Schichtplan-Vorlagen teilen sich die eine `.map(...)`-Aufrufstelle oben.
-  assert.equal([...options.matchAll(/toggleRowHtml\(\{/g)].length, 5);
+  // Seit R17 (E9) ueber die Schalterzeile der Gruppe (`settingSwitchRowHtml`).
+  assert.equal([...options.matchAll(/settingSwitchRowHtml\(\{/g)].length, 5);
+  assert.equal([...options.matchAll(/\btoggleRowHtml\(/g)].length, 0, 'kein Schalter ausserhalb einer gruppierten Zeile');
   assert.equal([...options.matchAll(/<(?:input|select|textarea)\b/g)].length, 0);
   assert.equal([...options.matchAll(/getPreferences\(\)/g)].length, 1);
   assert.match(options, /budget_mode: checked \? 'personal' : 'shared'/);
@@ -2772,7 +2826,11 @@ test('mobile navigation uses neutral inactive wells and one active indicator', (
 test('mobile navigation Quiet Precision keeps state feedback stable and accessible', () => {
   const layout = read('../public/styles/layout.css');
   const glass = read('../public/styles/glass.css');
-  const indicatorRule = cssRuleBody(layout, '.nav-bottom__indicator');
+  // Exakt gelesen: seit R18 steht `html.page-swapping .nav-bottom__indicator`
+  // (Uebergangsname) VOR der Regel der Pille, und `cssRuleBody` faende dessen
+  // Rumpf - der Guard gegen die width-Transition darunter waere blind.
+  const indicatorRule = [...eachRule(layout)].find((r) => r.selector.trim() === '.nav-bottom__indicator')?.body ?? '';
+  assert.match(indicatorRule, /position:\s*absolute/, 'Vorbedingung: die Regel der Pille ist gefunden');
   const indicatorSurfaceRule = cssRuleBody(layout, '.nav-bottom__indicator::before');
   const indicatorSurfaceGlass = cssRuleBody(glass, '.nav-bottom__indicator::before');
   const focusRule = cssRuleBody(layout, '.nav-bottom .nav-item:focus-visible');
@@ -2884,8 +2942,13 @@ test('bottom-nav labels wrap to two lines instead of clipping across locales', (
   assert.match(labelRule, /overflow-wrap:\s*anywhere/);
 
   // Die Items-Reihe wächst mit dem Inhalt (min-height statt fixer Höhe).
-  assert.match(cssRuleBody(layout, '.nav-bottom__items'), /min-height:\s*var\(--nav-height-mobile\)/);
-  assert.doesNotMatch(cssRuleBody(layout, '.nav-bottom__items'), /(^|[^-])height:\s*var\(--nav-height-mobile\)/);
+  // Die Regel, deren Selektor GENAU die Kapsel ist: `cssRuleBody` findet auch
+  // das Ende eines laengeren Selektors, und seit R18 steht davor
+  // `html.page-swapping .nav-bottom__items` (der Uebergangsname sitzt am Glas).
+  // Dieselbe Falle wie in test-mobile-scroll-layout.js (G1, 2026-09-28).
+  const itemsRule = [...eachRule(layout)].find((r) => r.selector.trim() === '.nav-bottom__items')?.body ?? '';
+  assert.match(itemsRule, /min-height:\s*var\(--nav-height-mobile\)/);
+  assert.doesNotMatch(itemsRule, /(^|[^-])height:\s*var\(--nav-height-mobile\)/);
 
   // Longest-String-Guard: kein bottom-bar-Nav-Label darf so lang werden, dass
   // selbst zwei Zeilen in einem ~72px-Slot es nicht mehr fassen.
@@ -6164,8 +6227,16 @@ test('phase 3 high-frequency controls use tokenized touch targets', () => {
   // dadurch strenger, aber an einer anderen Stelle. Deshalb hier auf die
   // Komponente geprüft statt auf die entfallenen Modul-Klassen.
   const shoppingPage = read('../public/pages/shopping.js');
-  assert.match(shoppingPage, /class="row-action"\s+data-action="item-details"/);
-  assert.match(shoppingPage, /class="row-action row-action--danger"\s+data-action="delete-item"/);
+  // Seit R18 (2026-10-07, "zwei sichtbar, Rest im Mehr-Knopf") stehen
+  // Bearbeiten und Loeschen als Eintraege im Mehr-Knopf der Zeile. Der Knopf
+  // ist selbst eine `.row-action` (rowMenuHtml), die Trefferflaeche also
+  // dieselbe; geprueft wird, dass beide Handlungen dort ankommen.
+  const itemMenu = shoppingPage.slice(shoppingPage.indexOf('id: `shopping-item-menu-${item.id}`'));
+  assert.match(shoppingPage, /rowMenuHtml\(\{\s*id: `shopping-item-menu-\$\{item\.id\}`/);
+  assert.match(itemMenu.slice(0, 600), /action: 'item-details', id: item\.id/);
+  assert.match(itemMenu.slice(0, 600), /action: 'delete-item', id: item\.id[^}]*danger: true/);
+  assert.match(read('../public/utils/row-action.js'), /triggerClass: \['row-action', 'row-action--more', extra\]/,
+    'der Mehr-Knopf traegt die geteilte .row-action (48px)');
   assert.match(layout, /\.row-action\s*\{[\s\S]*?width:\s*var\(--target-lg\)/);
   assert.match(layout, /\.row-action\s*\{[\s\S]*?height:\s*var\(--target-lg\)/);
   assert.match(notes, /\.note-card__pin[\s\S]*width:\s*var\(--target-base\)/);
@@ -6274,6 +6345,90 @@ test('showToast is never called with an unsupported variant', () => {
   for (const file of files) {
     assert.doesNotMatch(read(file), /showToast\([^;]*?,\s*'error'\)/s, `${file} uses showToast(..., 'error')`);
   }
+});
+
+// Critique R17: fuenf angepinnte Notizen in vier Spalten liessen die fuenfte
+// allein in ihrer Zeile (240 von 996px, 432px hoch), und „Weitere Notizen"
+// begann erst bei y=988 - der Gruppenkopf spannte ueber alle Spalten und machte
+// immer eine neue Zeile auf. Jetzt fliesst die naechste Gruppe in die
+// angebrochene Zeile. Das Raster BLEIBT das Raster (Guard darunter).
+test('R17: die weiteren Notizen fliessen in die angebrochene Zeile der angepinnten', () => {
+  const page = read('../public/pages/notes.js');
+  const fnSrc = (name) => {
+    const start = page.indexOf(`function ${name}(`);
+    assert.ok(start > 0, `${name} fehlt`);
+    return page.slice(start, page.indexOf('\n}\n', start) + 2);
+  };
+  // GEFAHREN, nicht gelesen: beide Funktionen aus dem Quelltext, mit einem Raster, das mitschreibt.
+  const run = new Function('getComputedStyle', `${fnSrc('groupFlow')}\n${fnSrc('syncGroupFlow')}\nreturn { groupFlow, syncGroupFlow };`);
+  const makeEl = (classes) => {
+    const set = new Set(classes);
+    const props = new Map();
+    return {
+      classList: { add: (c) => set.add(c), remove: (c) => set.delete(c), contains: (c) => set.has(c) },
+      style: { setProperty: (k, v) => props.set(k, v), removeProperty: (k) => props.delete(k) },
+      props, has: (c) => set.has(c),
+    };
+  };
+  const makeGrid = (pinnedCount, restCount, columns) => {
+    const titles = restCount && pinnedCount ? [makeEl(['notes-group__title']), makeEl(['notes-group__title'])] : [];
+    const pinned = Array.from({ length: pinnedCount }, () => makeEl(['note-card', 'note-card--pinned']));
+    const all = () => [...titles, ...pinned];
+    const grid = {
+      titles, pinned, columns,
+      querySelectorAll: (sel) => {
+        if (sel === '.notes-group__title') return titles;
+        if (sel === '.note-card--pinned') return pinned;
+        if (sel === '.note-card--trailing') return all().filter((el) => el.has('note-card--trailing'));
+        return [];
+      },
+    };
+    return grid;
+  };
+  const { groupFlow, syncGroupFlow } = run((grid) => ({ gridTemplateColumns: Array.from({ length: grid.columns }, () => '232.5px').join(' ') }));
+
+  assert.deepEqual(groupFlow(5, 4), { trailing: 1, labelStart: 2 }, 'fuenf in vier Spalten: eine Nachzueglerin, der Kopf beginnt in Spalte 2');
+  assert.deepEqual(groupFlow(5, 3), { trailing: 2, labelStart: 3 });
+  assert.equal(groupFlow(8, 4).trailing, 0, 'eine volle Zeile bricht wie bisher');
+  assert.equal(groupFlow(5, 1).trailing, 0, 'eine Spalte (Telefon): nichts aendert sich');
+  assert.equal(groupFlow(0, 4).trailing, 0);
+
+  const grid = makeGrid(5, 3, 4);
+  syncGroupFlow(grid);
+  assert.deepEqual(grid.pinned.map((el) => el.has('note-card--trailing')), [false, false, false, false, true]);
+  assert.equal(grid.titles[1].has('notes-group__title--inline'), true, 'der Kopf „Weitere Notizen" reiht sich ein');
+  assert.equal(grid.titles[1].props.get('--notes-label-start'), '2');
+  assert.equal(grid.titles[0].has('notes-group__title--inline'), false, 'der erste Kopf spannt weiter ueber alle Spalten');
+  // Die Breite wechselt (drei Spalten): der alte Stand wird abgeraeumt, nicht ueberlagert.
+  grid.columns = 3;
+  syncGroupFlow(grid);
+  assert.deepEqual(grid.pinned.map((el) => el.has('note-card--trailing')), [false, false, false, true, true]);
+  assert.equal(grid.titles[1].props.get('--notes-label-start'), '3');
+  // Telefon: alles zurueck.
+  grid.columns = 1;
+  syncGroupFlow(grid);
+  assert.equal(grid.pinned.some((el) => el.has('note-card--trailing')), false);
+  assert.equal(grid.titles[1].has('notes-group__title--inline'), false);
+  assert.equal(grid.titles[1].props.has('--notes-label-start'), false);
+  // Ohne zweite Gruppe (nur Angepinnte) gibt es keinen Kopf, der sich einreihen koennte.
+  const only = makeGrid(5, 0, 4);
+  syncGroupFlow(only);
+  assert.equal(only.pinned.some((el) => el.has('note-card--trailing')), false);
+
+  // Verdrahtung: in der Zeichenfunktion (die Listenbewegung misst direkt danach) und beim Breitenwechsel.
+  const draw = fnSrc('drawGrid');
+  assert.match(draw, /insertAdjacentHTML\('beforeend', html\);[\s\S]*syncGroupFlow\(grid\);/);
+  assert.match(page, /new ResizeObserver\(\(\) => \{[\s\S]{0,300}syncGroupFlow\(grid\);/);
+
+  // CSS: nur im Zeilenraster, und die Gruppenkoepfe bleiben Koepfe.
+  const css = read('../public/styles/notes.css');
+  const rows = [...eachRule(css)].filter((r) => r.at.some((a) => /@supports not \(grid-template-rows: masonry\)/.test(a)));
+  const inline = rows.find((r) => r.selector.trim() === '.notes-group__title.notes-group__title--inline');
+  assert.match(inline?.body ?? '', /grid-column:\s*var\(--notes-label-start, 1\) \/ -1/, 'von der ersten freien Spalte bis zum Rand');
+  assert.match(inline?.body ?? '', /align-self:\s*end/, 'der Kopf bleibt bei seinen Karten');
+  assert.match(rows.find((r) => r.selector.trim() === '.note-card--trailing')?.body ?? '', /grid-row:\s*span 2/,
+    'die Nachzueglerin steht neben Kopf UND erster Kartenzeile');
+  assert.match(page, /heading\(t\('notes\.groupPinned'\)\)[\s\S]{0,120}heading\(t\('notes\.groupOthers'\)\)/, 'beide Gruppenlabel bleiben');
 });
 
 test('responsive adaptation keeps Notes vertical and prevents intrinsic-width overflow', () => {
@@ -7216,7 +7371,10 @@ test('phase 7 Budget row actions stay touch-safe on mobile', () => {
   assert.match(actionRule, /width:\s*var\(--target-lg\)/, 'Row action buttons should use the large touch target width');
   assert.match(actionRule, /height:\s*var\(--target-lg\)/, 'Row action buttons should use the large touch target height');
   assert.doesNotMatch(actionRule, /opacity:\s*0/, 'Row actions stay visible without hover (touch-safe)');
-  assert.match(source, /class="row-action row-action--danger"/, 'Budget delete uses the shared danger row action');
+  // Seit R18 (2026-10-07) steht das Loeschen einer Tilgung im Mehr-Knopf der
+  // Zeile (rowMenuHtml), als Eintrag mit Wort und `danger: true`.
+  assert.match(source, /rowMenuHtml\(\{\s*id: `loan-payment-menu-\$\{payment\.id\}`[\s\S]{0,900}action: 'loan-payment-delete'[^\n]*danger: true/,
+    'Budget delete lives in the shared row menu as a danger entry');
   assert.doesNotMatch(source, /data-lucide="(?:plus|trash-2|pencil)"\s+style=/, 'Budget Lucide actions should use icon utility classes');
 });
 
@@ -7314,11 +7472,12 @@ test('phase 1 defines synchronized surface roles for readable work areas', () =>
   const root = parseTokenMap(rootBlock[1]);
   const media = parseTokenMap(mediaBlock[1]);
   const attr = parseTokenMap(attrBlock[1]);
+  // Die beiden `--app-backdrop-*-strength` standen hier bis R18 (2026-10-07):
+  // Staerken eines Shell-Verlaufs, den der opake Scrollport verdeckte. Mit dem
+  // Verlauf gestrichen; dass sie nicht zurueckkommen, haelt test:material.
   const publicSurfaceTokens = [
     '--color-surface-work',
     '--color-surface-raised',
-    '--app-backdrop-accent-strength',
-    '--app-backdrop-secondary-strength',
   ];
   // --_color-surface-glass hat KEINE oeffentliche Fassade mehr: die trug niemand
   // im Stylesheet, waehrend der private Wert weiter --_glass-bg-card speist. Ein
@@ -7327,8 +7486,6 @@ test('phase 1 defines synchronized surface roles for readable work areas', () =>
     '--_color-surface-work',
     '--_color-surface-raised',
     '--_color-surface-glass',
-    '--_app-backdrop-accent-strength',
-    '--_app-backdrop-secondary-strength',
   ];
 
   for (const token of publicSurfaceTokens) {
@@ -7361,15 +7518,20 @@ test('phase 1 keeps productive list surfaces opaque instead of high-transparency
   }
 });
 
-test('phase 1 app backdrop uses subtle tokenized tint and opaque scroll content', () => {
+// Bis R18 pruefte dieser Fall zusaetzlich, dass der Shell-Verlauf seine Staerke
+// aus Tokens nimmt. Der Verlauf ist gestrichen (er lag vollstaendig unter dem
+// opaken Scrollport); was bleibt, ist die Haelfte, die immer die tragende war.
+test('phase 1 keeps the scroll content on an opaque base without a shell gradient', () => {
   const glass = read('../public/styles/glass.css');
   const layout = read('../public/styles/layout.css');
-  const shellRule = cssRuleBody(glass, '.app-shell');
+  // Aus layout.css: glass.css fuehrt keine .app-shell-Regel mehr, und ein
+  // leerer Rumpf bestuende jede Verneinung.
+  const shellRule = cssRuleBody(layout, '.app-shell');
+  assert.ok(shellRule.length > 0, 'expected the .app-shell rule in layout.css');
   const glassContentRule = cssRuleBody(glass, '.app-content');
   const layoutContentRule = cssRuleBody(layout, '.app-content');
 
-  assert.match(shellRule, /var\(--app-backdrop-accent-strength\)/, 'app-shell tint strength should be tokenized');
-  assert.match(shellRule, /var\(--app-backdrop-secondary-strength\)/, 'secondary backdrop tint should be tokenized');
+  assert.doesNotMatch(shellRule, /gradient\(/, 'app-shell should not paint a gradient the opaque scroll content hides');
   assert.match(glassContentRule, /background-color:\s*var\(--color-bg\)/, 'glass.css should keep scroll content on an opaque readable base');
   assert.doesNotMatch(layoutContentRule, /radial-gradient/, 'layout.css should not put decorative radial gradients on the scroll container');
 });
@@ -7916,7 +8078,9 @@ test('Feldkanten tragen --color-border-control und halten 3:1 auf jedem Feldgrun
     // ohne Kante und im Hover mit --color-border-control - keine Kartenkante mehr.
     ['.cal-search', 'Leiste der Kalendersuche; die Kante ist die Trennlinie unter der Leiste, nicht die des Feldes'],
     ['.search-overlay__header', 'Kopf des Such-Overlays; Trennlinie zur Trefferliste'],
-    ['.search-overlay__panel', 'Flaeche des Such-Overlays ab Tablet-Breite; Kartenkante'],
+    // `.search-overlay__panel` stand hier bis R18 (2026-10-07): die Palette traegt
+    // seither die Glaskante der schwebenden Flaechen (--glass-border), keine
+    // Kartenkante mehr.
     ['.search-result + .search-result', 'Trennlinie zwischen zwei Treffern'],
     ['.search-scope', 'Bereichs-Chip in der Suche; ein Knopf, kein Feld'],
     ['.search-scope:hover', 'Hover desselben Chips'],
@@ -8040,6 +8204,92 @@ test('die ausgeschaltete Schalterbahn haelt 3:1 auf jeder Flaeche, auf der ein S
   assert.deepEqual(findings, [],
     'Die ausgeschaltete Schalterbahn unterschreitet 3:1 (WCAG 1.4.11) - gegen eine Flaeche, auf der Schalter stehen, oder gegen ihren Knopf. '
     + 'Die Bahn traegt --color-switch-off (tokens.css, #1572).');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * R18: Dark invertiert nicht - Knopf und Daumen sind die HELLERE Flaeche
+ *
+ * Zwei Bauteile trugen `--color-surface` als "das Helle obenauf". Hell stimmt
+ * das (Weiss), dunkel ist --color-surface die Stufe UNTER Bahn und Schiene:
+ * der Schalterknopf stand als dunkler Punkt auf heller Bahn, der gewaehlte
+ * Segmentdaumen als Mulde in seiner Bahn (Bahn rgb(55,51,46), Daumen
+ * rgb(43,40,37)). Der 3:1-Guard darueber sah nichts davon - ein dunkler Knopf
+ * auf heller Bahn haelt 3:1 genauso wie ein heller.
+ *
+ * Gemessen wird deshalb die RICHTUNG: in jedem Theme ist der Knopf heller als
+ * seine Bahn (aus UND an), der Daumen heller als die Bahn, in der er liegt,
+ * und was darauf steht, haelt seinen Kontrast.
+ * ──────────────────────────────────────────────────────────────────────────── */
+function r18ThemeMaps() {
+  const { light, dark } = themeTokenMaps();
+  const scheme = darkSchemeBlock(read('../public/styles/tokens.css'));
+  assert.ok(scheme, 'prefers-color-scheme-Dark-Block in tokens.css nicht gefunden');
+  const darkScheme = new Map(light);
+  for (const [k, v] of parseTokenMap(scheme[1])) darkScheme.set(k, v);
+  return [['light', light], ['dark [data-theme]', dark], ['dark prefers-color-scheme', darkScheme]];
+}
+
+const r18Lum = (hex) => relLum(hexToRgb(hex));
+
+test('R18: der Schalterknopf ist in jedem Theme heller als seine Bahn - aus und an', () => {
+  const rules = [...eachRule(read('../public/styles/layout.css'))];
+  const bg = (selector) => {
+    const rule = rules.filter((r) => r.selector.trim() === selector && /background(?:-color)?\s*:/.test(r.body)).pop();
+    assert.ok(rule, `Regel ${selector} mit Hintergrund nicht gefunden - der Guard misst nichts`);
+    const token = rule.body.match(/background(?:-color)?\s*:\s*var\(\s*(--[\w-]+)\s*\)/)?.[1];
+    assert.ok(token, `${selector} setzt keinen Token-Hintergrund`);
+    return token;
+  };
+  const knob = bg('.toggle__track::after');
+  const tracks = { aus: bg('.toggle__track'), an: bg('.toggle input:checked + .toggle__track') };
+
+  const findings = [];
+  for (const [theme, map] of r18ThemeMaps()) {
+    const knobHex = resolveColor(knob, map);
+    assert.match(knobHex ?? '', /^#[0-9a-f]{6}$/i, `${theme}: ${knob} loest nicht auf eine Hex-Farbe auf`);
+    for (const [state, token] of Object.entries(tracks)) {
+      const trackHex = resolveColor(token, map);
+      assert.match(trackHex ?? '', /^#[0-9a-f]{6}$/i, `${theme}: ${token} loest nicht auf eine Hex-Farbe auf`);
+      if (r18Lum(knobHex) <= r18Lum(trackHex)) {
+        findings.push(`${theme}, ${state}: Knopf ${knob} (${knobHex}) ist dunkler als die Bahn ${token} (${trackHex})`);
+      }
+      const ratio = contrastRatio(knobHex, trackHex);
+      if (ratio + 0.005 < 3) findings.push(`${theme}, ${state}: Knopf ${knobHex} auf ${trackHex} ${ratio.toFixed(2)}:1`);
+    }
+  }
+  assert.deepEqual(findings, []);
+});
+
+test('R18: der Segmentdaumen ist in jedem Theme heller als seine Bahn, und die Modulton-Tinte haelt AA', () => {
+  // Die Bahnen, in denen ein Daumen liegt: jede Regel, die einem Traeger eines
+  // `--seg-active-bg`-Kinds eine Flaeche gibt, fuehrt eines dieser beiden Tokens
+  // (.group-toggle, .segmented, die Sub-Tab-Leiste).
+  const TRACKS = ['--color-fill-well', '--color-surface-3'];
+  const findings = [];
+  let inks = 0;
+  for (const [theme, map] of r18ThemeMaps()) {
+    const thumb = resolveColor('--seg-active-bg', map);
+    assert.match(thumb ?? '', /^#[0-9a-f]{6}$/i, `${theme}: --seg-active-bg loest nicht auf eine Hex-Farbe auf (${thumb})`);
+    for (const token of TRACKS) {
+      const track = resolveColor(token, map);
+      assert.match(track ?? '', /^#[0-9a-f]{6}$/i, `${theme}: ${token} loest nicht auf`);
+      if (r18Lum(thumb) <= r18Lum(track)) findings.push(`${theme}: Daumen ${thumb} ist nicht heller als die Bahn ${token} (${track})`);
+    }
+    // Die Tinte des aktiven Segments, wie sie an jeder Fundstelle steht:
+    // color-mix(in srgb, <Modulton> var(--tint-ink), var(--color-text-primary)).
+    const share = parseFloat(resolveColor('--tint-ink', map)) / 100;
+    assert.ok(share > 0 && share <= 1, `${theme}: --tint-ink ist kein Prozentwert`);
+    const text = hexToRgb(resolveColor('--color-text-primary', map));
+    for (const name of [...map.keys()].filter((k) => /^--_family-[\w-]+$/.test(k))) {
+      const tone = hexToRgb(resolveColor(name, map));
+      const ink = `#${tone.map((v, i) => Math.round(v * share + text[i] * (1 - share)).toString(16).padStart(2, '0')).join('')}`;
+      const ratio = contrastRatio(ink, thumb);
+      inks += 1;
+      if (ratio + 0.005 < 4.5) findings.push(`${theme}: Tinte ${name} (${ink}) auf dem Daumen ${thumb} ${ratio.toFixed(2)}:1`);
+    }
+  }
+  assert.ok(inks >= 27, `Reichweite: ${inks} Tinten gemessen (neun Familien, drei Theme-Bloecke)`);
+  assert.deepEqual(findings, []);
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
@@ -8262,6 +8512,101 @@ test('die abgehakte Einkaufszeile nimmt sich ueber Textfarben zurueck, nicht ueb
 const RECEDED_STATE = /--(?:done|checked|archived|inactive|completed|disabled|paused|exists|pending|settled|ended|expired|cancelled|canceled|dismissed|resolved|redeemed|fulfilled)(?![\w-])|\.is-inactive(?![\w-])/;
 const RECEDED_EXEMPT = /:disabled|\[disabled\]|sortable-/;
 
+/** Selektorliste an den Kommas der obersten Ebene trennen - nicht in Klammern. */
+function splitSelectorList(selector) {
+  const parts = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of selector) {
+    if (ch === '(' || ch === '[') depth += 1;
+    if (ch === ')' || ch === ']') depth -= 1;
+    if (ch === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; } else cur += ch;
+  }
+  if (cur.trim()) parts.push(cur.trim());
+  return parts;
+}
+
+/** Letztes Glied eines Selektors. Ein Kombinator zaehlt nur ausserhalb von
+ * Klammern: das Leerzeichen in `:not(.swipe-row--swiping *)` trennt nichts. */
+function lastCompoundOf(selector) {
+  let depth = 0;
+  let cur = '';
+  let last = '';
+  for (const ch of selector.trim()) {
+    if (ch === '(' || ch === '[') depth += 1;
+    if (ch === ')' || ch === ']') depth -= 1;
+    if (depth === 0 && /[\s>+~]/.test(ch)) {
+      if (cur) last = cur;
+      cur = '';
+    } else cur += ch;
+  }
+  return cur || last;
+}
+
+/** Inhalt des Klammerpaars, das bei `open` beginnt, und die Stelle dahinter. */
+function parenBody(selector, open) {
+  let depth = 0;
+  for (let i = open; i < selector.length; i += 1) {
+    if (selector[i] === '(') depth += 1;
+    if (selector[i] === ')') {
+      depth -= 1;
+      if (depth === 0) return { inner: selector.slice(open + 1, i), end: i + 1 };
+    }
+  }
+  return null;
+}
+
+/** `:is(a, b)` und `:where(a, b)` der obersten Ebene in ihre Varianten
+ * aufloesen: `:is(.a, .b):active` trifft `.a:active` UND `.b:active`. Listen
+ * IN `:not()`/`:has()` bleiben stehen - sie waehlen kein Element aus, sie
+ * schliessen eines aus. Die Spezifitaet einer Variante ist die des ganzen
+ * Selektors (das staerkste Glied der Liste zaehlt fuer alle), deshalb rechnet
+ * der Aufrufer sie am Original. */
+const IS_VARIANTS_MAX = 256;
+function expandIsLists(selector) {
+  let depth = 0;
+  for (let i = 0; i < selector.length; i += 1) {
+    const ch = selector[i];
+    if (ch === ')' || ch === ']') { depth -= 1; continue; }
+    if (ch === '[') { depth += 1; continue; }
+    if (ch === '(') { depth += 1; continue; }
+    if (depth !== 0 || ch !== ':') continue;
+    const head = selector.slice(i).match(/^:(?:is|where)\(/);
+    if (!head) continue;
+    const body = parenBody(selector, i + head[0].length - 1);
+    if (!body) return [selector];
+    const out = [];
+    for (const alt of splitSelectorList(body.inner)) {
+      for (const rest of expandIsLists(selector.slice(body.end))) {
+        out.push(`${selector.slice(0, i)}${alt}${rest}`);
+        if (out.length > IS_VARIANTS_MAX) throw new Error(`:is()-Liste mit mehr als ${IS_VARIANTS_MAX} Varianten: ${selector.slice(0, 80)}`);
+      }
+    }
+    return out;
+  }
+  return [selector];
+}
+
+/** Die Argumente aller `:not(...)` eines Glieds, an den Kommas getrennt. */
+function notArguments(compound) {
+  const args = [];
+  let depth = 0;
+  for (let i = 0; i < compound.length; i += 1) {
+    const ch = compound[i];
+    if (ch === ')' || ch === ']') { depth -= 1; continue; }
+    if (ch === '[') { depth += 1; continue; }
+    if (depth === 0 && compound.startsWith(':not(', i)) {
+      const body = parenBody(compound, i + 4);
+      if (!body) break;
+      args.push(...splitSelectorList(body.inner));
+      i = body.end - 1;
+      continue;
+    }
+    if (ch === '(') depth += 1;
+  }
+  return args;
+}
+
 test('zurueckgenommene Karten und Zeilen dimmen nicht ueber opacity, und ihre Textfarben halten 4.5:1', () => {
   const { light, dark } = themeTokenMaps();
   const STATE = RECEDED_STATE;
@@ -8376,7 +8721,26 @@ test('keine spezifischere Regel ueberschreibt eine zurueckgenommene Zustandsrege
     'index.html nennt glass.css/layout.css nicht mehr als Stylesheets - die Ladereihenfolge ist nicht mehr lesbar.');
   const loadRank = (file) => (globals.includes(file) ? globals.indexOf(file) : globals.length);
 
-  const stripNot = (s) => s.replace(/:not\((?:[^()]|\([^()]*\))*\)/g, '');
+  // `:not()` und `:has()` samt Inhalt streichen, in beliebiger Tiefe: was darin
+  // steht, sitzt nicht am Element (`:has`) oder gerade nicht (`:not`). Das
+  // fruehere Regex trug nur eine Klammerebene - an
+  // `:not(:has(:is(a, button):not(.u-row-title):active))` blieb der Rest
+  // stehen, und seine Klassen zaehlten als Klassen des Elements.
+  const stripFunctional = (s, opener) => {
+    let out = '';
+    for (let i = 0; i < s.length; i += 1) {
+      const head = s.slice(i).match(opener);
+      const body = head ? parenBody(s, i + head[0].length - 1) : null;
+      if (body) i = body.end - 1; else out += s[i];
+    }
+    return out;
+  };
+  const stripNot = (s) => stripFunctional(s, /^:(?:not|has)\(/);
+  // Ein Zustandswort NUR in `:not()` macht keine Zustandsregel: der
+  // Press-Baustein nennt `[class*="--done"]`, um erledigte Zeilen AUSZUNEHMEN.
+  // Als Zustandsregel gelesen, fiele er aus den Wettbewerbern - der Grund,
+  // aus dem der Guard ihn nach dem Aufloesen immer noch nicht sah.
+  const namesState = (sel) => RECEDED_STATE.test(stripFunctional(sel, /^:not\(/));
   const specificity = (sel) => {
     let a = 0; let b = 0; let c = 0;
     let s = sel.replace(/:where\((?:[^()]|\([^()]*\))*\)/g, '');
@@ -8393,7 +8757,6 @@ test('keine spezifischere Regel ueberschreibt eine zurueckgenommene Zustandsrege
   };
   const PROPS = { background: 'background', 'background-color': 'background', border: 'border-color', 'border-color': 'border-color', 'box-shadow': 'box-shadow', color: 'color', opacity: 'opacity' };
   const propsOf = (body) => new Set([...body.matchAll(/(?:^|;)\s*([\w-]+)\s*:/g)].map((m) => PROPS[m[1]]).filter(Boolean));
-  const lastCompound = (s) => s.trim().split(/\s+|>|\+|~/).filter(Boolean).pop() ?? '';
   const GESTURE = /:(?:hover|focus-within|focus-visible|active)(?![\w-])/g;
   const gestures = (compound) => new Set(stripNot(compound).match(GESTURE) ?? []);
 
@@ -8403,9 +8766,26 @@ test('keine spezifischere Regel ueberschreibt eine zurueckgenommene Zustandsrege
   for (const file of readdirSync(styles).filter((entry) => entry.endsWith('.css') && entry !== 'tokens.css')) {
     let index = 0;
     for (const rule of eachRule(readFileSync(new URL(file, styles), 'utf8'))) {
-      for (const part of rule.selector.split(',').map((s) => s.trim())) {
-        rules.push({ file, index, part, at: rule.at, body: rule.body, props: propsOf(rule.body), spec: specificity(part), last: lastCompound(part) });
-        for (const cls of part.match(/\.[a-z][\w-]*/gi) ?? []) cssClasses.add(cls.slice(1));
+      // Auf oberster Ebene trennen (R18): ein Komma IN `:is(...)`/`:not(...)`
+      // trennt keine Selektoren. Der Press-Baustein (list-row.css) ist eine
+      // `:is()`-Liste; zerlegt las der Guard jedes Glied als eigene Regel OHNE
+      // sein `:active` und meldete acht Ueberschreibungen, die es nicht gibt.
+      // Dass der Baustein zurueckgenommene Zeilen ausnimmt, haelt test:motion.
+      //
+      // UND JEDE `:is()`-LISTE WIRD AUFGELOEST (R18, Schritt 7). Nach dem
+      // Trennen stand der Baustein als EIN Selektor da, dessen letztes Glied
+      // vierzehn Klassen nannte - "alle am selben Element" traf nie zu, und der
+      // Guard verglich ihn mit keiner Zustandsregel mehr. Er sah damit weniger
+      // als vor der Kette. Jede Variante ist ein eigener Wettbewerber mit der
+      // Spezifitaet des ganzen Selektors; was eine Variante per `:not()`
+      // ausnimmt, wird unten an der Zustandsklasse geprueft, nicht geglaubt.
+      for (const whole of splitSelectorList(rule.selector)) {
+        const spec = specificity(whole);
+        const variants = expandIsLists(whole);
+        for (const part of variants) {
+          rules.push({ file, index, part, whole, fromIs: variants.length > 1, at: rule.at, body: rule.body, props: propsOf(rule.body), spec, last: lastCompoundOf(part) });
+          for (const cls of part.match(/\.[a-z][\w-]*/gi) ?? []) cssClasses.add(cls.slice(1));
+        }
       }
       index += 1;
     }
@@ -8443,11 +8823,13 @@ test('keine spezifischere Regel ueberschreibt eine zurueckgenommene Zustandsrege
   };
   const coLoaded = (x, y) => x.file === y.file || globals.includes(x.file) || globals.includes(y.file);
 
-  const allStates = rules.filter((r) => RECEDED_STATE.test(r.part) && !RECEDED_EXEMPT.test(r.part) && r.props.size && !r.last.includes('::'));
+  const allStates = rules.filter((r) => namesState(r.part) && !RECEDED_EXEMPT.test(r.part) && r.props.size && !r.last.includes('::'));
   const states = allStates.filter((r) => /var\(\s*--color-(?:surface|border|text)-receded\s*\)/.test(r.body));
   const offenders = new Set();
   let compared = 0;
   let expanded = 0;
+  let viaIs = 0;
+  let excludedByIs = 0;
   for (const state of states) {
     const classes = stripNot(state.last).match(/\.[\w-]+/g) ?? [];
     const stateClass = classes.find((cls) => RECEDED_STATE.test(cls));
@@ -8473,10 +8855,20 @@ test('keine spezifischere Regel ueberschreibt eine zurueckgenommene Zustandsrege
       return stateClass ? own.includes(stateClass) : (s.part.includes(marker) && own.includes(base));
     });
     for (const other of rules) {
-      if (RECEDED_STATE.test(other.part) || RECEDED_EXEMPT.test(other.part) || other.last.includes('::')) continue;
+      if (namesState(other.part) || RECEDED_EXEMPT.test(other.part) || other.last.includes('::')) continue;
       if (!coLoaded(state, other)) continue;
       const otherClasses = stripNot(other.last).match(/\.[\w-]+/g) ?? [];
       if (!otherClasses.length || !otherClasses.every((cls) => onElement.has(cls))) continue;
+      // Nimmt der Wettbewerber GENAU DIESEN Zustand aus, gilt er an dessen
+      // Element nicht: `:not(.x--done)` oder `:not([class*="--done"])` im
+      // letzten Glied, wenn der Zustand dort sitzt. Ein anderes Zustandswort
+      // in der Liste nimmt diesen Zustand nicht aus.
+      if (stateClass && notArguments(other.last).some((arg) => arg === stateClass
+        || [...arg.matchAll(/^\[class\*=(["'])([^"']+)\1\]$/g)].some((m) => stateClass.includes(m[2])))) {
+        if (other.fromIs) excludedByIs += 1;
+        continue;
+      }
+      if (other.fromIs) viaIs += 1;
       const otherGestures = gestures(other.last);
       for (const prop of [...other.props].filter((p) => state.props.has(p))) {
         compared += 1;
@@ -8493,9 +8885,28 @@ test('keine spezifischere Regel ueberschreibt eine zurueckgenommene Zustandsrege
   }
   assert.ok(states.length >= 12, `Nur ${states.length} Zustandsregeln des Zuruecknehmen-Musters gefunden - der Scan greift nicht mehr.`);
   assert.ok(compared >= 10, `Nur ${compared} Wettbewerber verglichen - der Guard misst nichts.`);
+  // Der Press-Baustein (list-row.css) ist eine `:is()`-Liste ueber die Zeilen
+  // und Karten, an denen die Zustaende sitzen. Trifft keine ihrer Varianten
+  // mehr auf eine Zustandsregel, sieht der Guard `:is()` wieder nicht.
+  assert.ok(viaIs + excludedByIs >= 4,
+    `Nur ${viaIs + excludedByIs} Varianten aus :is()-Listen trafen auf eine Zustandsregel - der Guard sieht :is()-Regeln nicht.`);
   // Die meisten Vorlagen tragen nur Basis + Zustand; gezaehlt wird deshalb, ob
   // die Zustandsklasse ueberhaupt in einer Vorlage gefunden wurde.
   assert.ok(expanded >= 6, `Nur ${expanded} Zustandsregeln fanden ihre Vorlage in public/ - die Vorlagen-Suche greift nicht mehr.`);
+  // BENANNTE AUSNAHME, seit der Guard `:has()` nicht mehr fuer eine Klasse der
+  // Zeile haelt (R18, Schritt 7): das abgelegte Konto antwortet weiter auf den
+  // Zeiger. budget.css sagt das an `.budget-account--archived` ausdruecklich
+  // ("Die Zeile darin antwortet weiter auf den Zeiger") - die Zeile bleibt der
+  // Weg in die Buchungen des Kontos. Das widerspricht dem Satz zu #1230
+  // woertlich und steht deshalb HIER, sichtbar, statt in einem blinden Fleck.
+  // Jeder Eintrag muss weiter gefunden werden, sonst ist er zu streichen.
+  const SANCTIONED = [
+    'budget.css: .budget-account--archived [0,1,0]  <-  budget.css: .budget-account:has(> .budget-account__main:active) [0,3,0]  background',
+    'budget.css: .budget-account--archived [0,1,0]  <-  budget.css: .budget-account:has(> .budget-account__main:hover) [0,3,0]  background',
+  ];
+  for (const entry of SANCTIONED) {
+    assert.ok(offenders.delete(entry), `Die benannte Ausnahme trifft nicht mehr zu und ist zu streichen: ${entry}`);
+  }
   assert.deepEqual([...offenders].sort(), [],
     'Eine spezifischere (oder gleich spezifische, spaeter ladende) Regel ueberschreibt eine zurueckgenommene '
     + 'Zustandsregel bei derselben Eigenschaft. Den Zustandsselektor so qualifizieren, dass er gewinnt '
@@ -11223,6 +11634,103 @@ test('.btn--sm haelt die Zielgroesse der Geraetewelt, auch am Zeiger', () => {
   assert.ok(touch && /min-height:\s*var\(--target-base\)/.test(touch.body), 'am Finger fehlt --target-base');
 });
 
+// Schicht-Chips im Kalender (Critique R17). Der Chip erbte die Vollton-Flaeche
+// des Feiertags, aber nicht dessen berechnete Tinte (`--holi-ink`), und stand
+// damit in Weiss auf der Schichtfarbe: gemessen 3,26:1 fuer 12px-Schrift auf
+// der Fruehschicht (#0891B2). Jetzt traegt er das Rezept des Schichtplans
+// (schedule.css, `.schedule-overview__block`): 16-%-Toenung, Vollton-Punkt,
+// neutrale Schrift - in Monat, Ganztagszeile und Agenda.
+//
+// GERECHNET WIRD AUS DEN QUELLEN, nicht aus Literalen hier: die Farben aus der
+// Startpalette in schedule.js, Flaeche und Tinte aus tokens.css je Theme, das
+// Rezept aus der Regel in calendar.css. Aendert sich eine der drei Seiten,
+// rechnet der Guard mit dem neuen Wert.
+test('Schicht-Chips im Kalender: getoent wie im Schichtplan, Schrift >= 4,5:1 fuer die Startpalette', async () => {
+  const { contrastRatio } = await import('../public/utils/contrast.js');
+  const calendarCss = read('../public/styles/calendar.css');
+  const scheduleCss = read('../public/styles/schedule.css');
+  const tokensCss = read('../public/styles/tokens.css');
+  const scheduleJs = read('../public/pages/schedule.js');
+  const calendarJs = read('../public/pages/calendar.js');
+
+  // --- Die Startpalette: jede Farbe der Schicht-Vorlagen ---------------------
+  const presets = scheduleJs.slice(scheduleJs.indexOf('const SHARED_PRESETS'), scheduleJs.indexOf('});', scheduleJs.indexOf('const PRESET_TEMPLATES')));
+  const palette = [...new Set([...presets.matchAll(/color:\s*'(#[0-9A-Fa-f]{6})'/g)].map((m) => m[1].toUpperCase()))];
+  assert.ok(palette.length >= 8, `Startpalette aus schedule.js gelesen (${palette.length} Farben)`);
+  assert.ok(palette.includes('#0891B2'), 'die Befund-Farbe (Fruehschicht) ist dabei');
+
+  // --- Das Rezept: eine Regel fuer alle drei Ansichten -----------------------
+  const SELEKTOREN = ['.month-day__holiday.schedule-entry', '.allday-holiday.schedule-entry', '.agenda-holiday.schedule-entry'];
+  const regeln = [...eachRule(calendarCss)];
+  const letzte = (selektor, eigenschaft) => {
+    let wert = null;
+    for (const { selector, body, at } of regeln) {
+      if (at.length) continue;
+      if (!selector.split(',').map((t) => t.trim()).includes(selektor)) continue;
+      const m = new RegExp(`(?:^|;)\\s*${eigenschaft}\\s*:\\s*([^;]+)`).exec(body);
+      if (m) wert = m[1].trim();
+    }
+    return wert;
+  };
+  const REZEPT = 'color-mix(in srgb, var(--holi-color) var(--tint-surface), var(--color-surface-work))';
+  for (const selektor of SELEKTOREN) {
+    assert.equal(letzte(selektor, 'background'), REZEPT, `${selektor}: Flaeche ist die 16-%-Toenung`);
+    assert.equal(letzte(selektor, 'color'), 'var(--color-text-primary)', `${selektor}: Schrift neutral, keine Mischtinte aus einer Nutzerfarbe`);
+    assert.match(letzte(`${selektor} > span:first-child::before`, 'background') ?? '', /^var\(--holi-color\)$/,
+      `${selektor}: den Vollton traegt der Punkt vor dem Namen`);
+  }
+  // Dasselbe Rezept wie der Block im Schichtplan-Reiter "Vergleich".
+  const block = [...eachRule(scheduleCss)].find((r) => r.selector.trim() === '.schedule-overview__block');
+  assert.match(block.body, /background:\s*color-mix\(in srgb, var\(--schedule-color\) var\(--tint-surface\), var\(--color-surface-work\)\)/);
+  assert.match(block.body, /(?:^|;)\s*color:\s*var\(--color-text-primary\)/);
+  // Der Chip bekommt keine eigene Tinte aus dem Markup, die die Regel ueberstimmte.
+  for (const m of calendarJs.matchAll(/class="[^"]*schedule-entry"[^>]*style="([^"]*)"/g)) {
+    assert.doesNotMatch(m[1], /--holi-ink|(?:^|;)\s*color\s*:/, 'der Schicht-Chip setzt keine Inline-Tinte');
+  }
+  // Zeit und Zusatz-Marke: Sekundaertinte statt Deckkraft.
+  for (const selektor of ['.allday-holiday .schedule-entry__start', '.schedule-entry__extra-badge']) {
+    assert.equal(letzte(selektor, 'color'), 'var(--color-text-secondary)', `${selektor}: Sekundaertinte`);
+    assert.equal(letzte(selektor, 'opacity'), null, `${selektor}: keine Deckkraft - sie liesse den Kontrast mit der Schichtfarbe schwanken`);
+  }
+
+  // --- Die Werte je Theme, aus tokens.css ------------------------------------
+  const roh = (rumpf, name) => new RegExp(`(?:^|[;{\\s])${name}:\\s*(#[0-9A-Fa-f]{6})\\b`).exec(rumpf)?.[1] ?? null;
+  const tint = Number(/--tint-surface:\s*(\d+)%/.exec(tokensCss)?.[1]) / 100;
+  assert.equal(tint, 0.16, '--tint-surface gelesen');
+  const themes = {
+    light: tokensCss,
+    'dark (System)': darkSchemeBlock(tokensCss)?.[1],
+    'dark (Schalter)': darkAttrBlock(tokensCss)?.[1],
+  };
+  const kanaele = (hex) => [1, 3, 5].map((i) => Number.parseInt(hex.slice(i, i + 2), 16));
+  const hex = (rgb) => `#${rgb.map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
+  const mische = (farbe, flaeche, anteil) => hex(kanaele(farbe).map((v, i) => v * anteil + kanaele(flaeche)[i] * (1 - anteil)));
+
+  let gemessen = 0;
+  for (const [theme, rumpf] of Object.entries(themes)) {
+    assert.ok(rumpf, `${theme}: Token-Block gefunden`);
+    const flaeche = roh(rumpf, '--_color-surface-work');
+    const primaer = roh(rumpf, '--_neutral-900');
+    const sekundaer = roh(rumpf, '--_neutral-600');
+    assert.ok(flaeche && primaer && sekundaer, `${theme}: Flaeche und Tinten gelesen (${flaeche}, ${primaer}, ${sekundaer})`);
+    for (const farbe of palette) {
+      const chip = mische(farbe, flaeche, tint);
+      const schrift = contrastRatio(primaer, chip);
+      const zeit = contrastRatio(sekundaer, chip);
+      assert.ok(schrift >= 4.5, `${theme} ${farbe}: Name ${schrift.toFixed(2)}:1 auf ${chip}`);
+      assert.ok(zeit >= 4.5, `${theme} ${farbe}: Zeit ${zeit.toFixed(2)}:1 auf ${chip}`);
+      gemessen += 2;
+    }
+  }
+  assert.equal(gemessen, palette.length * 3 * 2, 'jede Farbe in jedem Theme fuer Name und Zeit gemessen');
+
+  // --- Gegenprobe der Rechnung: der alte Zustand faellt ----------------------
+  // Weiss auf dem 90-%-Vollton ueber der hellen Arbeitsflaeche: genau der
+  // Befund. Lieferte die Rechnung hier nichts Rotes, maesse sie nichts.
+  const alt = mische('#0891B2', roh(tokensCss, '--_color-surface-work'), 0.9);
+  assert.ok(contrastRatio('#FFFFFF', alt) < 4.5, `Vollton mit weisser Schrift riss die Schwelle (${contrastRatio('#FFFFFF', alt).toFixed(2)}:1)`);
+});
+
 // Avatare tragen die Farbe, die sich das Mitglied selbst aussucht; die
 // Initialen standen darauf immer in Weiss. Gemessen 3,5:1 auf #ec4899 und
 // 2,8:1 auf #f97316 - noetig sind 4,5:1 (Critique 2026-07-27).
@@ -13543,17 +14051,17 @@ test('ein Maskenstopp kommt aus --mask-opaque, nie als roher Farbwert', () => {
  *
  * glass.css sagt seit Runde 1 zu, dass Opazitaet und Specular unter
  * prefers-reduced-transparency und prefers-contrast ueber die Tokens auf 0
- * fallen. Dafuer gibt es ZWEI Schreibweisen, und tokens.css:1667 fuehrt sie
- * ausdruecklich als dasselbe Konzept: `--lg-specular` ist die Staerke des einen
- * freien Highlights, `--glass-inset-strength` der Faktor der abgestuften
- * Inset-Tokens. Erlaubt sind beide. Verboten ist die dritte Schreibweise, die an
- * beiden vorbeilaeuft: ein rohes rgba in einem `inset`-Segment.
+ * fallen. Dafuer gab es bis R18 ZWEI Schreibweisen: `--lg-specular`, die
+ * Staerke eines freien Highlights (entfallen mit der schwebenden Seitenleiste,
+ * 2026-10-07), und `--glass-inset-strength`, der Faktor der abgestuften
+ * Inset-Tokens. Verboten ist die Schreibweise, die am Schalter vorbeilaeuft:
+ * ein rohes rgba in einem `inset`-Segment.
  *
  * Session 27 hat 17 Leser von `--glass-inset-*` in die Reihe gebracht; drei
  * Stellen standen NICHT darunter, weil sie den Token nie lasen und deshalb in
  * keiner Suche auftauchten - `.page-fab` (layout.css, der opake Fallback der
  * Signature Component) sowie `.nav-bottom__items` und `.nav-sidebar`, die
- * ihren OBEREN Specular korrekt ueber `--lg-specular` fuehren und den unteren
+ * ihren OBEREN Specular korrekt ueber das damalige `--lg-specular` fuehrten und den unteren
  * eine Zeile darunter roh schrieben. Der letzte Fall brauchte einen Token, den
  * es noch nicht gab (`--glass-inset-bottom-lift`): die bestehenden
  * Bottom-Tokens sind schwarze Unterrand-SCHATTEN, gebraucht wurde ein helles
@@ -13607,8 +14115,8 @@ test('ein Inset-Specular kommt aus dem Token, nie als rohes rgba', () => {
     + 'der Guard hat nichts gemessen, statt nichts zu finden.');
 
   assert.deepEqual(offenders, [],
-    'Ein Inset-Specular nimmt ein `--glass-inset-*`-Token oder die color-mix-Formel '
-    + 'ueber `--lg-specular`. Ein rohes rgba traegt den a11y-Schalter nicht: unter '
+    'Ein Inset-Specular nimmt ein `--glass-inset-*`-Token. '
+    + 'Ein rohes rgba traegt den a11y-Schalter nicht: unter '
     + 'prefers-reduced-transparency und prefers-contrast muss die Lichtkante '
     + `verschwinden, und ein fester Wert tut das nie.\n${offenders.join('\n')}`);
 });
@@ -14850,6 +15358,13 @@ test('ein Flaechen-Leerzustand ist die geteilte .empty-state', () => {
 // (Gesundheit 14 Vorkommen, Dokumente null), und es ist das Anti-Ziel
 // „keine Siegel-Inflation".
 //
+// WAS DIESER GUARD NICHT SIEHT (R18): ob die benannte Herkunft ein Modulton IST.
+// Er liest Text, und `--seal-accent: var(--module-budget?tab=budget, ...)`
+// enthaelt die gesuchte Zeichenkette - das Budget-Siegel der Uebersicht stand
+// damit violett, bei gruenem Guard. Den Slug prueft deshalb der AUFRUF:
+// test-dashboard-a11y.js, „jedes Widget-Siegel nennt einen Modulton, den
+// tokens.css kennt".
+//
 // UEBER DIE BAUART, NICHT UEBER EINE DATEILISTE: gesucht wird jede Stelle, die
 // die Klasse zusammensetzt - gleich ob per `className`, per Template-Literal
 // oder per `classList`. Ein neues Modul mit einem Siegel steht damit
@@ -15274,7 +15789,7 @@ test('das Überlappungszeichen kommt aus einer Hand', () => {
 const SHELL_ROOTS = [
   '.nav-bottom', '.nav-sidebar', '.nav-item', '.page-fab', '.fab-layer',
   '.more-sheet', '.more-item', '.more-action', '.more-backdrop',
-  '.search-overlay', '.modal-overlay', '.app-shell', '.lg-blob', '.lg-backdrop',
+  '.search-overlay', '.modal-overlay', '.app-shell', '.app-loading', '.auth-page',
   '.changelog-release',
 ];
 const SHARED_CONTROLS = ['.btn--', '.toggle', '.form-check', '.page-search', '.input:focus', '.form-input:focus'];
@@ -15303,9 +15818,9 @@ test('die Shell traegt die Stimme, nicht den Modulton', () => {
       if (!isShell && !isSharedControl) continue;
 
       // AN DER SHELL IST DER VERSTOSS DAS MITWANDERN, nicht die Farbe. Ein
-      // FESTER Modulton dort ist eine Palettenwahl - die Backdrop-Blobs 2-4
-      // tragen vier feste Toene und sehen in jedem Modul gleich aus, was die
-      // Regel gerade verlangt. Verboten sind die routen- bzw.
+      // FESTER Modulton dort ist eine Palettenwahl - er sieht in jedem Modul
+      // gleich aus, was die Regel gerade verlangt (so trugen es bis R18 die
+      // Backdrop-Blobs 2-4). Verboten sind die routen- bzw.
       // seitenabhaengigen Namen: --active-module-accent (Router, je Route) und
       // --module-accent (Modul-Root, je Seite). An einem GETEILTEN
       // BEDIENELEMENT ist dagegen jeder Modulton falsch, auch ein fester:
@@ -16545,6 +17060,49 @@ test('der schmale Zustand der Kueche steht hinter seinem Bauteil', () => {
 });
 
 /* ────────────────────────────────────────────────────────────────────────────
+ * DAS WOCHENRASTER SCHNEIDET KEINE KARTE AB (Critique R17)
+ *
+ * Gemessen bei 1366x650: 27 von 27 belegten Slots 100px hoch bei 139-161px
+ * Inhalt, das "+" jeder Karte unsichtbar, und das Raster hatte keinen
+ * Scrollweg dorthin. Zwei Ursachen, die sich gegenseitig verdeckten:
+ *
+ * 1. Die Zeilen waren `auto`. Der Slot traegt `min-height`, und eine
+ *    `auto`-Zeile nimmt dann DIESEN Wert als Untergrenze statt der
+ *    Inhaltshoehe; den Rest bekam sie nur aus uebriger Scrollport-Hoehe.
+ * 2. Der Slot beschnitt seinen Ueberlauf - deshalb lief nichts ueber, und
+ *    ohne Ueberlauf scrollt nichts.
+ *
+ * Der Guard haelt beide Enden: die Zeilenregel am Raster und dass keine
+ * Regel, deren Subjekt der Slot ist, wieder beschneidet.
+ * ──────────────────────────────────────────────────────────────────────────── */
+test('das Wochenraster der Kueche schneidet keine Karte ab', () => {
+  const css = read('../public/styles/meals.css');
+  let autoRows = null;
+  const clipping = [];
+  for (const { selector, body, at } of eachRule(css)) {
+    const sels = String(selector).split(',').map((s) => s.trim());
+    if (sels.includes('.week-grid') && at.some((a) => /min-width:\s*1024px/.test(a))) {
+      const m = /grid-auto-rows\s*:\s*([^;]+)/.exec(body);
+      if (m) autoRows = m[1].trim();
+    }
+    // Subjekt = letzter zusammengesetzter Selektor. `.meal-slot__type-label`
+    // (sr-only am Board) ist ein anderes Bauteil und bleibt aussen vor.
+    const subjectIsSlot = sels.some((s) => /\.meal-slot(?![\w-]|__)(?:--[\w-]+)?(?::[\w-]+(?:\([^)]*\))?)*$/.test(s.split(/[\s>+~]+/).pop()));
+    if (!subjectIsSlot) continue;
+    for (const m of body.matchAll(/(?:^|;)\s*(overflow(?:-[xy])?)\s*:\s*([^;]+)/g)) {
+      if (/\b(?:hidden|clip)\b/.test(m[2])) clipping.push(`${selector.trim()} { ${m[1]}: ${m[2].trim()} }`);
+    }
+  }
+  assert.ok(autoRows && /^(?:min-content|max-content)$/.test(autoRows),
+    `.week-grid (ab 1024px) braucht grid-auto-rows: min-content, gefunden: ${autoRows} - `
+    + 'mit auto-Zeilen ist der Slot nur so hoch wie sein min-height plus Resthoehe, '
+    + 'und bei 650px Fensterhoehe waren alle 27 Karten abgeschnitten');
+  assert.deepEqual(clipping, [],
+    'der Slot beschneidet wieder seinen Inhalt - der Radius-Beschnitt gehoert an das '
+    + 'Kind, das eine Flaeche an die Ecke malt (.meal-slot__add-more-btn)');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
  * WER EINEN WEG SCHLIESST, MUSS DEN ERSATZWEG NACHWEISEN (#925)
  *
  * tasks.css blendet `.task-card__inline-action` unter 640px aus - mit guter
@@ -16586,11 +17144,18 @@ test('jede auf Touch ausgeblendete Karten-Aktion hat einen Weg in der Leseansich
   //    (`${archived ? 'unarchive-task' : 'archive-task'}`), deshalb wird der
   //    Attributwert nach Literalen abgesucht statt als eines genommen - ein
   //    Muster, das nur nackte Werte kennt, uebersaehe genau die zwei.
+  //    Seit R18 (2026-10-07) sind die drei Knoepfe EIN Mehr-Knopf: sein
+  //    Ausloeser traegt weiter `task-card__inline-action` (und verschwindet
+  //    damit unter 640px samt Menue), die Handlungen stehen als `action:` in
+  //    den Eintraegen von `rowMenuHtml`. Gelesen wird der ganze Aufruf.
+  const menuStart = page.indexOf('rowMenuHtml({\n          id: `task-menu-${task.id}`');
+  assert.ok(menuStart > -1, 'der Mehr-Knopf der Aufgabenzeile (rowMenuHtml, task-menu-) ist nicht mehr auffindbar');
+  const menu = page.slice(menuStart, page.indexOf('}) : \'\'}', menuStart));
+  assert.match(menu, /className: 'task-card__inline-action'/,
+    'der Mehr-Knopf traegt die Klasse, die tasks.css unter 640px ausblendet - sonst prueft der Guard eine Luecke, die es nicht gibt');
   const actions = new Set(
-    [...page.matchAll(/task-card__inline-action[^>]*?data-action="([^"]+)"/g)]
-      .flatMap((m) => (m[1].includes('${')
-        ? [...m[1].matchAll(/'([a-z][a-z-]*)'/g)].map((lit) => lit[1])
-        : [m[1]])),
+    [...menu.matchAll(/action:\s*([^,\n]+)/g)]
+      .flatMap((m) => [...m[1].matchAll(/'([a-z][a-z-]*)'/g)].map((lit) => lit[1])),
   );
   assert.ok(actions.size >= 3,
     `nur ${actions.size} Inline-Aktionen gefunden - das Muster im Guard passt nicht mehr `
@@ -17897,7 +18462,13 @@ test('SHELL: die Seitenleiste fasst 15 Module ohne Scrollen auf 800px Fensterhoe
   // Gruppenluecken: je Zeile eine hinter dem Label; zwischen den fuenf
   // Kindern des Containers vier.
   const list = 15 * row + 4 * label + 14 * groupGap + 4 * gap + itemsPad.bottom;
-  const frame = sidebarPad.top + sidebarPad.bottom
+  // Seit R18 schwebt die Leiste: oben und unten steht ihr Abstand zur
+  // Fensterkante, dazu ihre Kante rundum (2 x 1px) - das geht von den 800px ab.
+  const sidebar = rule('.nav-sidebar');
+  const floatGap = val(prop(sidebar, 'top')) + val(prop(sidebar, 'bottom'));
+  assert.match(prop(sidebar, 'border'), /^var\(--space-px\) solid /, 'die Kante der Tafel ist 1px rundum');
+  const frame = floatGap + 2 * tok('--space-px')
+    + sidebarPad.top + sidebarPad.bottom
     + val(prop(logo, 'height')) + val(prop(logo, 'margin-bottom'))
     + row + val(prop(pinned, 'margin-top'))
     + val(prop(account, 'padding-top')) + val(prop(account, 'margin-top')) + 1 + accountRow;
@@ -19557,7 +20128,9 @@ test('R16: Konten zeigt mobil die Kurzzeile wie jeder Budget-Reiter mit Kennzahl
   const accounts = read('../public/pages/budget.js').match(/const header = `[\s\S]*?<\/div>`;/)?.[0] ?? '';
   assert.match(accounts, /metricGlanceHtml\(\{\s*label: t\('budget\.netWorth'\)/, 'Konten fuehrt die Kurzzeile');
   assert.doesNotMatch(accounts, /controls:/, 'eine Zahl hat nichts aufzuklappen');
-  assert.match(accounts, /<div class="metric-grid budget-glance-details">/, 'die Karte bleibt unter 640px aus');
+  // Seit R17 (E14) ist die Karte die Leistenkarte neben den Konten - `budget-glance-details`
+  // haelt sie unter 640px weiter aus.
+  assert.match(accounts, /<div class="metric-grid metric-grid--rail budget-glance-details">/, 'die Karte bleibt unter 640px aus');
 });
 
 test('R16: im Budget steht jeder Abschnittstitel auf der Buehne, die Zeilen liegen im Traeger', () => {
@@ -19573,9 +20146,11 @@ test('R16: im Budget steht jeder Abschnittstitel auf der Buehne, die Zeilen lieg
     const flaeche = subsCss.filter((rule) => selectorsOf(rule).includes(sel) && /background(?:-color)?:|box-shadow:|padding:/.test(rule.body));
     assert.deepStrictEqual(flaeche.map((rule) => rule.selector.trim()), [], `${sel} traegt keine Flaeche mehr - der Titel stuende sonst wieder darin`);
   }
-  // Aufteilung: drei Abschnitte, Titel ueber dem Traeger.
+  // Aufteilung: vier Abschnitte (seit #1647 mit den wiederkehrenden Ausgaben),
+  // Titel ueber dem Traeger.
   assert.doesNotMatch(split, /split-card\b/, 'die Karte mit Titel darin ist entfallen');
-  assert.equal((split.match(/class="split-section-title u-section-title"/g) ?? []).length, 3);
+  assert.equal((split.match(/class="split-section-title u-section-title"/g) ?? []).length, 4);
+  assert.match(split, /return `<div class="row-carrier">\$\{rows\}<\/div>\$\{add\}`;/, 'Serien im Traeger');
   assert.match(split, /return `<div class="row-carrier">\$\{debts\.map/, 'Salden im Traeger');
   assert.match(split, /return `<div class="row-carrier">\$\{state\.expenses\.map/, 'Ausgaben im Traeger');
   assert.match(split, /class="split-activity-list row-carrier"/, 'Verlauf im Traeger');
@@ -19755,4 +20330,537 @@ test('R16: in der schmalen Abo-Liste steht der Turnus unter dem Betrag, nicht in
   assert.match(show?.body ?? '', /display:\s*block/, 'schmal steht er unter dem Betrag');
   const hide = rules.find((r) => narrow(r) && /\.subscription-card__meta-cycle\b/.test(r.selector));
   assert.match(hide?.body ?? '', /display:\s*none/, 'und weicht dort aus der Metazeile - nie beides zugleich');
+});
+
+// ── R17, E6: EINE Dialog-Grammatik ──────────────────────────────────────────
+// Critique 2026-10-07 (A3 P1, A5 P2): drei Fuss-Grammatiken (Belohnungen ohne
+// Abbrechen, Haushaltshilfe mit dem Speichern-Knopf linksbuendig im scrollenden
+// Koerper - mobil bei y=1362 in einem 664px-Fenster) und vier Verben fuer
+// dieselbe Handlung ("Erstellen", "Hinzufuegen", "Aufgabe erstellen",
+// "Speichern"). Die Regel: Fuss = Abbrechen + Primaer am Ende; Anlegen heisst
+// "Hinzufuegen", Bearbeiten "Speichern". Gelesen wird das Markup der Funktion,
+// die den Dialog oeffnet (test/dialog-grammar.js), die Beschriftung ueber ihren
+// deutschen Locale-Wert.
+const DIALOG_SOURCES = ['../public/pages/', '../public/components/', '../public/settings/']
+  .flatMap((dir) => walkJsFiles(dir));
+const dialogSource = (path) => withoutCommentsKeepingLines(read(path));
+const deValueOf = (() => {
+  const de = JSON.parse(read('../public/locales/de.json'));
+  return (key) => {
+    const value = key.split('.').reduce((node, part) => node?.[part], de);
+    return typeof value === 'string' ? value : undefined;
+  };
+})();
+// Kein Anlegen/Bearbeiten, sondern eine benannte Handlung mit eigenem Verb.
+const NAMED_DIALOG_ACTIONS = ['documents.uploadAction'];
+// "Erstellen und hinzufuegen": legt einen Gast an UND nimmt ihn in die Gruppe -
+// zwei Schritte, die das Verb beide nennen muss.
+const COMPOUND_CREATE = ['splitExpenses.createAndAddGuest'];
+
+test('R17 E6: die Scanner der Dialog-Grammatik sehen ihre Gegenfaelle', () => {
+  const body = `
+function openThing(item) {
+  const isEdit = Boolean(item);
+  openModal({
+    title: isEdit ? t('waste.editType') : t('waste.newType'),
+    content: \`<form id="f">
+      <input class="form-input" name="n">
+      <button class="btn btn--primary" type="submit">\${t('common.save')}</button>
+    </form>\`,
+  });
+}`;
+  assert.deepEqual(submitOutsideFooter(body), [4], 'Absenden im Koerper wird gefunden');
+  assert.deepEqual(fixedSaveOnTwoCaseDialog(body, deValueOf), [4], 'starres Speichern bei zwei Faellen wird gefunden');
+  const footer = `
+function openThing(item) {
+  openSharedModal({
+    title: t('rewards.addReward'),
+    content: \`<form id="f">
+      <div class="modal-panel__footer">
+        <button type="submit" class="btn btn--primary">\${isEdit ? esc(t('common.save')) : esc(t('tasks.emptyAction'))}</button>
+      </div>
+    </form>\`,
+  });
+}`;
+  assert.deepEqual(submitOutsideFooter(footer), [], 'der Knopf im Fuss ist kein Fund');
+  assert.deepEqual(footerWithoutCancel(footer), [3], 'ein Fuss ohne Abbrechen wird gefunden');
+  assert.deepEqual(saveBranchPartners(footer), ['tasks.emptyAction']);
+  assert.deepEqual(foreignCreateVerbs(footer, deValueOf), ['tasks.emptyAction=Aufgabe erstellen']);
+  // Ein Kommentar macht nichts gruen: der Aufrufer schneidet ihn vorher.
+  const commented = withoutCommentsKeepingLines(footer.replace('<form id="f">', '<form id="f">\n      <!-- <button data-action="close-modal"> -->'));
+  assert.deepEqual(footerWithoutCancel(commented), [3]);
+  const good = footer
+    .replace('<button type="submit"', '<button type="button" class="btn btn--secondary" data-action="close-modal">${t(\'common.cancel\')}</button>\n        <button type="submit"')
+    .replace("t('tasks.emptyAction')", "t('common.add')");
+  assert.deepEqual(footerWithoutCancel(good), []);
+  assert.deepEqual(saveBranchPartners(good), []);
+  assert.deepEqual(foreignCreateVerbs(good, deValueOf), []);
+});
+
+test('R17 E6: kein Dialog sendet aus dem scrollenden Koerper, und neben dem Primaerknopf steht Abbrechen', () => {
+  const outside = [];
+  const lonely = [];
+  let dialogs = 0;
+  for (const path of DIALOG_SOURCES) {
+    const src = dialogSource(path);
+    dialogs += dialogSegments(src).length;
+    for (const line of submitOutsideFooter(src)) outside.push(`${path}:${line}`);
+    for (const line of footerWithoutCancel(src)) lonely.push(`${path}:${line}`);
+  }
+  assert.ok(dialogs > 100, `der Scanner findet die Dialoge der App (${dialogs})`);
+  assert.deepEqual(outside, [], 'der absendende Knopf gehoert in `.modal-panel__footer` (mountFooter hebt ihn an den Blattrand)');
+  assert.deepEqual(lonely, [], 'ein Fuss mit absendendem Primaerknopf traegt auch Abbrechen');
+});
+
+test('R17 E6: Anlegen heisst "Hinzufuegen", Bearbeiten "Speichern" - in jedem Dialog', () => {
+  assert.equal(deValueOf('common.add'), 'Hinzufügen');
+  assert.equal(deValueOf('common.save'), 'Speichern');
+  const partners = [];
+  const fixed = [];
+  const verbs = [];
+  for (const path of DIALOG_SOURCES) {
+    const src = dialogSource(path);
+    for (const key of saveBranchPartners(src, NAMED_DIALOG_ACTIONS)) partners.push(`${path}: ${key}`);
+    for (const line of fixedSaveOnTwoCaseDialog(src, deValueOf)) fixed.push(`${path}:${line}`);
+    for (const hit of foreignCreateVerbs(src, deValueOf, COMPOUND_CREATE)) verbs.push(`${path}: ${hit}`);
+  }
+  assert.deepEqual(partners, [], 'neben "Speichern" steht als Anlegen-Fall nur `common.add`');
+  assert.deepEqual(fixed, [], 'ein Dialog fuer Anlegen UND Bearbeiten nennt beide Faelle am Knopf');
+  assert.deepEqual(verbs, [], 'kein Primaerknopf im Dialogfuss nennt das Anlegen "Erstellen" oder "Anlegen"');
+});
+
+test('R17 E6: im Dialogfuss misst ein Icon-Knopf am Zeiger so hoch wie seine Nachbarn', () => {
+  const rule = [...eachRule(read('../public/styles/layout.css'))]
+    .find((r) => r.selector.trim() === '.modal-panel__footer .btn--icon');
+  assert.ok(rule, '.modal-panel__footer .btn--icon fehlt');
+  assert.ok(rule.at.some((a) => /min-width:\s*1024px/.test(a)), 'nur am Zeiger - auf Touch bleiben 44px');
+  assert.match(rule.body, /min-height:\s*var\(--target-md\)/);
+});
+
+// ── R17, E12: ein Wort je Sache ─────────────────────────────────────────────
+// Critique 2026-10-07 (A7 P2): die Navigation sagt "Übersicht", acht Texte
+// sagten "Dashboard"; das Blatt "Integrationen" trug nur Immich und Wetter
+// (CalDAV, Mealie, ntfy liegen woanders); "Familie und Rollen" stand neben
+// "Rollen und Rechte"; "Recipe-Provider" war nie uebersetzt; und der Rundgang
+// beschrieb eine Leiste, die es nicht gibt ("Dashboard und Kalender", "···").
+test('R17 E12: die deutsche Oberflaeche nennt die Startseite ueberall "Uebersicht"', () => {
+  const de = JSON.parse(read('../public/locales/de.json'));
+  const hits = [];
+  const walk = (node, path) => {
+    for (const [key, value] of Object.entries(node)) {
+      const here = path ? `${path}.${key}` : key;
+      if (typeof value === 'string') {
+        if (/Dashboard|Recipe-Provider/.test(value)) hits.push(`${here}: ${value}`);
+      } else if (value && typeof value === 'object') walk(value, here);
+    }
+  };
+  walk(de, '');
+  assert.deepEqual(hits, [], 'die Navigation heisst "Übersicht" - kein zweites Wort fuer dieselbe Seite, kein unuebersetzter Fachbegriff');
+  assert.equal(de.nav.dashboard, 'Übersicht');
+  assert.equal(de.settings.pageIntegrations, 'Fotos und Wetter', 'das Blatt nennt, was es traegt');
+  assert.equal(de.settings.pageFamilyRoles, 'Mitglieder', 'nicht "Familie und Rollen" neben "Rollen und Rechte"');
+});
+
+test('R17 E12: der Rundgang beschreibt die untere Leiste, die es gibt - in jeder Sprache', () => {
+  const dir = new URL('../public/locales/', import.meta.url);
+  const offenders = [];
+  for (const file of readdirSync(dir).filter((name) => name.endsWith('.json'))) {
+    const locale = JSON.parse(read(`../public/locales/${file}`));
+    const body = locale.onboarding.step2Body;
+    // Die Leiste traegt den Knopf "Mehr" (nav.more), keinen "···"-Knopf, und
+    // ihre Plaetze sind einstellbar - der Text zaehlt deshalb keine Module auf.
+    if (body.includes('···') || !body.includes(locale.nav.more)) offenders.push(`${file}: ${body}`);
+    // Der Verweis im Kalender-Leerzustand fuehrt zum Blatt, das die
+    // Synchronisation traegt, nicht zu "Fotos und Wetter".
+    if (!locale.emptyHint.calendar.includes(locale.settings.pageCalendarModule)) offenders.push(`${file}: ${locale.emptyHint.calendar}`);
+  }
+  assert.deepEqual(offenders, []);
+});
+
+// ── R17, E6: die Zwei-Felder-Zeile ist EINE geteilte Regel ──────────────────
+// Critique 2026-10-07 (A4 P2): der Artikel-Dialog des Einkaufs benutzte
+// `.pantry-form-row`, die nur in pantry.css stand - das Blatt ist im Einkauf
+// nicht geladen, also `display: block`, Menge/Kategorie und Preis/Laden
+// untereinander, Dialog 752px lang. inventory.css trug dieselbe Regel als
+// Kopie, "weil sich die Blaetter gegenseitig ausschliessen".
+test('R17 E6: die Zwei-Felder-Zeile steht einmal in layout.css, kein Modulblatt kopiert sie', () => {
+  const layout = [...eachRule(read('../public/styles/layout.css'))];
+  const pair = layout.find((r) => r.selector.trim() === '.form-pair' && !r.at.length);
+  assert.match(pair?.body ?? '', /grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(/, '.form-pair ist das auto-fit-Raster');
+  assert.ok(layout.some((r) => r.selector.trim() === '.form-pair[hidden]' && /display:\s*none/.test(r.body)),
+    '`hidden` muss gegen `display: grid` gewinnen (Kilometerstand im Inventar)');
+  assert.match(read('../public/index.html'), /styles\/layout\.css/, 'layout.css laedt auf jeder Seite');
+
+  const copies = [];
+  for (const file of readdirSync(new URL('../public/styles/', import.meta.url)).filter((f) => f.endsWith('.css') && f !== 'layout.css')) {
+    for (const rule of eachRule(read(`../public/styles/${file}`))) {
+      if (/form-row\s*$/.test(rule.selector.trim()) && /repeat\(auto-fit,\s*minmax\(/.test(rule.body)) copies.push(`${file}: ${rule.selector.trim()}`);
+    }
+  }
+  assert.deepEqual(copies, [], 'eine geteilte Klasse gehoert in ein Blatt, das index.html verlinkt - keine Kopie je Modul');
+
+  // Die drei Formulare, die sie brauchen, tragen sie - am gerenderten Attribut.
+  for (const [page, min] of [['shopping', 2], ['pantry', 2], ['inventory', 6]]) {
+    const src = withoutCommentsKeepingLines(read(`../public/pages/${page}.js`));
+    const rows = [...src.matchAll(/class="([^"]*)"/g)].filter((m) => m[1].split(/\s+/).includes('form-pair'));
+    assert.ok(rows.length >= min, `${page}.js: ${rows.length} Zwei-Felder-Zeilen mit .form-pair`);
+    assert.doesNotMatch(src, /class="[^"]*\b(?:pantry|inventory)-form-row\b/, `${page}.js traegt keine Modulklasse fuer die Zeile mehr`);
+  }
+});
+
+// ── R17, E6: EIN Feldsatz in Dialogen ───────────────────────────────────────
+// Critique 2026-10-07 (A5 P2, A2 P2): die Dialoge der Aufteilung schrieben
+// `<label>Text<input class="input">` (Label 16px primaer, Betrag 42px/16/500,
+// kein Pflicht-Stern trotz `required`) neben dem Budget-Eintrag mit
+// `.form-label` 14px sekundaer, `.budget-amount-input` 48px/20/600 und Stern.
+// `.input`/`.label` sind Aliasse derselben Regel (layout.css); kanonisch ist
+// `.form-input`/`.form-label`. Umgestellt sind Aufteilung und Schichtplan -
+// die uebrigen Dateien stehen als Arbeitsvorrat in ALIAS_PENDING, und die
+// Liste darf nur schrumpfen.
+const ALIAS_PENDING = new Set([
+  '../public/pages/health.js', '../public/pages/tasks.js', '../public/pages/documents.js',
+  '../public/pages/rewards.js', '../public/pages/calendar.js', '../public/pages/setup.js',
+  '../public/pages/join.js', '../public/pages/login.js', '../public/pages/reset-password.js',
+  '../public/pages/forgot-password.js', '../public/components/user-multi-select.js',
+  '../public/components/tag-manager.js', '../public/settings/pages/admin-email.js',
+  '../public/settings/pages/modules-health.js',
+]);
+
+test('R17 E6: Dialog-Markup traegt `.form-label`/`.form-input`, nicht die Alias-Klassen', () => {
+  assert.deepEqual(aliasFieldClasses('<label class="label" for="x">a</label><input class="input wide">'), ['label', 'input wide'],
+    'Gegenfall: der Scanner sieht die Alias-Klassen');
+  assert.deepEqual(aliasFieldClasses('<span class="form-label">a</span><input class="form-input input-group__field">'), [],
+    'und nur sie - kein Treffer auf Namen, die das Wort nur enthalten');
+  const offenders = [];
+  const cleared = [];
+  for (const path of DIALOG_SOURCES) {
+    const count = aliasFieldClasses(dialogSource(path)).length;
+    if (count && !ALIAS_PENDING.has(path)) offenders.push(`${path}: ${count}`);
+    if (!count && ALIAS_PENDING.has(path)) cleared.push(path);
+  }
+  assert.deepEqual(offenders, [], 'neuer Code schreibt `.form-input`/`.form-label`');
+  assert.deepEqual(cleared, [], 'umgestellt - dann raus aus ALIAS_PENDING, sonst wird die Liste eine Allowlist');
+});
+
+test('R17 E6: die Dialoge der Aufteilung tragen Label, Stern und Betrag des Budget-Eintrags', () => {
+  const src = dialogSource('../public/pages/split-expenses.js');
+  assert.doesNotMatch(src, /<label>\$\{t\(/, 'kein nacktes <label>Text<input> mehr');
+  const fields = [...src.matchAll(/<label class="form-field">([\s\S]*?)<\/label>/g)].map((m) => m[1]);
+  assert.ok(fields.length >= 30, `die Felder der Dialoge (${fields.length})`);
+  const controlOf = (field) => field.slice(field.indexOf('</span>'));
+  const tagOf = (field) => controlOf(field).match(/<(?:input|select|textarea|yuvomi-datepicker)\b[^>]*>/)?.[0] ?? '';
+  for (const field of fields) {
+    assert.match(field, /^<span class="form-label">\$\{t\('[^']+'\)\}/, `das Label ist .form-label: ${field.slice(0, 80)}`);
+    const required = /\srequired(?=[\s>])/.test(tagOf(field));
+    const star = field.slice(0, field.indexOf('</span>')).includes('${REQUIRED_MARK}');
+    assert.equal(star, required, `Stern genau am Pflichtfeld: ${field.slice(0, 90)}`);
+  }
+  const amounts = fields.filter((field) => /name="amount"/.test(tagOf(field)));
+  assert.equal(amounts.length, 3, 'Ausgabe, Serie und Zahlung haben je ein Betragsfeld');
+  for (const field of amounts) {
+    assert.match(tagOf(field), /class="form-input budget-amount-input"/, 'der Betrag ist 48px/20/600 wie im Budget-Eintrag');
+  }
+  assert.match(read('../public/styles/budget.css'), /\.budget-amount-input\s*\{[^}]*font-size:\s*var\(--text-xl\)/);
+});
+
+// ── R17, E8: EIN Speichermuster in den Einstellungen ────────────────────────
+// Critique 2026-10-07 (A7 P1): drei Knopfplaetze - 99px linksbuendig, 612px
+// vollbreit ("Passwort speichern"), rechts klebend ("Rechte"). Die Regel:
+// Schalter und Auswahl wirken sofort; ein Text- oder Zahlfeld speichert per
+// Knopf, und der sitzt rechts im Kartenfuss, im Markup als Letzter.
+test('R17 E8: in den Einstellungen steht der Primaerknopf als Letzter in einer Aktionszeile, und sie schliesst rechts ab', () => {
+  const rules = [...eachRule(read('../public/styles/settings.css'))];
+  const right = rules.find((r) => r.selector.trim() === '.settings-form-actions:has(> .btn--primary)');
+  assert.match(right?.body ?? '', /justify-content:\s*flex-end/, 'die Aktionszeile mit Primaerknopf schliesst rechts ab');
+  const sticky = rules.find((r) => r.selector.trim() === '.perm-actions' && !r.at.length);
+  assert.match(sticky?.body ?? '', /justify-content:\s*flex-end/, 'auch die klebende Zeile der Rechte steht rechts');
+
+  const notLast = [];
+  const naked = [];
+  let rows = 0;
+  for (const path of walkJsFiles('../public/settings/')) {
+    const src = dialogSource(path);
+    for (const m of src.matchAll(/<div class="settings-form-actions[^"]*"[^>]*>/g)) {
+      const end = src.indexOf('</div>', m.index);
+      const buttons = [...src.slice(m.index, end).matchAll(/<(?:button|a)\b[^>]*class="([^"]*)"/g)].map((b) => b[1]);
+      const primary = buttons.findIndex((cls) => /\bbtn--primary\b/.test(cls));
+      if (primary < 0) continue;
+      rows += 1;
+      if (primary !== buttons.length - 1) notLast.push(`${path}:${src.slice(0, m.index).split('\n').length}`);
+    }
+    // Ein absendender Primaerknopf direkt im Formular (ohne Aktionszeile) ist
+    // ein Flex-Kind der Formularspalte und streckt sich auf volle Breite.
+    for (const m of src.matchAll(/<form\b[^>]*class="[^"]*\bsettings-form\b[\s\S]*?<\/form>/g)) {
+      const form = m[0];
+      for (const b of form.matchAll(/<button\b[^>]*type="submit"[^>]*>/g)) {
+        const before = form.slice(0, b.index);
+        const open = before.lastIndexOf('<div class="settings-form-actions');
+        const footer = before.lastIndexOf('<div class="modal-panel__footer');
+        const wrap = Math.max(open, footer);
+        if (wrap < 0 || before.indexOf('</div>', wrap) >= 0) naked.push(`${path}:${src.slice(0, m.index + b.index).split('\n').length}`);
+      }
+    }
+  }
+  assert.ok(rows >= 15, `der Scanner findet die Aktionszeilen (${rows})`);
+  assert.deepEqual(notLast, [], 'der Primaerknopf steht im Markup zuletzt - Nebenaktionen davor, wie im Dialogfuss');
+  assert.deepEqual(naked, [], 'ein Speichern-Knopf steht in `.settings-form-actions`, nicht nackt in der Formularspalte');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * R18: eine Feldhaut (Entscheidung Ulas 2026-10-07)
+ *
+ * Bis dahin: zwei Fuellungen (Seite, Dialog), 1,5-px-Kante, im Dark ein
+ * Fast-Schwarz (#0F0E0D) mit heller Kante (4,51:1), `select` nativ und 2,5px
+ * niedriger als `input`, der Fokus der Einkaufs-Schnellzeile im Kuechenton.
+ * Der Guard haelt jede dieser Zusagen an der Regel fest, die sie traegt.
+ * ──────────────────────────────────────────────────────────────────────────── */
+test('R18: eine Feldhaut - 1px auf dem 3:1-Minimum, eine Fuellung, eigenes Auswahl-Zeichen', () => {
+  const styles = new URL('../public/styles/', import.meta.url);
+  const sheets = readdirSync(styles).filter((entry) => entry.endsWith('.css') && entry !== 'tokens.css')
+    .map((file) => ({ file, rules: [...eachRule(readFileSync(new URL(file, styles), 'utf8'))] }));
+  const all = sheets.flatMap(({ file, rules }) => rules.map((rule) => ({ ...rule, file })));
+  const parts = (rule) => rule.selector.split(',').map((s) => s.trim().replace(/\s+/g, ' '));
+
+  // 1. Keine Feldkante ist breiter als 1px (ausser im Kontrastmodus, der sie
+  //    bewusst verstaerkt).
+  const wide = all.filter((rule) => !rule.at.some((a) => /prefers-contrast/.test(a))
+    && /border(?:-width)?\s*:[^;]*\b(?:1\.5|2)px[^;]*var\(--color-border-control\)/.test(rule.body))
+    .map((rule) => `${rule.file}: ${rule.selector.trim()}`);
+  assert.deepEqual(wide, [], 'Feldkanten sind 1px (--color-border-control); die 1,5px gehoerten zur doppelt kodierten Haut.');
+
+  // 2. Die kanonische Regel traegt Kante, Fuellung und die enge Zeile.
+  const base = all.find((rule) => rule.file === 'layout.css' && rule.at.length === 0
+    && parts(rule).includes('.form-input') && parts(rule).includes('.input') && /min-height/.test(rule.body));
+  assert.ok(base, 'die Feldregel `.input, .form-input` (layout.css) wurde nicht gefunden');
+  assert.match(base.body, /border:\s*1px solid var\(--color-border-control\)/);
+  assert.match(base.body, /background-color:\s*var\(--color-field-bg\)/);
+  assert.match(base.body, /line-height:\s*var\(--line-height-snug\)/,
+    'die enge Zeile haelt den Inhalt unter der Mindesthoehe - sonst ist ein input wieder hoeher als ein select');
+
+  // 3. Niemand faerbt das kanonische Feld mit einer zweiten Flaeche um.
+  const FIELD_PART = /(?:^|\s)(?:select|textarea)?\.(?:input|form-input)$/;
+  const refill = all.filter((rule) => parts(rule).some((p) => FIELD_PART.test(p))
+    && [...rule.body.matchAll(/(?:^|;)\s*background(?:-color)?\s*:\s*([^;]+)/g)]
+      .some((m) => /var\(--color-surface(?:-2|-work|-raised)?\)/.test(m[1])))
+    .map((rule) => `${rule.file}: ${rule.selector.trim()}`);
+  assert.deepEqual(refill, [], 'eine Regel gibt dem Feld eine eigene Flaeche statt --color-field-bg (zweite Feldhaut).');
+
+  // 4. Die Zahlen: dunkel ist das Feld eine Mulde UEBER der Karte (nicht das
+  //    Fast-Schwarz darunter), und die Kante steht am Minimum - nicht darunter
+  //    und nicht weit darueber.
+  const { light, dark } = themeTokenMaps();
+  const hex = (name, map) => resolveColor(name, map);
+  const lum = (h) => relLum([1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)));
+  assert.ok(lum(hex('--color-field-bg', dark)) > lum(hex('--color-surface', dark)),
+    `dunkel: das Feld (${hex('--color-field-bg', dark)}) muss heller sein als die Karte (${hex('--color-surface', dark)}) - eine Mulde, kein Loch`);
+  assert.ok(contrastRatio(hex('--color-text-placeholder', dark), hex('--color-field-bg', dark)) >= 4.5,
+    'dunkel: der Platzhalter haelt 4,5:1 auf der Feldmulde');
+  assert.ok(contrastRatio(hex('--color-text-placeholder', light), hex('--color-field-bg', light)) >= 4.5,
+    'hell: der Platzhalter haelt 4,5:1 auf der Feldflaeche');
+  const GROUNDS = ['--color-surface', '--color-surface-work', '--color-surface-raised', '--color-bg'];
+  for (const [theme, map] of [['light', light], ['dark', dark]]) {
+    const worst = Math.min(...GROUNDS.map((g) => contrastRatio(hex('--color-border-control', map), hex(g, map))));
+    assert.ok(worst >= 3, `${theme}: die Feldkante faellt auf ${worst.toFixed(2)}:1`);
+    assert.ok(worst <= 3.3, `${theme}: die Feldkante steht mit ${worst.toFixed(2)}:1 ueber dem Minimum - "leiser" heisst am knappsten Grund hoechstens 3,3:1`);
+  }
+
+  // 5. Die Auswahl: eigenes Zeichen, natives Blatt, RTL-Zwilling.
+  const select = all.find((rule) => rule.file === 'layout.css' && parts(rule).some((p) => /^select\.form-input\b/.test(p))
+    && /appearance:\s*none/.test(rule.body));
+  assert.ok(select, 'select.form-input traegt `appearance: none`');
+  assert.match(select.body, /background-image:\s*var\(--field-chevron\)/);
+  assert.match(select.body, /padding-inline-end:\s*var\(--space-8\)/, 'der Optionstext endet vor dem Zeichen');
+  assert.ok(parts(select).every((p) => /:not\(\[multiple\]\):not\(\[size\]\)/.test(p)), 'Listen-selects behalten ihr natives Bild');
+  assert.ok(all.some((rule) => rule.file === 'layout.css' && parts(rule).some((p) => /^\[dir="rtl"\] select\.form-input/.test(p))
+    && /background-position:\s*left/.test(rule.body)), 'das Zeichen wechselt in RTL die Seite');
+  const tokens = read('../public/styles/tokens.css');
+  assert.equal((tokens.match(/--_field-chevron:\s*url\(/g) ?? []).length, 3,
+    'das Zeichen hat einen hellen Wert und einen Zwilling in BEIDEN Dark-Bloecken');
+
+  // 6. Zahlfelder ohne Spin-Pfeile.
+  assert.ok(all.some((rule) => rule.file === 'layout.css' && /input\[type="number"\]::-webkit-inner-spin-button/.test(rule.selector)
+    && /appearance:\s*none/.test(rule.body)), 'Zahlfelder zeigen keine nativen Spin-Pfeile (WebKit/Blink)');
+  assert.ok(all.some((rule) => rule.file === 'layout.css' && rule.selector.trim() === 'input[type="number"]'
+    && /-moz-appearance:\s*textfield/.test(rule.body)), 'Zahlfelder zeigen keine nativen Spin-Pfeile (Firefox)');
+
+  // 7. Der Fokus eines Feldes ist die eine Stimme, nie ein Modulton.
+  const tonedFocus = all.filter((rule) => parts(rule).some((p) => /(?:__input|__qty|__cat|\.input|\.form-input|__select)(?::focus(?:-visible)?)$/.test(p))
+    && /var\(--module-/.test(rule.body))
+    .map((rule) => `${rule.file}: ${rule.selector.trim()}`);
+  assert.deepEqual(tonedFocus, [], 'ein Feld faerbt seinen Fokus mit einem Modulton - der Fokus ist violett (--color-accent).');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * R18: kleine Formen (2026-10-07)
+ *
+ * Fuenf Befunde, je an der Regel festgemacht, die sie behebt. Jeder Fall war
+ * gegen den Stand davor rot.
+ * ──────────────────────────────────────────────────────────────────────────── */
+const r18Rules = (file) => [...eachRule(read(`../public/styles/${file}`))];
+const r18Parts = (rule) => rule.selector.split(',').map((s) => s.trim().replace(/\s+/g, ' '));
+
+test('R18: die Einkaufszeile fuehrt die Menge in der Namenszeile und kappt den Namen nicht', () => {
+  const rules = r18Rules('shopping.css');
+  const main = rules.find((rule) => rule.at.length === 0 && r18Parts(rule).includes('.shopping-item .list-row__main'));
+  assert.ok(main, '.shopping-item .list-row__main fehlt');
+  assert.match(main.body, /display:\s*flex/);
+  assert.match(main.body, /flex-wrap:\s*wrap/, 'passt die Menge nicht neben den Namen, faellt SIE in die zweite Zeile - der Name schrumpft nicht');
+  assert.match(main.body, /align-items:\s*baseline/, 'Name und Menge stehen auf einer Grundlinie');
+  const qty = rules.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.shopping-item__quantity');
+  assert.match(qty.body, /font-variant-numeric:\s*tabular-nums/);
+  assert.match(qty.body, /order:\s*1/, 'die Menge schliesst die Zeile rechts ab, das Etikett steht davor');
+  // Der P0 "Broc..." (Critique 2026-07-30): keine Regel kappt den Artikelnamen.
+  const cut = rules.filter((rule) => r18Parts(rule).some((p) => /\.shopping-item(?:--[\w-]+)? .*\.list-row__name$|\.shopping-item \.list-row__name$/.test(p))
+    && /text-overflow:\s*ellipsis|white-space:\s*nowrap|line-clamp/.test(rule.body));
+  assert.deepEqual(cut.map((rule) => rule.selector.trim()), [], 'der Artikelname bricht um, er wird nicht gekappt');
+});
+
+test('R18: die Leseansicht einer Notiz ist der Dialogkoerper in Zettelfarbe, mit EINEM Weg zum Bearbeiten', () => {
+  const rules = r18Rules('notes.css');
+  const view = rules.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.note-read-view');
+  assert.ok(view, '.note-read-view fehlt');
+  assert.doesNotMatch(view.body, /(?:^|;)\s*border(?:-[\w-]+)?\s*:/, 'kein Kasten: die roetliche Kante ueber dem roten "Loeschen" las sich als Fehlermeldung');
+  assert.doesNotMatch(view.body, /border-radius/);
+  assert.match(view.body, /margin:\s*calc\(-1 \* var\(--space-4\)\)/, 'die Ansicht zieht sich ueber die Polsterung des Dialogkoerpers');
+  assert.match(cssRuleBody(read('../public/styles/layout.css'), '.modal-panel__body'), /padding:\s*var\(--space-4\)/,
+    'die Polsterung des Dialogkoerpers ist der Wert, den die Leseansicht ausgleicht');
+  assert.match(view.body, /background:\s*color-mix\(in srgb, var\(--note-color, transparent\) var\(--tint-surface\), transparent\)/,
+    'dieselbe Toenung wie vorher - die Kontrastrechnung der Zettelfarben gilt weiter');
+  assert.ok(rules.some((rule) => rule.selector.trim() === '.note-modal[data-view="read"] .note-mode-switch'
+    && /display:\s*none/.test(rule.body)), 'in der Leseansicht steht nur der Primaerknopf "Bearbeiten", nicht zusaetzlich der Reiter');
+  const page = read('../public/pages/notes.js');
+  const setView = page.slice(page.indexOf('function setView('), page.indexOf('// Haken im Lesemodus'));
+  assert.match(setView, /modeSwitch\?\.contains\(document\.activeElement\)/,
+    'verschwindet der Umschalter unter dem Fokus, uebernimmt ihn der Bearbeiten-Knopf');
+  assert.match(setView, /panel\.querySelector\('#note-modal-edit'\) \?\? readPane\)\.focus\(\)/);
+});
+
+test('R18: ein voller Leerzustand je Seite - Nebenabschnitte tragen die kompakte Form', () => {
+  const schedule = read('../public/pages/schedule.js');
+  for (const fn of ['emptyCustomFieldsState', 'emptyOverrideState', 'emptyExtraShiftsState']) {
+    const start = schedule.indexOf(`function ${fn}(`);
+    assert.ok(start > -1, `${fn} fehlt`);
+    const body = schedule.slice(start, schedule.indexOf('\n}\n', start));
+    assert.match(body, /compact:\s*true/, `${fn}: Nebenabschnitt, kompakte Form`);
+    assert.doesNotMatch(body, /\btitle:/, `${fn}: der Abschnittskopf nennt den Kontext, kein zweiter Titel`);
+    assert.doesNotMatch(body, /\bicon:\s*'calendar-clock'/, `${fn}: kein zweites Zeichen`);
+  }
+  // Der Hauptabschnitt der Planung behaelt den vollen Leerzustand.
+  const pattern = schedule.slice(schedule.indexOf('function emptyPatternState('), schedule.indexOf('function emptyShiftTypesState('));
+  assert.match(pattern, /title: t\('schedule\.emptyPatternsTitle'\)/);
+  assert.doesNotMatch(pattern, /compact:\s*true/);
+  const waste = read('../public/pages/waste.js');
+  const sources = waste.slice(waste.indexOf('function drawSources('), waste.indexOf('function drawSources(') + 1800);
+  assert.match(sources, /compact:\s*true,\s*description: t\('waste\.emptySourcesDescription'\)/, 'Importquellen: Nebenabschnitt, kompakt');
+  assert.match(sources, /tone: 'secondary'/, 'der Knopf darunter konkurriert nicht mit dem Primaerknopf der Seite');
+  const upcoming = waste.slice(waste.indexOf('function drawUpcoming('), waste.indexOf('function drawUpcoming(') + 700);
+  assert.match(upcoming, /title: t\('waste\.emptyUpcomingTitle'\)/, 'der volle Leerzustand der Seite bleibt oben');
+
+  // Ein kompakter Leerzustand hat keinen Titel - also auch keinen Text dafuer.
+  // Die vier `...Title` dieser Abschnitte blieben nach der Umstellung in allen
+  // Sprachdateien stehen (Schritt 7): Text ohne Leser, den jede Uebersetzung
+  // weiter pflegt. Gelesen wird die REGEL, nicht eine Liste: zu jeder
+  // `...Description` eines kompakten Zustands darf die Schwester `...Title`
+  // in keiner Sprachdatei mehr stehen.
+  const compactKeys = [];
+  for (const source of [schedule, waste]) {
+    for (const m of source.matchAll(/compact:\s*true,\s*description: t\('(\w+)\.(\w+)Description'\)/g)) {
+      compactKeys.push([m[1], `${m[2]}Title`]);
+    }
+  }
+  assert.ok(compactKeys.length >= 4, `Nur ${compactKeys.length} kompakte Leerzustaende gefunden - der Scan greift nicht mehr.`);
+  const locales = new URL('../public/locales/', import.meta.url);
+  const orphaned = [];
+  for (const file of readdirSync(locales).filter((entry) => entry.endsWith('.json'))) {
+    const dict = JSON.parse(readFileSync(new URL(file, locales), 'utf8'));
+    for (const [ns, key] of compactKeys) {
+      if (dict[ns] && Object.hasOwn(dict[ns], key)) orphaned.push(`${file}: ${ns}.${key}`);
+    }
+  }
+  assert.deepEqual(orphaned, [], 'Ein kompakter Leerzustand traegt keinen Titel - der Schluessel dazu hat keinen Leser mehr.');
+});
+
+test('R18: die Brettspalte ist eine Mulde unter den Karten, die leere Spalte traegt keinen Strichrahmen', () => {
+  const rules = r18Rules('tasks.css');
+  const col = rules.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.kanban-col');
+  assert.match(col.body, /background-color:\s*var\(--color-board-well\)/);
+  const card = rules.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.kanban-card');
+  assert.match(card.body, /background-color:\s*var\(--color-surface\)/);
+  const { light, dark } = themeTokenMaps();
+  const lumOf = (h) => relLum(hexToRgb(h));
+  for (const [theme, map] of [['light', light], ['dark', dark]]) {
+    const well = resolveColor('--color-board-well', map);
+    const surface = resolveColor('--color-surface', map);
+    assert.ok(lumOf(surface) > lumOf(well), `${theme}: die Karte (${surface}) muss HELLER sein als die Spalte (${well})`);
+    assert.ok(contrastRatio(surface, well) >= 1.15, `${theme}: Karte gegen Spalte nur ${contrastRatio(surface, well).toFixed(2)}:1`);
+    assert.ok(contrastRatio(resolveColor('--color-text-tertiary', map), well) >= 4.5, `${theme}: der Hinweis der leeren Spalte haelt 4,5:1`);
+  }
+  const empty = rules.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.kanban-col__empty');
+  assert.match(empty.body, /border:\s*var\(--space-px\) dashed transparent/, 'in Ruhe keine sichtbare Kante');
+  assert.ok(rules.some((rule) => rule.selector.trim() === '.kanban-board:has(.sortable-chosen) .kanban-col__empty'
+    && /border-color:\s*var\(--module-accent/.test(rule.body)), 'erst der laufende Zug zeichnet das Ablageziel');
+});
+
+test('R18: der Hover einer waehlbaren Kennzahlkarte addiert - der Ring gehoert der Auswahl', () => {
+  const rules = r18Rules('panel.css');
+  const hover = rules.filter((rule) => r18Parts(rule).some((p) => /^\.metric-card--select(?:\.is-active)?:hover$/.test(p)));
+  assert.ok(hover.length >= 2, 'Hover-Regeln der waehlbaren Karte nicht gefunden');
+  for (const rule of hover) {
+    assert.ok(rule.at.some((a) => /hover:\s*hover/.test(a)), `${rule.selector.trim()}: nur fuer echte Zeiger`);
+    assert.match(rule.body, /var\(--shadow-md\)/, 'der Hover hebt den Schatten');
+  }
+  const plain = hover.find((rule) => r18Parts(rule).includes('.metric-card--select:hover'));
+  assert.doesNotMatch(plain.body, /inset/, 'kein Innenring im Hover: er saehe aus wie die Auswahl');
+  const active = rules.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.metric-card--select.is-active');
+  assert.match(active.body, /inset 0 0 0 2px var\(--module-accent, var\(--color-accent\)\), var\(--shadow-sm\)/,
+    'die Auswahl traegt den Ring UEBER dem Schatten, den die Karte behaelt');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * R18, Schritt 7: die Formularzeile in RTL
+ *
+ * Gesehen in `ar` bei 390x844 ("Messwert erfassen"): der Kalender- und der
+ * Uhrknopf lagen AUF dem Wert, "120 / 80 mmHg" stand als "mmHg 80 / 120" und
+ * "/min" als "min/". Schritt 6 hatte die Zeile gebaut und RTL nicht gesehen.
+ *
+ * 1. Der Datepicker ist PHYSISCH gebaut: der Knopf sitzt rechts
+ *    (`.ydp__trigger { right }`), das Feld haelt ihm rechts Platz frei
+ *    (`.ydp__input { padding-right }`), in jeder Schreibrichtung. Wer das
+ *    Polster dieses Felds LOGISCH setzt, nimmt ihm in RTL genau diesen Platz.
+ * 2. Ein Messwert mit Trenner und Einheit ist eine Zahlenfolge, kein Satz:
+ *    "120/80" steht auch in arabischem Text von links nach rechts. Teilfelder
+ *    in Flex-Reihenfolge kippen sie um, und ein Suffix wie "/min" dreht der
+ *    Bidi-Algorithmus an seinem Schraegstrich.
+ * ──────────────────────────────────────────────────────────────────────────── */
+test('R18: die Formularzeile haelt in RTL den Platz des Datumsknopfs und die Reihenfolge des Messwerts', () => {
+  const datepicker = [...eachRule(read('../public/styles/datepicker.css'))];
+  const trigger = datepicker.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.ydp__trigger');
+  const field = datepicker.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.ydp__input');
+  assert.match(trigger?.body ?? '', /(?:^|;)\s*right\s*:/, 'Vorbedingung: der Knopf des Datepickers sitzt physisch rechts');
+  assert.match(field?.body ?? '', /(?:^|;)\s*padding-right\s*:/, 'Vorbedingung: das Feld haelt dem Knopf physisch rechts Platz frei');
+
+  const styles = new URL('../public/styles/', import.meta.url);
+  const logical = [];
+  let seen = 0;
+  for (const file of readdirSync(styles).filter((entry) => entry.endsWith('.css'))) {
+    for (const rule of eachRule(readFileSync(new URL(file, styles), 'utf8'))) {
+      if (!/\.ydp__input(?![\w-])/.test(rule.selector)) continue;
+      seen += 1;
+      const hit = rule.body.match(/(?:^|;)\s*(padding-inline(?:-start|-end)?|padding)\s*:/);
+      if (hit) logical.push(`${file}: ${rule.selector.replace(/\s+/g, ' ').slice(0, 120)}  ${hit[1]}${rule.at.length ? `  [${rule.at.join(' ')}]` : ''}`);
+    }
+  }
+  assert.ok(seen >= 6, `Nur ${seen} Regeln an .ydp__input gefunden - der Scan greift nicht mehr.`);
+  assert.deepEqual(logical, [],
+    'Eine Regel setzt das Polster des Datumsfelds logisch oder als Kurzform. In RTL liegt der Wert dann unter '
+    + 'dem Kalenderknopf: das Feld ist physisch gebaut, also padding-left/padding-right.');
+
+  const layout = [...eachRule(read('../public/styles/layout.css'))];
+  const composite = layout.find((rule) => rule.at.length === 0 && rule.selector.trim() === '.form-composite');
+  assert.match(composite?.body ?? '', /(?:^|;)\s*direction\s*:\s*ltr\s*(?:;|$)/,
+    'das zusammengesetzte Feld ist eine LTR-Insel: "120 / 80 mmHg" und "/min" behalten ihre Reihenfolge');
+  const mirrored = layout.filter((rule) => splitSelectorList(rule.selector)
+    .some((part) => /\[dir=["']rtl["']\]/.test(part) && /\.form-composite(?![\w-])/.test(part)));
+  assert.deepEqual(mirrored.map((rule) => rule.selector.replace(/\s+/g, ' ')), [],
+    'in der LTR-Insel sitzt das Zeichen der Einheiten-Auswahl rechts - keine RTL-Spiegelung am zusammengesetzten Feld');
 });

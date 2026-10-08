@@ -2195,6 +2195,62 @@ test('Belohnungen: das Punktefeld speichert wie die Schalter - ohne eigenen Knop
   }
 });
 
+// R17 Schritt 5: dieselbe Regel auf dem Blatt "Uebersicht". Das eine Zahlfeld
+// (Nachfrist fuer Countdowns) hatte einen eigenen Speichern-Knopf - ein
+// einzelnes Kurzfeld speichert beim Verlassen und mit Enter, mit derselben
+// Quittung wie das Punktefeld der Belohnungen.
+test('Uebersicht: die Nachfrist speichert beim Verlassen und mit Enter - ohne eigenen Knopf', async () => {
+  const { render } = await import('/settings/pages/modules-countdowns.js');
+  const { resetPreferencesCache } = await import('/settings/preferences-cache.js');
+  const puts = [];
+  const toasts = [];
+  const prevWindow = globalThis.window;
+  globalThis.window = { yuvomi: { showToast: (...args) => toasts.push(args) } };
+  globalThis.__apiStub = {
+    get: async () => ({ data: { countdown_grace_days: 7, disabled_modules: [] } }),
+    put: async (url, body) => { puts.push([url, body]); return { data: body }; },
+  };
+  resetPreferencesCache();
+  try {
+    const sheet = rewardsSheet();
+    await render(sheet, { user: { role: 'admin' } });
+    const form = sheet.html.match(/<form\b[^>]*id="countdown-grace-days-form"[\s\S]*?<\/form>/)?.[0] ?? '';
+    assert.match(form, /id="countdown-grace-days"/, 'Reichweite: das Feld steht im Formular');
+    assert.doesNotMatch(form, /type="submit"|settings-form-actions/, 'kein Speichern-Knopf nur fuer dieses Feld');
+
+    const input = sheet.el('countdown-grace-days');
+    const error = sheet.el('countdown-grace-days-error');
+    input.value = '';
+    await input.fire('blur');
+    assert.deepEqual(puts, [], 'ein geleertes Feld wird nicht als 0 geschrieben (#1027)');
+    assert.equal(error.hidden, false, 'sondern benannt');
+    assert.equal(input.getAttribute('aria-invalid'), 'true');
+
+    input.value = '14';
+    await input.fire('blur');
+    assert.deepEqual(puts, [['/preferences', { countdown_grace_days: 14 }]], 'beim Verlassen gespeichert');
+    assert.equal(error.hidden, true);
+    assert.equal(input.getAttribute('aria-invalid'), null);
+    assert.equal(input.readOnly, false, 'das Feld ist nach dem Speichern wieder frei');
+    assert.ok(toasts.some(([key]) => key === 'settings.countdownGraceDaysSaved'), `mit Rueckmeldung: ${JSON.stringify(toasts)}`);
+
+    await input.fire('blur');
+    assert.equal(puts.length, 1, 'derselbe Wert ein zweites Mal ist kein neuer Schreibzugriff');
+
+    input.value = '3';
+    await sheet.el('countdown-grace-days-form').fire('submit');
+    assert.deepEqual(puts.at(-1), ['/preferences', { countdown_grace_days: 3 }], 'Enter speichert ebenso');
+
+    input.value = '30';
+    await input.fire('keydown', { key: 'Escape' });
+    assert.equal(input.value, '3', 'Escape nimmt die ungespeicherte Eingabe zurueck');
+  } finally {
+    delete globalThis.__apiStub;
+    globalThis.window = prevWindow;
+    resetPreferencesCache();
+  }
+});
+
 // ── #1516: Die Standard-Erinnerungsliste ohne freigegebene Liste und bei gescheiterter Abfrage ──
 
 /**
@@ -2908,7 +2964,9 @@ test('R14: jeder Export steht im Blatt seines Moduls', async () => {
 test('R14: ein Feed ist ein Schalter, kein Primaerknopf', async () => {
   const src = await readFile(new URL('../public/settings/pages/personal-feeds.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /btn--primary/, 'kein "Feed aktivieren" als Primaerknopf');
-  assert.match(src, /control: 'switch',\s*label: feed\.text\.title\(\)/, 'An/Aus ist ein Schalter mit dem Namen des Feeds');
+  // Seit R17 (E9) die Schalterzeile der Gruppe; `settingSwitchRowHtml` setzt
+  // `control: 'switch'` selbst (test:control-dialect prueft das Ergebnis).
+  assert.match(src, /settingSwitchRowHtml\(\{\s*label: feed\.text\.title\(\)/, 'An/Aus ist ein Schalter mit dem Namen des Feeds');
   assert.match(src, /container\.dataset\?\.part/, 'der Abschnitt sagt, welcher Feed');
   assert.match(src, /!next && !await feed\.confirmDisable\(\)/, 'Ausschalten fragt nach wie der fruehere Knopf');
 });
@@ -3207,4 +3265,346 @@ test('settings sidebar: the active link is revealed below the sticky search, not
   } finally {
     globalThis.getComputedStyle = previous;
   }
+});
+
+// R17 (Critique 2026-10-07, E9): EINE KARTE JE OPTION GIBT ES NICHT MEHR.
+//
+// Das Blatt Darstellung trug zehn Einstellungen in acht Karten (1650px bei
+// 1280, 2014px mobil, drei im ersten Bild), waehrend "Aktive Module" daneben
+// schon gruppierte Zeilen fuehrte. Jetzt steht eine Option als Zeile in einem
+// Traeger (`.row-carrier.settings-group`, settings/components.js
+// `settingRowHtml` / `settingSwitchRowHtml`); eine Karte bleibt, wo ein echtes
+// Formular steht (mehrere Felder, ein Knopf).
+//
+// AM GERENDERTEN MARKUP, nicht am Dateitext: jeder Abschnitt der Registry wird
+// als Programm gerendert (Admin, leere Antworten), und beurteilt wird, was er
+// in seinen Traeger schreibt. Ein Regex ueber die Quelldatei saehe weder, was
+// ein Helfer zusammensetzt (`partHtml`, `scopeRowHtml`), noch welcher Zweig
+// einer Vorlage laeuft. Nicht gesehen wird, was ein Abschnitt erst per DOM-API
+// baut (documents-storage, die Konten der Synchronisation) - dort stehen
+// Formulare, keine Ein-Element-Karten.
+function sheetProbeContainer(part) {
+  let html = '';
+  let longest = '';
+  return {
+    dataset: part ? { part } : {},
+    isConnected: true,
+    // Ein Abschnitt, der NACH dem Zeichnen an einer Attrappe scheitert, ersetzt
+    // sein Markup durch den Fehlerzustand - beurteilt wird der laengste Stand.
+    get html() { return longest; },
+    replaceChildren() { html = ''; },
+    insertAdjacentHTML(_pos, markup) { html += markup; if (html.length > longest.length) longest = html; },
+    appendChild() {}, append() {}, addEventListener() {},
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    closest: () => null,
+  };
+}
+
+/** Jede `.settings-card` des Markups samt Inhalt (Kommentare vorher entfernt). */
+function settingsCardsIn(markup) {
+  const html = markup.replace(/<!--[\s\S]*?-->/g, '');
+  const cards = [];
+  const open = /<div class="(?:[^"]*\s)?settings-card(?:\s[^"]*)?"[^>]*>/g;
+  let m;
+  while ((m = open.exec(html))) {
+    const tag = /<(\/?)div\b[^>]*>/g;
+    tag.lastIndex = open.lastIndex;
+    let depth = 1;
+    let end = html.length;
+    let t;
+    while (depth > 0 && (t = tag.exec(html))) {
+      depth += t[1] ? -1 : 1;
+      if (depth === 0) end = tag.lastIndex;
+    }
+    cards.push(html.slice(m.index, end));
+  }
+  return cards;
+}
+
+const cardControls = (card) => [...card.matchAll(
+  /<select\b|<textarea\b|role="radiogroup"|<input\b(?![^>]*\btype="(?:hidden|file|radio)")[^>]*>/g,
+)].length;
+const cardHasAction = (card) => /<button\b|class="(?:[^"]*\s)?btn(?:\s[^"]*)?"/.test(card);
+
+test('R17: der Karten-Scanner sieht eine Karte mit genau einem Bedienelement - und laesst ein Formular stehen', () => {
+  const lone = '<div class="settings-card"><h3>Titel</h3><label class="toggle-row"><input type="checkbox" role="switch"></label><p>Hinweis</p></div>';
+  const form = '<div class="settings-card"><div><input type="text"></div><input type="password"><button class="btn btn--primary">x</button></div>';
+  const withButton = '<div class="settings-card settings-card--x"><input type="text"><div><button type="submit">x</button></div></div>';
+  const commented = '<!-- <div class="settings-card"><select></select></div> --><div class="row-carrier settings-group"><select></select></div>';
+  const cards = settingsCardsIn(lone + form + withButton + commented);
+  assert.equal(cards.length, 3, 'drei Karten, die auskommentierte zaehlt nicht');
+  assert.deepEqual(cards.map(cardControls), [1, 2, 1]);
+  assert.deepEqual(cards.map(cardHasAction), [false, true, true]);
+  assert.match(cards[1], /btn--primary/, 'die Karte reicht bis zu IHREM schliessenden div, nicht bis zum ersten');
+});
+
+/** Jeder Abschnitt der Registry, als Programm gerendert: id -> Markup. Einmal je Lauf. */
+let sheetProbe = null;
+function probeSheets() {
+  sheetProbe ??= (async () => {
+    const { SETTINGS_SECTIONS } = await import('../public/settings/registry.js');
+    const { resetPreferencesCache } = await import('/settings/preferences-cache.js');
+    const prev = { window: globalThis.window, document: globalThis.document, api: globalThis.__apiStub };
+    const storage = { getItem: () => null, setItem() {}, removeItem() {} };
+    globalThis.window = {
+      yuvomi: { showToast() {}, isModuleDisabled: () => false },
+      matchMedia: () => ({ matches: false, addEventListener() {} }),
+      addEventListener() {},
+      location: { origin: 'http://localhost', protocol: 'https:', pathname: '/settings' },
+      localStorage: storage,
+    };
+    globalThis.document = fakeDocument();
+    globalThis.__apiStub = {
+      // Ein Feed ist ohne Adresse AUS (ein Schalter); Listen sind leer.
+      get: async (url) => {
+        if (/feed/.test(url)) return { data: null };
+        if (/^\/modules/.test(url)) return { data: [] };
+        return { data: {} };
+      },
+      put: async (_url, body) => ({ data: body }),
+      post: async () => ({ data: {} }),
+      patch: async () => ({ data: {} }),
+      delete: async () => ({ data: {} }),
+    };
+    resetPreferencesCache();
+    const rendered = new Map();
+    try {
+      for (const section of SETTINGS_SECTIONS) {
+        const host = sheetProbeContainer(section.props?.part);
+        try {
+          const module = await section.loader();
+          await module.render(host, { user: { id: 1, role: 'admin', is_admin: true }, query: new URLSearchParams() });
+        } catch {
+          // Nach dem Zeichnen an einer Attrappe gescheitert: das Markup steht.
+        }
+        rendered.set(section.id, host.html.replace(/<!--[\s\S]*?-->/g, ''));
+      }
+    } finally {
+      globalThis.window = prev.window;
+      globalThis.document = prev.document;
+      globalThis.__apiStub = prev.api;
+      resetPreferencesCache();
+    }
+    return rendered;
+  })();
+  return sheetProbe;
+}
+
+test('R17: kein Einstellungsblatt rendert eine Karte mit genau einem Bedienelement', async () => {
+  const rendered = await probeSheets();
+
+  const offenders = [];
+  let cardsSeen = 0;
+  for (const [id, html] of rendered) {
+    for (const card of settingsCardsIn(html)) {
+      cardsSeen += 1;
+      if (cardControls(card) === 1 && !cardHasAction(card)) {
+        offenders.push(`${id}: ${card.replace(/\s+/g, ' ').slice(0, 140)}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'eine Option ist eine Zeile in einem Traeger (.settings-group), keine eigene Karte');
+
+  // EINE ZUSICHERUNG UEBER NICHTS IST KEINE. Die umgestellten Abschnitte
+  // muessen wirklich gezeichnet haben, und zwar gruppierte Zeilen; faellt
+  // einer unter der Attrappe um, bevor er zeichnet, sieht der Guard ihn nicht.
+  const GROUPED = [
+    'personal-appearance', 'personal-notifications', 'admin-family', 'modules-countdowns',
+    'personal-calendar', 'personal-feeds', 'modules-calendar', 'options-schedule', 'options-tasks',
+    'options-budget', 'options-housekeeping', 'options-health', 'modules-rewards', 'personal-health',
+    'feed-schedule', 'feed-cycle', 'feed-inventory', 'feed-waste',
+  ];
+  for (const id of GROUPED) {
+    const html = rendered.get(id) ?? '';
+    assert.match(html, /class="row-carrier settings-group"/, `${id}: keine gruppierten Zeilen im gerenderten Markup`);
+    assert.match(html, /class="settings-setting-row[ "]/, `${id}: der Traeger ist leer`);
+  }
+  const drawn = [...rendered.values()].filter((html) => html.length > 0).length;
+  assert.ok(drawn >= 30, `nur ${drawn} von ${rendered.size} Abschnitten haben gezeichnet - liest der Guard die Blaetter noch?`);
+  assert.ok(cardsSeen >= 15, `nur ${cardsSeen} Karten gesehen - der Scanner findet die Formular-Karten nicht mehr`);
+});
+
+test('R17: die gruppierte Zeile - Label links, Bedienelement rechts, der Hinweis ausserhalb des Labels', async () => {
+  const { settingRowHtml, settingSwitchRowHtml } = await import('../public/settings/components.js');
+  const row = settingRowHtml({
+    label: 'Zeit <zone>', labelFor: 'tz', description: 'Gilt & wirkt', descriptionId: 'tz-hint',
+    control: '<select id="tz"></select>', extra: '<div id="tz-error" hidden></div>',
+  });
+  // Seit R18 (2026-10-07) IST die Einstellungszeile eine Formularzeile
+  // (utils/form-row.js): jede Klasse `settings-setting-row*` traegt ihr
+  // `form-row*` daneben. Reihenfolge, Verknuepfung und Escaping sind die alten.
+  assert.match(row, /^<div class="settings-setting-row form-row"><div class="settings-setting-row__copy form-row__copy"><label class="settings-setting-row__label form-row__label" for="tz">Zeit &lt;zone&gt;<\/label>/);
+  assert.match(row, /<p class="settings-setting-row__description form-row__description" id="tz-hint">Gilt &amp; wirkt<\/p><div id="tz-error" hidden><\/div><\/div><div class="settings-setting-row__control form-row__control"><select id="tz"><\/select><\/div><\/div>$/);
+  assert.match(settingRowHtml({ label: 'x', labelId: 'l', stacked: true }), /^<div class="settings-setting-row settings-setting-row--stacked form-row form-row--stacked"><div class="settings-setting-row__copy form-row__copy"><span class="settings-setting-row__label form-row__label" id="l">x<\/span>/,
+    'ohne `labelFor` kein <label>: eine Gruppe (Segment, Chips) wird ueber aria-labelledby benannt');
+
+  const sw = settingSwitchRowHtml({ label: 'Push', checked: true, description: 'Nur hier', descriptionId: 'p-hint', attrs: { id: 'p' } });
+  assert.match(sw, /^<div class="settings-setting-row settings-setting-row--switch"><label class="toggle-row toggle-row--switch">/);
+  assert.match(sw, /<input type="checkbox" role="switch" id="p" aria-describedby="p-hint" checked>/, 'der Hinweis ist dem Schalter zugeordnet');
+  assert.match(sw, /<\/label><p class="settings-setting-row__description" id="p-hint">Nur hier<\/p><\/div>$/,
+    'der Hinweis steht NACH dem Label - im Label laese ein Screenreader ihn als Teil des Namens');
+
+  // Zweispaltig in jeder Breite, mindestens ein Fingerziel hoch.
+  const css = await readFile(new URL('../public/styles/settings.css', import.meta.url), 'utf8');
+  const rules = [...eachRule(css)];
+  const base = rules.find((r) => r.selector.trim() === '.settings-group > .settings-setting-row' && !r.at.length);
+  assert.match(base?.body ?? '', /grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(base?.body ?? '', /min-height:\s*var\(--target-lg\)/, 'die Zeile ist mobil ein Fingerziel hoch');
+  const narrowed = rules.filter((r) => r.at.length && /\.settings-group\b[^,{]*\.settings-setting-row\b/.test(r.selector)
+    && /grid-template-columns/.test(r.body));
+  assert.deepEqual(narrowed.map((r) => r.selector), [],
+    'keine Breitenabfrage stapelt die Zeile wieder: gestapelt war ein Auswahlfeld mit "5 Minuten" mobil vollbreit');
+  const control = rules.find((r) => r.selector.trim() === '.settings-group .settings-setting-row__control' && !r.at.length);
+  assert.match(control?.body ?? '', /max-inline-size:\s*50cqi/, 'das Bedienelement nimmt hoechstens die halbe Zeile, das Label bricht um');
+});
+
+// --------------------------------------------------------
+// R18 (2026-10-07): die Formularzeile - EIN Baustein fuer Einstellungen und
+// Erfassungsdialoge (utils/form-row.js, layout.css "Formularzeile")
+// --------------------------------------------------------
+test('R18: formRowHtml baut Etikett links / Wert rechts mit verknuepftem Etikett, die Einstellungszeile baut darauf', async () => {
+  const { formRowHtml, formRowsHtml } = await import('../public/utils/form-row.js');
+  const row = formRowHtml({
+    label: 'Art <b>', labelFor: 'kind', description: 'Nur & hier', descriptionId: 'kind-hint',
+    control: '<select class="form-input" id="kind"></select>', field: true,
+  });
+  assert.match(row, /^<div class="form-row form-field"><div class="form-row__copy"><label class="form-row__label" for="kind">Art &lt;b&gt;<\/label>/,
+    'das Etikett ist ein <label for> - und die Zeile die Fehlergruppe ihres Feldes');
+  assert.match(row, /<p class="form-row__description" id="kind-hint">Nur &amp; hier<\/p><\/div><div class="form-row__control"><select class="form-input" id="kind"><\/select><\/div><\/div>$/);
+  assert.match(formRowHtml({ label: 'x', labelId: 'l', stacked: true, wide: true }),
+    /^<div class="form-row form-row--stacked form-row--wide"><div class="form-row__copy"><span class="form-row__label" id="l">x<\/span>/,
+    'ohne labelFor ein benennbares <span> fuer aria-labelledby');
+  assert.equal(formRowsHtml(['<i>a</i>', '', null, '<i>b</i>'], { attrs: { id: 'g' } }), '<div class="form-rows" id="g"><i>a</i><i>b</i></div>');
+  // Die Einstellungszeile ist dieselbe Funktion mit einer Variante - nicht ein zweiter Bau.
+  const components = await readFile(new URL('../public/settings/components.js', import.meta.url), 'utf8');
+  const fn = components.slice(components.indexOf('export function settingRowHtml('), components.indexOf('export function settingSwitchRowHtml('));
+  assert.match(fn, /return formRowHtml\(\{[\s\S]*variant: 'settings-setting-row'/, 'settingRowHtml delegiert an formRowHtml');
+  assert.doesNotMatch(fn, /<div class=/, 'settingRowHtml baut kein eigenes Markup mehr');
+  const dom = components.slice(components.indexOf('export function createSettingRow('), components.indexOf('export function createStatusSummary('));
+  for (const cls of ['settings-setting-row form-row', 'settings-setting-row__copy form-row__copy', 'settings-setting-row__label form-row__label',
+    'settings-setting-row__description form-row__description', 'settings-setting-row__control form-row__control']) {
+    assert.ok(dom.includes(`'${cls}'`), `createSettingRow traegt "${cls}"`);
+  }
+});
+
+test('R18: ein zusammengesetztes Feld ist eine benannte Gruppe, jedes Teilfeld hat einen eigenen Namen', async () => {
+  const { formCompositeHtml } = await import('../public/utils/form-row.js');
+  const pair = formCompositeHtml({
+    labelledBy: 'bp-label',
+    unit: 'mmHg',
+    parts: [
+      { id: 'sys', label: 'Systolisch', value: 120, placeholder: 120, attrs: { type: 'number', required: true } },
+      { separator: '/' },
+      { id: 'dia', label: 'Dia "stolisch"', attrs: { type: 'number' } },
+    ],
+  });
+  assert.match(pair, /^<span class="form-composite" role="group" aria-labelledby="bp-label">/);
+  assert.match(pair, /<input class="form-input form-composite__part" type="number" required id="sys" aria-label="Systolisch" placeholder="120" value="120">/);
+  assert.match(pair, /<span class="form-composite__sep" aria-hidden="true">\/<\/span>/, 'der Trenner ist Dekor');
+  assert.match(pair, /<input class="form-input form-composite__part" type="number" id="dia" aria-label="Dia &quot;stolisch&quot;" aria-describedby="dia-unit">/,
+    'die Einheit beschreibt das letzte Teilfeld');
+  assert.match(pair, /<span class="form-composite__unit" id="dia-unit">mmHg<\/span><\/span>$/);
+  // Ein Wort als Suffix IST das Etikett seines Teilfelds; ein einzelnes Feld ohne Gruppe bleibt ohne Rolle.
+  const dur = formCompositeHtml({ labelledBy: 'd', parts: [{ id: 'h', label: 'Stunden', suffix: 'Stunden', suffixIsLabel: true }] });
+  assert.match(dur, /<input class="form-input form-composite__part" type="text" id="h"><label class="form-composite__unit" for="h">Stunden<\/label>/);
+  const single = formCompositeHtml({ parts: [{ id: 'p', suffix: '/min' }] });
+  assert.match(single, /^<span class="form-composite"><input class="form-input form-composite__part" type="text" id="p" aria-describedby="p-suffix"><span class="form-composite__unit" id="p-suffix">\/min<\/span><\/span>$/);
+});
+
+test('R18: die Formularzeile steht im globalen Blatt - randlose Auswahl mit Zeichen, Etikett bricht, Wert bleibt, schmal stapelt sie', async () => {
+  const layout = await readFile(new URL('../public/styles/layout.css', import.meta.url), 'utf8');
+  const rules = [...eachRule(layout)];
+  const parts = (r) => r.selector.split(',').map((s) => s.trim().replace(/\s+/g, ' '));
+  const one = (sel, at = null) => rules.find((r) => parts(r).includes(sel) && (at ? r.at.some((a) => at.test(a)) : !r.at.length));
+  const rows = one('.form-rows');
+  assert.match(rows?.body ?? '', /container:\s*form-rows \/ inline-size/, 'die Zeile misst ihren Traeger');
+  assert.match(one('.form-rows > * + *')?.body ?? '', /border-top:\s*var\(--space-px\) solid var\(--color-border-subtle\)/, 'Haarlinie zwischen den Zeilen');
+  assert.doesNotMatch(rows.body, /background|border-radius|box-shadow/, 'im Dialog kein Kasten im Kasten: der Traeger hat keine eigene Flaeche');
+  const row = one('.form-rows > .form-row');
+  assert.match(row?.body ?? '', /grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(row.body, /min-height:\s*var\(--target-lg\)/);
+  const label = one('.form-rows .form-row__label');
+  assert.match(label?.body ?? '', /overflow-wrap:\s*anywhere/);
+  assert.match(label.body, /hyphens:\s*auto/, 'das Etikett bricht an der Silbe');
+  const control = one('.form-rows > .form-row > .form-row__control');
+  assert.match(control?.body ?? '', /white-space:\s*nowrap/, 'der Wert bleibt einzeilig');
+  assert.match(control.body, /max-inline-size:\s*62cqi/);
+  // Stapeln per Container Query: alle unter 20rem, breite Bedienelemente unter 26rem.
+  assert.match(one('.form-rows > .form-row:not(.form-row--stacked)', /@container form-rows \(max-width: 20rem\)/)?.body ?? '', /grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(one('.form-rows > .form-row--wide:not(.form-row--stacked)', /@container form-rows \(max-width: 26rem\)/)?.body ?? '', /grid-template-columns:\s*minmax\(0, 1fr\)/);
+  // Die randlose Auswahl: EINE Regel fuer Dialog und Einstellungen.
+  const select = one('.form-row__control > select.form-input');
+  assert.ok(select, 'die Regel haengt an .form-row__control, nicht an einem Traeger');
+  assert.match(select.body, /border-color:\s*transparent/);
+  assert.match(select.body, /background-color:\s*transparent/);
+  assert.match(select.body, /color:\s*var\(--color-text-secondary\)/, 'der Wert in Sekundaerfarbe');
+  assert.doesNotMatch(select.body, /background-image:\s*none|appearance/, 'das Zeichen des Feldkanons bleibt - es traegt die 3:1 als Erkennungsmerkmal');
+  assert.match(one('.form-row__control > select.form-input:focus')?.body ?? '', /border-color:\s*var\(--color-accent\)/, 'der Fokus zeichnet die Akzentkante');
+  assert.match(one('.form-row__control > select.form-input:not([multiple]):not([size])')?.body ?? '', /background-position:\s*right 0 center/);
+  assert.match(one('[dir="rtl"] .form-row__control > select.form-input:not([multiple]):not([size])')?.body ?? '', /background-position:\s*left 0 center/);
+  assert.match(one('.form-row__control > select.form-input', /hover: none/)?.body ?? '', /min-height:\s*var\(--target-lg\)/,
+    'am Finger 48px - in Dialog UND Einstellungen');
+  // Das Zeichen haelt 3:1 auf den Flaechen, auf denen eine Zeile steht.
+  const tokens = await readFile(new URL('../public/styles/tokens.css', import.meta.url), 'utf8');
+  const strokes = [...tokens.matchAll(/--_field-chevron:[^;]*stroke='%23([0-9A-Fa-f]{6})'/g)].map((m) => `#${m[1]}`);
+  assert.deepEqual([...new Set(strokes)], ['#63615B', '#B4AEA5']);
+  const lum = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  for (const [chevron, grounds] of [['#63615B', ['#FFFFFF', '#FBFAF7', '#F5F3ED']], ['#B4AEA5', ['#2B2825', '#37332E', '#191816']]]) {
+    for (const ground of grounds) assert.ok(ratio(chevron, ground) >= 3, `${chevron} auf ${ground}: ${ratio(chevron, ground).toFixed(2)}:1`);
+  }
+  // Und in den Einstellungen gibt es keine zweite Auswahl-Regel mehr daneben.
+  const settings = await readFile(new URL('../public/styles/settings.css', import.meta.url), 'utf8');
+  assert.equal([...eachRule(settings)].filter((r) => /settings-setting-row__control > select/.test(r.selector)).length, 0,
+    'die Auswahl der Einstellungszeile kommt aus der Formularzeile (layout.css)');
+});
+
+test('R17: keine Abschnittsueberschrift steht in einem Blatt zweimal ("Termine", "Zyklus")', async () => {
+  const { SETTINGS_SECTIONS } = await import('../public/settings/registry.js');
+  const rendered = await probeSheets();
+  const bySheet = new Map();
+  for (const section of SETTINGS_SECTIONS) {
+    const titles = [...(rendered.get(section.id) ?? '').matchAll(/class="settings-section__title"[^>]*>([^<]*)</g)].map((m) => m[1].trim());
+    bySheet.set(section.sheetId, [...(bySheet.get(section.sheetId) ?? []), ...titles]);
+  }
+  const doubled = [];
+  let seen = 0;
+  for (const [sheetId, titles] of bySheet) {
+    seen += titles.length;
+    for (const title of new Set(titles)) {
+      if (titles.filter((entry) => entry === title).length > 1) doubled.push(`${sheetId}: "${title}"`);
+    }
+  }
+  assert.ok(seen >= 20, `nur ${seen} Abschnittsueberschriften gesehen`);
+  assert.deepEqual(doubled, [], 'zwei gleiche Ueberschriften auf einer Ebene: die Sprungmarke und der Screenreader koennen sie nicht unterscheiden');
+});
+
+test('R17: die Sprungmarken heissen wie die Ueberschriften der Abschnitte, nicht wie die Registry', async () => {
+  const shell = await readFile(new URL('../public/settings/shell.js', import.meta.url), 'utf8');
+  const fn = shell.slice(shell.indexOf('function syncJumpLabels('), shell.indexOf('async function renderSheetSection('));
+  assert.match(fn, /host\?\.querySelector\('\.settings-section__title, \.settings-navigation-panel__title'\)/,
+    'gelesen wird die erste sichtbare Abschnittsueberschrift im Traeger');
+  assert.match(fn, /link\.textContent = text/);
+  assert.match(shell, /link\.dataset\.jumpSection = target\.id/, 'die Marke weiss, zu welchem Traeger sie gehoert');
+  const section = shell.slice(shell.indexOf('async function renderSheetSection('), shell.indexOf('async function renderLeafContent('));
+  assert.match(section, /await module\.render\(host, \{ user, query \}\);[\s\S]*?syncJumpLabels\(host\.closest\?\.\('\.settings-leaf'\)\)/,
+    'jeder fertige Abschnitt zieht seine Marke nach, auch nach der Wartefrist');
+  const leaf = shell.slice(shell.indexOf('async function renderLeafContent('), shell.indexOf('function levelScopedHeadings('));
+  assert.match(leaf, /await awaitSections\([\s\S]*?\);[\s\S]*?jump\?\.classList\.remove\('settings-sheet-jump--pending'\)/,
+    'nach der Frist stehen die Marken in jedem Fall');
+});
+
+test('R17: die Standard-Erinnerungen sind Chips des Kanons mit aria-pressed, keine Checkbox in einer Pille', async () => {
+  const rendered = await probeSheets();
+  const html = rendered.get('personal-calendar') ?? '';
+  const chips = [...html.matchAll(/<button type="button" class="filter-chip js-default-reminder[^"]*"\s+data-value="(\d+)" aria-pressed="(true|false)">/g)];
+  assert.ok(chips.length >= 5, `nur ${chips.length} Erinnerungs-Chips im gerenderten Abschnitt`);
+  assert.doesNotMatch(html, /reminder-preset/);
+  assert.equal([...html.matchAll(/<input\b[^>]*type="checkbox"/g)].length, 1, 'die einzige Checkbox ist der Schalter "mir zuweisen"');
+  const src = await readFile(new URL('../public/settings/pages/personal-calendar.js', import.meta.url), 'utf8');
+  assert.match(src, /chip\.setAttribute\('aria-pressed', String\(on\)\);\s*chip\.classList\.toggle\('filter-chip--active', on\)/,
+    'Zustand und Aktiv-Form wechseln zusammen');
+  assert.match(src, /querySelectorAll\('\.js-default-reminder\[aria-pressed="true"\]'\)/, 'gelesen wird der Zustand, den der Chip ansagt');
 });

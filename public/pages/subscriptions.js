@@ -19,6 +19,7 @@ import { emptyStateHTML, mountLoadError } from '/utils/empty-state.js';
 import { todayKey } from '/utils/date.js';
 import { CURRENCY_CODES } from '/utils/currency-codes.js';
 import { wireSwipeRows, maybeShowSwipeHint } from '/utils/swipe-row.js';
+import { redrawList, collapseRow } from '/utils/list-motion.js';
 import { formatMoney, amountPlaceholder, amountStep, applyAmountFormat, amountIsSavable, smallestUnitLabel } from '/utils/money.js';
 import { attachOverlay } from '/utils/overlay-history.js';
 import { isNavModuleReadOnly } from '/permissions.js';
@@ -27,6 +28,7 @@ import { rowActionHtml } from '/utils/row-action.js';
 import { renderPageSearch, wirePageSearch } from '/utils/page-search.js';
 import { metricGlanceHtml, wireMetricGlance } from '/utils/metric-glance.js';
 import { toggleRowHtml } from '/settings/components.js';
+import { leadCardClass } from '/utils/metric-card.js';
 
 // Auslastung, ab der ein Budget „knapp" ist - dieselbe Zahl wie im Plan
 // (budget-plans.js `toneForRatio`), damit beide Tabs dieselbe Grenze ziehen.
@@ -535,11 +537,11 @@ function bindToolbar() {
   });
 }
 
-async function reload(options) {
+async function reload(options, { motion = false } = {}) {
   try {
     await load(options);
     renderFilters();
-    renderContent();
+    renderContent({ motion });
   } catch (err) {
     window.yuvomi?.showToast(err.data?.error || t('subscriptions.loadError'), 'danger');
   }
@@ -554,7 +556,21 @@ function sortedSubscriptions() {
   });
 }
 
-function renderContent() {
+const SUBSCRIPTION_ROW = '.swipe-row[data-swipe-id]';
+
+/* `motion: true` setzt, wer die DATEN geaendert hat (Abo angelegt, gespeichert,
+ * verlaengert, geloescht): die neue Zeile zieht auf, und was dadurch die
+ * Stelle wechselt, gleitet (utils/list-motion.js). Traeger ist
+ * `#subscriptions-content` - `#subscriptions-list` darin baut jedes Zeichnen
+ * neu. Filter und Sortierung zeichnen ohne Bewegung neu - dort wechselt die
+ * Frage, nicht die Liste. */
+function renderContent({ motion = false } = {}) {
+  const content = container.querySelector('#subscriptions-content');
+  if (motion && content) redrawList(content, drawContent, { selector: SUBSCRIPTION_ROW, keyAttr: 'data-swipe-id' });
+  else drawContent();
+}
+
+function drawContent() {
   const content = container.querySelector('#subscriptions-content');
   const rows = sortedSubscriptions();
   // Kurs-Status/-Aktion nur, wenn überhaupt ein Abo in Fremdwährung läuft -
@@ -643,10 +659,11 @@ function renderSummary() {
     expanded: state.summaryExpanded,
     label: t('subscriptions.monthlyCost'),
     value: money(used),
+    lead: true,
     flows: [{ label: t('subscriptions.activeCount', { count: summary.active_count }) }, budgetFlow],
   })}
-    <section class="metric-grid${hasBudget ? ' metric-grid--quad' : ''} budget-glance-details${state.summaryExpanded ? ' is-expanded' : ''}" id="subscriptions-summary-details">
-      <article class="metric-card">
+    <section class="metric-grid metric-grid--led${hasBudget ? ' metric-grid--quad' : ''} budget-glance-details${state.summaryExpanded ? ' is-expanded' : ''}" id="subscriptions-summary-details">
+      <article class="metric-card ${leadCardClass(money(used))}">
         <div class="metric-card__label">${t('subscriptions.monthlyCost')}</div>
         <div class="metric-card__value">${money(used)}</div>
         <div class="metric-card__note">${t('subscriptions.activeCount', { count: summary.active_count })}</div>
@@ -1584,7 +1601,7 @@ async function saveSubscription(panel, existing, searchedLogoData = null) {
     if (existing) await api.put(`/budget/subscriptions/${existing.id}`, payload);
     else await api.post('/budget/subscriptions', payload);
     await closeModal({ force: true });
-    await reload();
+    await reload(undefined, { motion: true });
     refocusAfterRender();
     window.yuvomi?.showToast(t(existing ? 'subscriptions.savedToast' : 'subscriptions.addedToast'), 'success');
   } catch (err) {
@@ -1692,7 +1709,7 @@ async function renewSubscription(subscription) {
   if (!confirmed) return;
   try {
     const response = await api.post(`/budget/subscriptions/${subscription.id}/renew`, {});
-    await reload();
+    await reload(undefined, { motion: true });
     refocusAfterRender();
     const completed = response.data?.status === 'completed';
     window.yuvomi?.showToast(t(completed ? 'subscriptions.completedToast' : 'subscriptions.renewedToast'), 'success');
@@ -1708,7 +1725,11 @@ async function deleteSubscription(subscription) {
   if (!confirmed) return;
   try {
     await api.delete(`/budget/subscriptions/${subscription.id}`);
-    await reload();
+    // Die Zeile klappt aus, die Nachbarn ruecken nach - erst dann steht die
+    // Liste ohne sie neu (der Server hat schon geloescht; ohne Bewegung loest
+    // collapseRow sofort auf).
+    await collapseRow(container.querySelector(`#subscriptions-list .swipe-row[data-swipe-id="${subscription.id}"]`));
+    await reload(undefined, { motion: true });
     refocusAfterRender();
     window.yuvomi?.showToast(t('subscriptions.deletedToast'), 'success');
   } catch (err) {
@@ -2023,5 +2044,5 @@ function openMetadataModal() {
 export const __test = {
   readOnly, READ_SAFE_ACTIONS, renderCard, renderEmpty, renderSummary, state, toolsMenuHtml, activeFilters,
   renderBreakdown, renderAreaChart,
-  subscriptionReadSections, openSubscriptionModal,
+  subscriptionReadSections, openSubscriptionModal, saveSubscription,
 };

@@ -9,6 +9,7 @@ import { openModal as openSharedModal, closeModal, selectModal, advancedSection,
 import { t, formatDate, getLocale } from '/i18n.js';
 import { esc } from '/utils/html.js';
 import { stagger, wireScrollFade, scheduleUndoableDelete } from '/utils/ux.js';
+import { redrawList, collapseRow } from '/utils/list-motion.js';
 import { renderSkeletonList } from '/utils/skeleton.js';
 import { renderPageSearch, wirePageSearch } from '/utils/page-search.js';
 import { previewKind } from '/utils/document-preview.js';
@@ -373,12 +374,12 @@ export async function render(container, context = {}) {
 
 // Alle abhängigen Flächen nach einer Datenänderung neu zeichnen. Die Facetten-
 // Zähler (Kategorie + Ordner) hängen voneinander ab, deshalb nie einzeln aufrufen.
-function renderAll() {
+function renderAll({ motion = false } = {}) {
   renderCategoryChips();
   renderExpiringChip();
   renderFolderBrowser();
   renderBreadcrumb();
-  renderDocuments();
+  renderDocuments({ motion });
 }
 
 /**
@@ -1082,7 +1083,24 @@ function renderEmptyState(list) {
   if (state.query) probeOtherStatusSearch();
 }
 
-function renderDocuments() {
+const DOCUMENT_ITEM = ':is(.document-card, .document-row)[data-id]';
+
+/* `motion: true` setzt, wer die DATEN geaendert hat (hochgeladen, archiviert,
+ * geloescht, per "Rueckgaengig" zurueckgeholt): das neue Dokument zieht auf,
+ * und was dadurch die Stelle wechselt, gleitet (utils/list-motion.js). Filter,
+ * Suche, Ordner- und Ansichtswechsel zeichnen ohne Bewegung neu - dort
+ * wechselt die Frage, nicht die Liste. */
+function renderDocuments({ motion = false } = {}) {
+  const list = _container.querySelector('#documents-list');
+  if (motion && list) {
+    redrawList(list, drawDocuments, { selector: DOCUMENT_ITEM, keyAttr: 'data-id' });
+    return;
+  }
+  drawDocuments();
+  if (list) stagger(list.querySelectorAll('.document-card, .document-row'), { host: list });
+}
+
+function drawDocuments() {
   // Jeder Rerender (Moduswechsel, Filter, Löschen) ersetzt die Karten samt
   // Menü-Anker. Ein offenes Kontextmenü hinge sonst als Geister-Popover im
   // Top-Layer, weil weder Scroll- noch Resize-Listener feuern.
@@ -1105,7 +1123,6 @@ function renderDocuments() {
   repairRovingStops(list);
   wireThumbnails(list);
   wireLocalThumbs(list);
-  stagger(list.querySelectorAll('.document-card, .document-row'), { host: list });
 }
 
 // Facetten-Zähler: jede Achse zählt unter Berücksichtigung der jeweils ANDEREN
@@ -1747,6 +1764,16 @@ function renderThumbSlot(doc, className) {
   return `<div class="${className} document-thumb"${local}>${renderDocIconSlot(doc)}</div>`;
 }
 
+/* IN DER LISTE STEHT DAS KATEGORIE-GLYPH, KEINE VORSCHAU (R18, 2026-10-07).
+ * Die Zeile zeigte dieselbe Vorschau wie die Karte, auf 42px: von einem Blatt
+ * blieb ein weisses Quadrat mit grauem Rauschen, neunmal untereinander. In
+ * der Liste liest man am Zeichen, WAS es ist (Medizin, Schule, Finanzen) -
+ * das Bild gehoert der Rasteransicht und dem Betrachter. Die Zeile laedt
+ * damit auch keine Vorschauen mehr. */
+function renderRowGlyph(doc) {
+  return `<div class="document-row__icon"><i data-lucide="${CATEGORY_ICONS[doc.category] || 'file'}" aria-hidden="true"></i></div>`;
+}
+
 /* HANDSCHRIFT DES MODULS (Critique 2026-09-25, Entscheidung 2): ein lokales
  * Bild zeigt sich selbst, ein lokales PDF seine erste Seite. Geladen wird erst,
  * wenn der Rahmen in die Naehe des Blicks kommt; was diese Seite schon einmal
@@ -2004,7 +2031,7 @@ function renderListItem(doc) {
   const selected = state.selectMode && state.selected.has(doc.id);
   return `
     <article class="list-row document-row${selected ? ' is-selected' : ''}" data-id="${doc.id}">
-      ${state.selectMode && mayManage(doc) ? renderSelectBox(doc) : renderThumbSlot(doc, 'document-row__icon')}
+      ${state.selectMode && mayManage(doc) ? renderSelectBox(doc) : renderRowGlyph(doc)}
       <div class="list-row__main document-row__body">
         <h2 class="list-row__name document-row__title">${esc(doc.name)}</h2>
         <div class="list-row__meta document-row__meta">${renderMeta(doc, { showSize: false })}</div>
@@ -2086,7 +2113,7 @@ async function runDocumentAction(action, doc) {
       await api.patch(`/documents/${doc.id}/archive`, { archived: doc.status !== 'archived' });
       window.yuvomi?.showToast(doc.status === 'archived' ? t('documents.restoredToast') : t('documents.archivedToast'), 'success');
       await loadDocuments();
-      renderAll();
+      renderAll({ motion: true });
     } catch (err) {
       window.yuvomi?.showToast(err.data?.error ?? t('common.unknownError'), 'danger');
     }
@@ -2128,12 +2155,23 @@ function deleteDocuments(docs) {
   const owner = _container;
   state.allDocuments = state.allDocuments.filter((doc) => !ids.has(doc.id));
   applyFilters();
-  renderAll();
+  // In der Liste klappt die Zeile aus, die Nachbarn ruecken nach, erst dann
+  // steht die Liste ohne sie neu (der Zustand ist schon geaendert: ein
+  // Neuzeichnen, das dazwischenkommt, zeigt dasselbe Ergebnis ohne Bewegung).
+  // Im Raster haelt die Nachbarkarte die Zeilenhoehe - dort gleiten die
+  // Nachbarn in die Luecke (FLIP in redrawList).
+  const leaving = state.view === 'list'
+    ? [...(owner?.querySelectorAll('#documents-list .document-row[data-id]') ?? [])]
+      .filter((row) => ids.has(Number(row.dataset.id)))
+    : [];
+  Promise.all(leaving.map((row) => collapseRow(row))).then(() => {
+    if (_container === owner) renderAll({ motion: true });
+  });
 
   const restore = () => {
     state.allDocuments = [...state.allDocuments, ...docs];
     applyFilters();
-    renderAll();
+    renderAll({ motion: true });
   };
 
   const message = docs.length === 1
@@ -3062,7 +3100,7 @@ async function saveDocument(event, doc, panel) {
     }
     closeModal({ force: true });
     await loadDocuments();
-    renderAll();
+    renderAll({ motion: true });
     refocusAfterRender();
   } catch (err) {
     error.textContent = friendlyError(err);
@@ -3108,7 +3146,8 @@ function openFolderModal({ parentId = null } = {}) {
         </div>
         <div id="document-folder-error" class="form-error" role="alert" hidden></div>
         <div class="modal-panel__footer modal-panel__footer--plain">
-          <button type="submit" class="btn btn--primary">${t('documents.createFolderAction')}</button>
+          <button type="button" class="btn btn--secondary" data-action="close-modal">${t('common.cancel')}</button>
+          <button type="submit" class="btn btn--primary">${t('common.add')}</button>
         </div>
       </form>
     `,
@@ -3404,7 +3443,7 @@ async function linkDmsDocument(item, accountId) {
     });
     closeModal({ force: true });
     await loadDocuments();
-    renderAll();
+    renderAll({ motion: true });
     refocusAfterRender();
     return true;
   } catch (err) {
@@ -3603,9 +3642,25 @@ function openDocumentViewer(doc) {
     title: doc.name,
     size: 'xl',
     content: `
-      <div class="document-viewer">
+      <div class="document-viewer" id="document-viewer-root">
         <div class="document-viewer__meta">
-          <span><i data-lucide="${CATEGORY_ICONS[doc.category] || 'folder'}" aria-hidden="true"></i>${categoryLabel}</span>
+          ${/* SCHMAL IST DER META-BLOCK EINE ZEILE, DIE AUFKLAPPT (R17 Schritt 5,
+                Critique 2026-10-07 A6 P2). Gemessen 390x844: 172px Meta ueber
+                einem 460px hohen Dokument, davon 53px der Hinweis, warum Teilen
+                nicht geht. Der Knopf nennt die Kategorie und klappt Ordner,
+                Groesse, Ablauf, Hinweis und Lesezeilen auf; die Aktionen
+                daneben und ein Ablauf in Warnfarbe bleiben stehen. Ab 640px
+                ist er unsichtbar und alles steht da wie bisher
+                (documents.css). Der Hinweis selbst bleibt: SPEC.md (D#1014)
+                sagt ihn zu - er steht nur nicht mehr dauerhaft im Bild. */ ''}
+          <button type="button" class="btn btn--ghost btn--sm document-viewer__info-toggle"
+                  aria-expanded="false" aria-controls="document-viewer-root"
+                  aria-label="${t('common.showDetails')}" title="${t('common.showDetails')}">
+            <i data-lucide="${CATEGORY_ICONS[doc.category] || 'folder'}" aria-hidden="true"></i>
+            <span>${categoryLabel}</span>
+            <i data-lucide="chevron-down" class="document-viewer__info-chevron" aria-hidden="true"></i>
+          </button>
+          <span class="document-viewer__category"><i data-lucide="${CATEGORY_ICONS[doc.category] || 'folder'}" aria-hidden="true"></i>${categoryLabel}</span>
           ${doc.folder_name && !folderRepeatsCategory(doc.folder_name, categoryLabel) ? `<span><i data-lucide="folder" aria-hidden="true"></i>${esc(doc.folder_name)}</span>` : ''}
           <span>${formatFileSize(doc.file_size)}</span>
           ${expiryViewerHtml(doc)}
@@ -3644,6 +3699,14 @@ function openDocumentViewer(doc) {
       if (window.lucide) window.lucide.createIcons({ el: panel });
       if (shareSupport === 'ok') prepareShare(panel);
       releasePdfFocus = keepFocusOutOfUnclickedPdf(panel, { keyboard: openedByKeyboard });
+      // Der Meta-Block klappt schmal auf und zu (documents.css blendet aus,
+      // was die Klasse nicht freigibt; ab 640px ist der Knopf unsichtbar).
+      const infoToggle = panel.querySelector('.document-viewer__info-toggle');
+      infoToggle?.addEventListener('click', () => {
+        const open = infoToggle.getAttribute('aria-expanded') !== 'true';
+        infoToggle.setAttribute('aria-expanded', String(open));
+        panel.querySelector('.document-viewer')?.classList.toggle('document-viewer--info-open', open);
+      });
       // BEARBEITEN AUS DEM BETRACHTER (Re-Critique 2026-09-25, Alex). Kein
       // eigenes closeModal(): openModal() ersetzt den offenen Dialog selbst -
       // derselbe Weg wie jeder Modal-zu-Modal-Wechsel, und er haelt EINEN
@@ -3720,6 +3783,8 @@ function openDocumentViewer(doc) {
   }
 }
 
+const PDF_EMBED_FRAGMENT = '#toolbar=0&navpanes=0&view=FitH';
+
 function renderViewerContent(doc, previewUrl, downloadUrl) {
   const kind = previewKind(doc.mime_type);
   if (kind === 'pdf') {
@@ -3728,7 +3793,16 @@ function renderViewerContent(doc, previewUrl, downloadUrl) {
       // PDF-Viewers in sandboxed Frames und zeigt stattdessen "This page was blocked by Chrome".
       // Die Auslieferung erfolgt same-origin als application/pdf mit nosniff, daher keine
       // Skriptausführung im Frame.
-      return `<iframe class="document-viewer__pdf" src="${previewUrl}" title="${esc(doc.name)}"></iframe>`;
+      //
+      // OHNE DIE FREMDE WERKZEUGLEISTE (R18, 2026-10-07): der eingebaute
+      // Betrachter von Chromium und Firefox liest die PDF-Open-Parameter im
+      // Fragment. `toolbar=0` nimmt seine Leiste (zweite Kopfzeile mit Zoom,
+      // Druck, Download in fremder Optik unter der eigenen), `navpanes=0` die
+      // Seitenleiste, `view=FitH` passt die Seite in die Breite. Safari kennt
+      // sie nicht - der Rueckfall ist der Stand davor. Zoom und Druck bleiben
+      // ueber "In neuem Tab oeffnen" (dort MIT Leiste: die Adresse traegt das
+      // Fragment nicht) und den Download der eigenen Leiste.
+      return `<iframe class="document-viewer__pdf" src="${previewUrl}${PDF_EMBED_FRAGMENT}" title="${esc(doc.name)}"></iframe>`;
     }
     // Mobile Browser (iOS Safari, Android Chrome) rendern PDFs in <iframe>/<embed> nicht inline.
     // Platzhalter; das eigentliche Rendern via pdf.js läuft asynchron im onSave-Hook.

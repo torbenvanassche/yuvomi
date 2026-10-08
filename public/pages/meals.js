@@ -5,7 +5,7 @@
  */
 
 import { api } from '/api.js';
-import { openModal as openSharedModal, closeModal as closeSharedModal, selectModal, confirmModal, askOverModal, advancedSection, wireBlurValidation, reportFieldError, refocusAfterRender } from '/components/modal.js';
+import { openModal as openSharedModal, closeModal as closeSharedModal, selectModal, confirmModal, askOverModal, advancedSection, wireBlurValidation, reportFieldError, refocusAfterRender, swapFieldsKeepingDirtyBase } from '/components/modal.js';
 import { stagger, scheduleUndoableDelete, wireScrollFade } from '/utils/ux.js';
 import { t, formatDate, formatDayMonth, formatDateInput, parseDateInput, isDateInputValid } from '/i18n.js';
 import { esc, REQUIRED_MARK } from '/utils/html.js';
@@ -515,27 +515,37 @@ async function loadRecipes() {
  * Wer als Koch waehlbar ist (#1679): die Haushaltsmitglieder, wie
  * `/family/members` sie durch das eine Mitglieder-Praedikat liefert - ohne
  * Hauspersonal, Gaeste und Wandtabletts (docs/DECISIONS.md, Eintrag 4). Die
- * Route lehnt genau die ab, die hier fehlen. Bei `read` gibt es keine Wahl,
- * also auch keine Liste: die Leseansicht zeigt den Koch aus der Mahlzeit.
+ * Route lehnt genau die ab, die hier fehlen.
+ *
+ * AUCH BEI `read`. Eine Wahl gibt es dort nicht, die Liste traegt aber das
+ * BILD des Kochs: die Mahlzeit nennt nur id, Name und Farbe (mealCook()), das
+ * Profilbild steht einmal je Person hier statt an jeder Mahlzeit der Woche.
+ * `/family/members` ist kein Modul der Rechteverwaltung und fuer jede Sitzung
+ * lesbar; scheitert der Abruf, bleiben die Initialen.
  */
 async function loadMembers() {
-  if (readOnly()) {
-    state.members = [];
-    return;
-  }
   try {
     const res = await api.get('/family/members');
     state.members = Array.isArray(res.data) ? res.data : [];
-  } catch {
-    state.members = [];
+  } catch (err) {
+    // NICHT STILL: der Fehler geht in die Konsole wie der von loadWeek(), und
+    // eine schon geladene Liste bleibt stehen - Mitglieder aendern sich
+    // seltener, als ein Abruf scheitert. Scheitert schon der ERSTE Abruf, ist
+    // die Liste weiter leer; dann holt der Dialog sie beim Oeffnen nach
+    // (openMealModal() -> refreshCookPicker()).
+    console.error('[Meals] loadMembers Fehler:', err);
   }
 }
 
 /**
  * Der Koch einer Mahlzeit als Person, wie `renderAvatarStack()` und
  * `withChosenPeople()` sie lesen - oder null. Die Leseabfragen liefern ihn
- * flach neben der Mahlzeit (`cook_user_id`, `cook_name`, `cook_color`,
- * `cook_avatar`), im Planer wie in der Uebersicht.
+ * flach neben der Mahlzeit (`cook_user_id`, `cook_name`, `cook_color`), im
+ * Planer wie in der Uebersicht.
+ *
+ * DAS BILD KOMMT AUS DER MITGLIEDERLISTE, nicht aus der Mahlzeit: der Server
+ * haengt es nicht mehr an jede Zeile. Ein Koch, der kein Mitglied (mehr) ist,
+ * steht dort nicht und zeigt seine Initialen auf seiner Farbe.
  */
 function mealCook(meal) {
   if (!meal?.cook_user_id) return null;
@@ -543,7 +553,7 @@ function mealCook(meal) {
     id: meal.cook_user_id,
     display_name: meal.cook_name ?? '',
     color: meal.cook_color ?? null,
-    avatar_data: meal.cook_avatar ?? null,
+    avatar_data: state.members.find((member) => member.id === meal.cook_user_id)?.avatar_data ?? null,
   };
 }
 
@@ -1260,11 +1270,12 @@ function renderSlot(date, type, mealsForDay, dayCol, typeRow) {
             data-meal-id="${meal.id}"
             aria-label="${esc(t('common.toShoppingListNamed', { title: meal.title }))}"
           ><i data-lucide="shopping-cart" class="icon-md" aria-hidden="true"></i></button>` : ''}
-          ${ro ? '' : `<button class="meal-card__action-btn meal-card__action-btn--delete"
-            data-action="delete-meal"
-            data-meal-id="${meal.id}"
-            aria-label="${esc(t('meals.deleteMealNamed', { title: meal.title }))}"
-          ><i data-lucide="trash-2" class="icon-md" aria-hidden="true"></i></button>`}
+${/* KEIN PAPIERKORB AUF DER KARTE (Entscheidung 2026-10-07, benannte
+               Ausnahme vom Mehr-Knopf): 27 Karten trugen als einziges
+               wiederkehrendes Zeichen einen Papierkorb. Loeschen lebt im
+               Dialog der Mahlzeit, links im Fuss - einen Tipp auf die Karte
+               entfernt und mobil seit R8 der einzige Weg. Ein Mehr-Knopf mit
+               einem Eintrag waere dieselbe Dichte fuer denselben Weg. */ ''}
         </div>
       </div>
     `;
@@ -1408,11 +1419,6 @@ async function onGridClick(e) {
     const mealId = parseInt(btn.dataset.mealId, 10);
     const meal   = state.meals.find((m) => m.id === mealId);
     if (meal) openMealModal({ mode: 'edit', meal, date: meal.date, mealType: meal.meal_type });
-    return;
-  }
-
-  if (action === 'delete-meal') {
-    await deleteMeal(parseInt(btn.dataset.mealId, 10));
     return;
   }
 
@@ -1983,9 +1989,18 @@ function openMealModal(opts) {
     if (opts?.mode === 'edit' && opts.meal) openMealReadModal(opts.meal);
     return;
   }
-  state.modal = opts;
+  // `cookTouched`: hat jemand in DIESEM Dialog den Koch gewaehlt? Siehe
+  // wireCookPicker() - mit jedem Oeffnen wieder false.
+  state.modal = { ...opts, cookTouched: false };
   const { mode, date, mealType, meal } = opts;
   const isEdit = mode === 'edit';
+
+  // Scheiterte der Abruf der Mitglieder beim Laden der Seite, ist die Liste
+  // leer und die Auswahl boete nur "Niemand" an. Ein Haushalt ohne Mitglieder
+  // gibt es nicht - eine leere Liste heisst hier immer "nicht geladen". Der
+  // Dialog geht sofort auf und bekommt seine Auswahl nachgereicht
+  // (refreshCookPicker()); `state.members` bleibt die eine Buchfuehrung.
+  const membersMissing = state.members.length === 0;
 
   const content = buildModalContent(opts);
 
@@ -2180,11 +2195,15 @@ function openMealModal(opts) {
       });
       editScopeSelect?.addEventListener('change', () => {
         repeatUntilGroup.hidden = editScopeSelect.value !== 'series';
+        showCookForScope(panel, meal);
       });
 
-      // Eine Mahlzeit hat EINEN Koch: dieselbe Auswahl wie bei den Zustaendigen
-      // einer Aufgabe, aber eine neue Wahl loest die vorige ab (#1679).
-      bindUserMultiSelect(panel, COOK_INPUT, { single: true });
+      wireIngredientCount(panel);
+      wireCookPicker(panel);
+      if (membersMissing) {
+        refreshCookPicker(panel, isEdit ? meal : null)
+          .catch((err) => console.error('[Meals] refreshCookPicker Fehler:', err));
+      }
 
       panel.querySelector('#modal-cancel').addEventListener('click', closeModal);
       /* EIN ABGEBROCHENES SERIEN-LOESCHEN NAHM DEN EDITOR MIT (Codex an #1485):
@@ -2241,6 +2260,101 @@ function selectedCookId(overlay) {
   return getSelectedUserIds(overlay, COOK_INPUT)[0] ?? null;
 }
 
+/**
+ * Verdrahtet die Koch-Auswahl des Dialogs.
+ *
+ * Eine Mahlzeit hat EINEN Koch: dieselbe Auswahl wie bei den Zustaendigen einer
+ * Aufgabe, aber eine neue Wahl loest die vorige ab (#1679).
+ *
+ * DER BERUEHRT-MERKER (`state.modal.cookTouched`). Der Dialog zeigt beim Oeffnen
+ * den Koch DIESER Mahlzeit; "ganze Serie" schreibt einen mitgeschickten Koch
+ * aber auf die Vorlage und auf JEDE Mahlzeit der Serie. Aus den gespeicherten
+ * Staenden laesst sich nicht lesen, ob der gezeigte Koch GEWAEHLT oder nur
+ * GEZEIGT ist: "Ben bewusst fuer die ganze Serie" und "nur den Titel geaendert,
+ * waehrend an dieser Woche Ben steht" ergeben dieselben Werte (Review zu
+ * #1739: eine Titelaenderung machte aus Anna/Ben/Carla dreimal Ben, und von
+ * einer Woche ohne Koch aus leerte sie die ganze Serie samt Vorlage). Also
+ * zaehlt, was der Nutzer GETAN hat: ein `change` an der Auswahl. Das
+ * programmatische Umstellen in showCookForScope() loest kein Ereignis aus und
+ * setzt den Merker nicht.
+ */
+function wireCookPicker(panel) {
+  bindUserMultiSelect(panel, COOK_INPUT, { single: true });
+  panel.querySelector(`.user-ms[data-ms-name="${COOK_INPUT}"]`)?.addEventListener('change', () => {
+    if (state.modal) state.modal.cookTouched = true;
+  });
+}
+
+/**
+ * Der Koch, den die Auswahl im gewaehlten Umfang ZEIGT, solange niemand
+ * gewaehlt hat: bei "nur diese Mahlzeit" der Koch der Mahlzeit, bei "ganze
+ * Serie" der Koch der Vorlage (`recurrence_cook_user_id`). Sonst stuende im
+ * Serien-Umfang ein Name da, den die Serie gar nicht hat.
+ *
+ * NUR, WENN ES DIE PERSON IN DER AUSWAHL GIBT. Ein Koch der Vorlage, der kein
+ * Mitglied (mehr) ist, hat keine Zeile - die Auswahl nennt neben den
+ * Mitgliedern nur den gespeicherten Koch DIESER Mahlzeit. Dann bleibt stehen,
+ * was da stand; gesendet wird ohne Beruehrung ohnehin nichts.
+ *
+ * Eine beruehrte Auswahl bleibt beim Wechsel des Umfangs, wie sie ist. Setzt
+ * `checked` direkt und loest kein `change` aus - siehe wireCookPicker().
+ */
+function showCookForScope(panel, meal) {
+  if (!meal?.recurrence_template_id || state.modal?.cookTouched) return;
+  const scope = panel.querySelector('#modal-edit-scope')?.value || 'single';
+  const shown = (scope === 'series' ? meal.recurrence_cook_user_id : meal.cook_user_id) ?? null;
+  const boxes = [...panel.querySelectorAll(`[data-ms-input="${COOK_INPUT}"]`)];
+  const isNone = (box) => box.classList.contains('user-ms__none');
+  if (shown !== null && !boxes.some((box) => !isNone(box) && Number(box.value) === shown)) return;
+  for (const box of boxes) box.checked = isNone(box) ? shown === null : Number(box.value) === shown;
+}
+
+/**
+ * Reicht dem offenen Dialog die Auswahl nach, wenn die Mitgliederliste beim
+ * Oeffnen leer war (gescheiterter Abruf, siehe loadMembers()). Ersetzt wird nur,
+ * wenn derselbe Dialog noch offen ist und niemand gewaehlt hat - eine Wahl aus
+ * der unvollstaendigen Liste ("Niemand") ueberschriebe das neue Markup sonst.
+ *
+ * DER TAUSCH IST KEINE EINGABE (#1784). Die neuen Checkboxen kennt die Basis
+ * des Verwerfen-Waechters nicht: das Schliessen des unberuehrten Dialogs
+ * fragte "Aenderungen verwerfen?". Die Basis einfach neu aufzunehmen waere die
+ * andere Luege - sie froere mit ein, was bis dahin getippt wurde. Der Tausch
+ * laeuft deshalb ueber swapFieldsKeepingDirtyBase(), samt der Vorauswahl aus
+ * showCookForScope(): sie gehoert zum Ausgangsstand der neuen Felder.
+ */
+async function refreshCookPicker(panel, meal) {
+  const opened = state.modal;
+  await loadMembers();
+  if (!state.members.length || state.modal !== opened || opened.cookTouched) return;
+  const old = panel.querySelector('.meal-modal__cook');
+  if (!old) return;
+  swapFieldsKeepingDirtyBase(panel, () => {
+    old.insertAdjacentHTML('afterend', cookPickerHtml(meal));
+    old.remove();
+    wireCookPicker(panel);
+    showCookForScope(panel, meal);
+  });
+}
+
+/** Beschriftung des Zutaten-Aufklappers: "Zutaten · 6" (wie "Geplant · n" im Budget). */
+function ingredientsFoldLabel(count) {
+  return `${t('meals.ingredientsLabel')} · ${count}`;
+}
+
+/**
+ * Haelt den Zaehler am Zutaten-Aufklapper nach, wenn Zeilen dazukommen oder
+ * gehen (Hinzufuegen, Entfernen, ein Rezept ersetzt die Liste). Ohne
+ * Aufklapper (Anlegen, keine Zutaten) passiert nichts.
+ */
+function wireIngredientCount(panel) {
+  const label = panel.querySelector?.('#modal-ingredients-fold .form-advanced__summary > span');
+  const list = panel.querySelector?.('#ingredient-list');
+  if (!label || !list || typeof MutationObserver !== 'function') return;
+  new MutationObserver(() => {
+    label.textContent = ingredientsFoldLabel(list.querySelectorAll('.ingredient-row').length);
+  }).observe(list, { childList: true });
+}
+
 function buildModalContent({ mode, date, mealType, meal, fromSlot = false, recipeId = null }) {
   const isEdit   = mode === 'edit';
   const isRecurring = isEdit && meal.recurrence_template_id;
@@ -2285,7 +2399,34 @@ function buildModalContent({ mode, date, mealType, meal, fromSlot = false, recip
   // Wie beim Bearbeiten einer Mahlzeit mit Rezept: aus der Rezept-Spalte
   // geoeffnet, steht die Rezeptauswahl offen da, damit sichtbar ist, WOHER Titel
   // und Zutaten kommen.
-  const advancedOpen = (isEdit && (!!meal.recipe_id || !!meal.notes || !!meal.recipe_url || isRecurring)) || Boolean(recipeId);
+  // (Bis R17 Schritt 5 oeffnete auch `isRecurring` den Abschnitt - der
+  // Serien-Umfang stand darin. Er steht jetzt oben, siehe `scopeHtml`.)
+  const advancedOpen = (isEdit && (!!meal.recipe_id || !!meal.notes || !!meal.recipe_url)) || Boolean(recipeId);
+
+  // DER SERIEN-UMFANG STEHT OBEN (R17 Schritt 5, Critique 2026-10-07 A4 P2).
+  // "Aenderung anwenden auf" entscheidet, was Speichern tut - und stand als
+  // letztes Feld hinter "Weitere Einstellungen", mobil bei y 1813 von 1899px.
+  // Nur die POSITION wechselt: dieselben Knoten mit denselben ids, die
+  // Verdrahtung (Wiederholungs-Ende zeigen, Koch der Vorlage zeigen) greift
+  // unveraendert.
+  const scopeHtml = isRecurring ? `
+    <div class="meal-recurrence-note">
+      <i data-lucide="repeat-2" class="icon-sm" aria-hidden="true"></i>
+      <span>${t('meals.recurrenceEditHint')}</span>
+    </div>
+    <div class="form-group">
+      <label class="form-label" for="modal-edit-scope">${t('meals.editScopeLabel')}</label>
+      <select class="form-input" id="modal-edit-scope">
+        <option value="single">${t('meals.editScopeSingle')}</option>
+        <option value="series">${t('meals.editScopeSeries')}</option>
+      </select>
+    </div>
+    <div class="form-group" id="modal-repeat-until-group" hidden>
+      <label class="form-label" for="modal-repeat-until">${t('meals.recurrenceUntilLabel')}</label>
+      <yuvomi-datepicker type="date" id="modal-repeat-until"
+                         value="${meal.recurrence_end_date ? formatDateInput(meal.recurrence_end_date) : ''}"></yuvomi-datepicker>
+      <p class="form-hint">${t('meals.recurrenceUntilHint')}</p>
+    </div>` : '';
 
   const advancedFieldsHtml = `
     <div class="form-group">
@@ -2316,24 +2457,7 @@ function buildModalContent({ mode, date, mealType, meal, fromSlot = false, recip
              value="${esc(isEdit && meal.recipe_url ? meal.recipe_url : '')}">
     </div>
 
-    ${isEdit ? (isRecurring ? `
-    <div class="meal-recurrence-note">
-      <i data-lucide="repeat-2" class="icon-sm" aria-hidden="true"></i>
-      <span>${t('meals.recurrenceEditHint')}</span>
-    </div>
-    <div class="form-group">
-      <label class="form-label" for="modal-edit-scope">${t('meals.editScopeLabel')}</label>
-      <select class="form-input" id="modal-edit-scope">
-        <option value="single">${t('meals.editScopeSingle')}</option>
-        <option value="series">${t('meals.editScopeSeries')}</option>
-      </select>
-    </div>
-    <div class="form-group" id="modal-repeat-until-group" hidden>
-      <label class="form-label" for="modal-repeat-until">${t('meals.recurrenceUntilLabel')}</label>
-      <yuvomi-datepicker type="date" id="modal-repeat-until"
-                         value="${meal.recurrence_end_date ? formatDateInput(meal.recurrence_end_date) : ''}"></yuvomi-datepicker>
-      <p class="form-hint">${t('meals.recurrenceUntilHint')}</p>
-    </div>` : '') : `
+    ${isEdit ? '' : `
     <div class="meal-recurrence-option">
       <label class="toggle">
         <input type="checkbox" id="modal-repeat-weekly">
@@ -2378,18 +2502,34 @@ function buildModalContent({ mode, date, mealType, meal, fromSlot = false, recip
   // fuehrt jetzt der Name (mit den Rezeptvorschlaegen des Autocompletes), Tag
   // und Mahlzeit stehen als ruhige, weiter editierbare Zeile darunter. Ohne
   // Slot (FAB, Kurzbefehl) bleibt "erst wann, dann was".
-  return `
-    ${fromSlot && !isEdit ? nameHtml + whenHtml : whenHtml + nameHtml}
-    ${cookPickerHtml(isEdit ? meal : null)}
-
-    <div class="form-group">
-      <label class="form-label">${t('meals.ingredientsLabel')}</label>
+  // ZUTATEN BEIM BEARBEITEN EINGEKLAPPT, MIT ZAEHLER (R17 Schritt 5). Eine
+  // Zutatenzeile misst mobil 104px; mit sechs Zutaten lag alles Weitere zwei
+  // Bildschirme tiefer. Wer eine bestehende Mahlzeit oeffnet, aendert meist
+  // Tag, Koch oder Umfang - die Zutaten stehen hinter dem geteilten Aufklapper,
+  // der ihre Zahl nennt (wireIngredientCount haelt sie nach). Beim Anlegen und
+  // ohne Zutaten bleibt der Abschnitt offen wie bisher: dort IST er die Arbeit.
+  const ingCount = isEdit ? (meal.ingredients?.length ?? 0) : 0;
+  const ingFieldsHtml = `
       <div class="ingredient-list" id="ingredient-list">${ingRows}</div>
       <button class="btn btn--secondary add-ingredient-btn" id="add-ingredient-btn" type="button">
         <i data-lucide="plus" class="icon-md" aria-hidden="true"></i>
         ${t('meals.addIngredient')}
-      </button>
-    </div>
+      </button>`;
+  const ingredientsHtml = ingCount > 0
+    ? `<div class="meal-ingredients-fold" id="modal-ingredients-fold">
+      ${advancedSection(ingFieldsHtml, { label: ingredientsFoldLabel(ingCount) })}
+    </div>`
+    : `
+    <div class="form-group">
+      <label class="form-label">${t('meals.ingredientsLabel')}</label>${ingFieldsHtml}
+    </div>`;
+
+  return `
+    ${scopeHtml}
+    ${fromSlot && !isEdit ? nameHtml + whenHtml : whenHtml + nameHtml}
+    ${cookPickerHtml(isEdit ? meal : null)}
+
+    ${ingredientsHtml}
 
     ${advancedSection(advancedFieldsHtml, { open: advancedOpen })}
 
@@ -2490,14 +2630,12 @@ async function saveModal(overlay) {
       if (scope === 'series') {
         // Ganze Serie: Template + alle Instanzen inkl. Zutaten serverseitig aktualisieren.
         //
-        // DER KOCH GEHT NUR MIT, WENN ER IM DIALOG GEAENDERT WURDE (#1679). Der
-        // Server schreibt einen mitgeschickten Koch auf die Vorlage und auf
-        // JEDE Mahlzeit der Serie; ein fehlendes Feld laesst alle, wie sie
-        // sind. Der Dialog zeigt den Koch DIESER Mahlzeit - schickte er ihn
-        // immer mit, ueberschriebe eine Titelaenderung an der Serie still jede
-        // einzeln getroffene Wahl ("diese Woche kocht Ben") mit ihm.
+        // DER KOCH GEHT NUR MIT, WENN IHN JEMAND IN DIESEM DIALOG GEWAEHLT HAT
+        // (#1679, `cookTouched` - siehe wireCookPicker()). Der Server schreibt
+        // einen mitgeschickten Koch auf die Vorlage und auf JEDE Mahlzeit der
+        // Serie; ein fehlendes Feld laesst alle, wie sie sind.
         const seriesBody = { meal_type, title, notes, recipe_url, recipe_id, ingredients, repeat_until };
-        if (cook_user_id !== (meal.cook_user_id ?? null)) seriesBody.cook_user_id = cook_user_id;
+        if (state.modal.cookTouched) seriesBody.cook_user_id = cook_user_id;
         await api.put(`/meals/${meal.id}?scope=series`, seriesBody);
       } else {
         // Nur diese Instanz
@@ -2737,6 +2875,7 @@ export const __test = {
   mealCookMarkHtml,
   cookPickerHtml,
   loadMembers,
+  showCookForScope,
 };
 
 // --------------------------------------------------------

@@ -34,6 +34,7 @@ import { openModal, closeModal, confirmModal, refocusAfterRender } from '/compon
 import { renderAvatarStack } from '/components/user-multi-select.js';
 import { isSoloHousehold } from '/utils/household.js';
 import { toggleRegion, durationToken, easingToken } from '/utils/ux.js';
+import { swapContent } from '/utils/content-swap.js';
 import { findSettingsLeaf } from '/settings/registry.js';
 import {
   WIDGET_SIZE_PRESETS, WIDGET_SIZE_OPTIONS,
@@ -116,7 +117,7 @@ const noteCategoryScope = (category) => t(
 
 const ONBOARDING_KEY = 'yuvomi-onboarded';
 // Der Dialog benennt sich ueber seinen Schritt-Titel; die id steht hier, weil
-// beide Seiten der Verknuepfung sie brauchen (Overlay und `renderStep()`).
+// beide Seiten der Verknuepfung sie brauchen (Overlay und `fillStep()`).
 const ONBOARDING_TITLE_ID = 'onboarding-step-title';
 const APP_NAME_STORAGE_KEY = 'yuvomi-app-name';
 const CUSTOMIZE_HINT_KEY = 'yuvomi-dash-customize-hint';
@@ -284,7 +285,7 @@ function showOnboarding(appContainer, onDone) {
   overlay.setAttribute('role', 'dialog');
   overlay.setAttribute('aria-modal', 'true');
   // EIN DIALOG OHNE NAMEN ist fuer den Screenreader nur „Dialog". Der Name
-  // kommt aus dem Schritt-Titel, den `renderStep()` ohnehin baut; die id ist
+  // kommt aus dem Schritt-Titel, den `fillStep()` ohnehin baut; die id ist
   // deshalb konstant und wandert mit dem Austausch des Karteninhalts mit
   // (WCAG 4.1.2). `aria-modal` versteckt alles dahinter - was bleibt, muss
   // sich also selbst benennen.
@@ -295,7 +296,7 @@ function showOnboarding(appContainer, onDone) {
     if (event.key !== 'Tab') return;
     // Fokus-Trap (WCAG 2.4.3/2.1.2): der Erststart-Dialog darf den Fokus nicht
     // auf die verdeckte Seite dahinter entlassen. Fokussierbare Elemente je
-    // Tab-Druck neu ermitteln, da renderStep() den Karteninhalt austauscht.
+    // Tab-Druck neu ermitteln, da fillStep() den Karteninhalt austauscht.
     const focusables = overlay.querySelectorAll(
       'button, [href], input, [tabindex]:not([tabindex="-1"])',
     );
@@ -312,13 +313,38 @@ function showOnboarding(appContainer, onDone) {
   };
   document.addEventListener('keydown', onKeydown);
 
-  function renderStep() {
+  /* DIE KARTE STEHT, IHR INHALT WECHSELT (R17, Bewegung). Bisher baute jeder
+   * Schritt die Karte neu: sie sprang mit der Textlaenge (gemessen 327 ->
+   * 353px) und die Knoepfe wanderten unter dem Zeiger weg. Jetzt bleibt die
+   * Karte derselbe Knoten, `.onboarding-step` darin traegt den Schritt und
+   * tauscht ueber swapContent() in Leserichtung (utils/content-swap.js) - und
+   * er ist so hoch wie der hoechste der Schritte (`fitSteps()`, gemessen
+   * statt geraten: die Texte sind je Sprache verschieden lang). */
+  const card = document.createElement('div');
+  card.className = 'onboarding-card';
+  const stepEl = document.createElement('div');
+  stepEl.className = 'onboarding-step';
+  card.appendChild(stepEl);
+  overlay.appendChild(card);
+
+  function fitSteps() {
+    stepEl.style.minBlockSize = '';
+    const shown = current;
+    let tallest = 0;
+    for (current = 0; current < steps.length; current += 1) {
+      fillStep();
+      tallest = Math.max(tallest, stepEl.offsetHeight);
+    }
+    current = shown;
+    fillStep();
+    if (tallest > 0) stepEl.style.minBlockSize = `${tallest}px`;
+  }
+
+  /** Baut den Schritt `current` in die stehende Karte; gibt seinen Hauptknopf zurueck. */
+  function fillStep() {
     const step = steps[current];
     const isLast = current === steps.length - 1;
-    overlay.replaceChildren();
-
-    const card = document.createElement('div');
-    card.className = 'onboarding-card';
+    stepEl.replaceChildren();
 
     const icon = document.createElement('i');
     icon.dataset.lucide = step.icon;
@@ -365,23 +391,24 @@ function showOnboarding(appContainer, onDone) {
     nextBtn.addEventListener('click', () => {
       if (isLast) { finish(); return; }
       current++;
-      renderStep();
-      if (window.lucide) window.lucide.createIcons({ el: overlay });
-      nextBtn.focus();
+      // Der Fokus geht an den NEUEN Hauptknopf (der alte ist mit dem Schritt
+      // gegangen) - synchron nach dem Tausch, die Blende sperrt nichts.
+      let next = null;
+      swapContent(stepEl, () => { next = fillStep(); }, { direction: 1 });
+      next?.focus();
     });
 
     if (!isLast) actions.appendChild(skipBtn);
     actions.appendChild(nextBtn);
-    card.appendChild(icon);
-    card.appendChild(title);
-    card.appendChild(body);
-    card.appendChild(dots);
-    card.appendChild(progress);
-    card.appendChild(actions);
-    overlay.appendChild(card);
+    stepEl.appendChild(icon);
+    stepEl.appendChild(title);
+    stepEl.appendChild(body);
+    stepEl.appendChild(dots);
+    stepEl.appendChild(progress);
+    stepEl.appendChild(actions);
 
-    if (window.lucide) window.lucide.createIcons({ el: overlay });
-    setTimeout(() => nextBtn.focus(), 50);
+    if (window.lucide) window.lucide.createIcons({ el: stepEl });
+    return nextBtn;
   }
 
   let finished = false;
@@ -409,8 +436,10 @@ function showOnboarding(appContainer, onDone) {
     onDone?.();
   }
 
-  renderStep();
   appContainer.appendChild(overlay);
+  // Messen kann erst ein Knoten im Baum; danach steht Schritt 1.
+  fitSteps();
+  setTimeout(() => stepEl.querySelector('.btn--primary')?.focus(), 50);
   // Die Zurueck-Geste beendet die Einfuehrung, statt hinter ihr zu navigieren
   // (#871). `finish()` ist der EINE Weg hinaus und merkt sich das auch.
   attachOverlay(overlay, finish);
@@ -937,7 +966,10 @@ function widgetHeader(widgetId, title, count, linkHref, linkLabel, sealSlug = nu
   // Guard „wer ein Markensiegel baut, benennt eine Herkunft" liest ein Fenster
   // von acht Zeilen um das `module-seal` herum, und der Link-Block dazwischen
   // hat sie beim ersten Anlauf genau daraus herausgeschoben.
-  const slug = sealSlug ?? ((linkHref || '').split('/')[1] || '');
+  // Query und Hash gehoeren nicht zum Slug: `/budget?tab=budget` ergab
+  // `var(--module-budget?tab=budget, ...)`, eine ungueltige Deklaration - das
+  // Budget-Siegel stand im geerbten Violett der Uebersicht (R18).
+  const slug = sealSlug ?? ((linkHref || '').split(/[?#]/)[0].split('/')[1] || '');
   const seal = slug ? ` style="--seal-accent: var(--module-${slug}, var(--color-accent))"` : '';
   // Vollton statt Toenung (Widget-Kopf-Kur 2026-08-17): das Siegel ist seit
   // dem Rueckbau des Absenderbands der EINZIGE Farbtraeger des Kopfes. Die
@@ -1050,17 +1082,22 @@ const MEAL_SORT_TIME = { breakfast: '08:00', lunch: '12:30', snack: '15:30', din
  */
 /**
  * Der Koch einer Mahlzeit als Person (#1679) - oder null. `todayMeals` traegt
- * ihn flach neben der Mahlzeit (`cook_user_id`, `cook_name`, `cook_color`,
- * `cook_avatar`); Avatar-Stapel und Ueberlappungszeichen lesen eine Person mit
- * `display_name`, `color` und `avatar_data`.
+ * ihn flach neben der Mahlzeit (`cook_user_id`, `cook_name`, `cook_color`);
+ * Avatar-Stapel und Ueberlappungszeichen lesen eine Person mit `display_name`,
+ * `color` und `avatar_data`.
+ *
+ * DAS BILD KOMMT AUS `users` DER DASHBOARD-ANTWORT, nicht aus der Mahlzeit:
+ * dieselbe Liste, aus der "Wer heute dran ist" seine Gesichter nimmt - sie
+ * geht mit jeder Antwort von `/dashboard` mit, auch an ein Wandtablett. Ein
+ * Koch, der kein Mitglied (mehr) ist, steht dort nicht und zeigt Initialen.
  */
-function mealCookPerson(meal) {
+function mealCookPerson(meal, users) {
   if (!meal?.cook_user_id) return null;
   return {
     id: meal.cook_user_id,
     display_name: meal.cook_name ?? '',
     color: meal.cook_color ?? null,
-    avatar_data: meal.cook_avatar ?? null,
+    avatar_data: (Array.isArray(users) ? users : []).find((user) => user.id === meal.cook_user_id)?.avatar_data ?? null,
   };
 }
 
@@ -1147,7 +1184,7 @@ function buildTodayProgram(data, { includeTasks = true, includeCalendar = true, 
       // Wer kocht (#1679): dasselbe Ueberlappungszeichen wie bei Termin und
       // Aufgabe - "wen geht es an" ist bei einer Mahlzeit der Koch. Ohne Koch
       // bleibt die Zeile, wie sie war.
-      who: mealCookPerson(highlights.meal),
+      who: mealCookPerson(highlights.meal, data?.users),
       priority: 80,
       open: false,
     });
@@ -1631,7 +1668,7 @@ function renderCountdowns(allItems, size, total = null) {
   </div>`;
 }
 
-function renderTodayMeals(meals, visibleMealTypes = MEAL_ORDER) {
+function renderTodayMeals(meals, visibleMealTypes = MEAL_ORDER, users = []) {
   const mealLabels = MEAL_LABELS();
   const safeMeals = Array.isArray(meals) ? meals : [];
   const slots = normalizeVisibleMealTypes(visibleMealTypes).map((type) => {
@@ -1641,7 +1678,7 @@ function renderTodayMeals(meals, visibleMealTypes = MEAL_ORDER) {
     // waehrend der Titel darunter seine zwei Zeilen fuer das Gericht braucht.
     // Der Name geht als sr-only-Satz mit: die Scheibe traegt ihn sonst nur als
     // `title`. Ohne Koch steht nichts da, der Slot sieht aus wie bisher.
-    const cook = mealCookPerson(meal);
+    const cook = mealCookPerson(meal, users);
     const cookMark = cook
       ? `<span class="meal-slot__cook">${renderAvatarStack([cook], { size: 20, maxVisible: 1 })}<span class="sr-only">${esc(t('meals.cookNamed', { name: cook.display_name }))}</span></span>`
       : '';
@@ -2354,7 +2391,7 @@ function metricTileFor(id, data, currency, sheetSpeaks = new Set()) {
       // Die Zahl offener Freigaben steht an GENAU EINER Stelle: im
       // Belohnungen-Widget (dann filtert `shown` diese Kachel weg), sonst im
       // Heute-Blatt, und nur wenn keines von beiden sie traegt, hier.
-      const pending = r.view === 'approver' ? Number(r.pending) || 0 : 0;
+      const pending = r.view === 'approver' ? (Number(r.pending) || 0) + (Number(r.moneyPending) || 0) : 0;
       if (!pending || sheetSpeaks.has('approvals')) return null;
       return {
         id, route, icon: widgetIcon('rewards'), label: t('nav.rewards'),
@@ -2692,7 +2729,9 @@ function renderRewardsSelf(me, rewards, spans) {
             </li>`).join('')}
         </ul>
       </div>` : '';
-  const pending = Number(rewards.pending) || 0;
+  // Praemien- und Geld-Anfragen (#1734) zusammen: der Server fuehrt sie
+  // getrennt, die Kachel sagt, wie viele warten.
+  const pending = (Number(rewards.pending) || 0) + (Number(rewards.moneyPending) || 0);
   return `
     <div class="widget__body rewards-widget rewards-widget--self">
       <div class="rewards-self">
@@ -2726,7 +2765,7 @@ function renderRewardsFamily(members, rewards, spans) {
         </span>
       </li>`).join('');
   const more = sorted.length - shown.length;
-  const pending = rewards.view === 'approver' ? Number(rewards.pending) || 0 : 0;
+  const pending = rewards.view === 'approver' ? (Number(rewards.pending) || 0) + (Number(rewards.moneyPending) || 0) : 0;
   return `
     <div class="widget__body rewards-widget">
       <ul class="rewards-widget__members">${rows}</ul>
@@ -2928,7 +2967,7 @@ function renderFastingWidget(fasting) {
   if (!fasting) throw new Error('fasting widget slice failed to load');
   const active = fasting.active;
   const writable = moduleAccess('health') === 'write';
-  return `<div class="widget widget--fasting">${widgetHeader('fasting', t('health.fasting.title'), null)}
+  return `<div class="widget widget--fasting">${widgetHeader('fasting', t('health.fasting.title'), null, null, null, 'health')}
     <div class="fasting-widget">
       <div class="fasting-dial fasting-dial--segmented" data-fasting-progress><div data-fasting-segments></div><div class="fasting-dial__content">
         <span class="fasting-widget__meta" data-fasting-clock-label></span>
@@ -3918,6 +3957,19 @@ function renderDashboardOverview(user, editing = false, weather = null, scope = 
   // bei initFab) kein Anlegen in Module, deren Daten nicht geladen sind.
   const { followsDefault = true, canPublish = false, offerNew = true } = scope;
   const dateLabel = mastheadDateLabel();
+  // EIN WANDTABLETT BEKOMMT ZWEI KNOEPFE NICHT, WEIL BEIDE NUR SCHEITERN
+  // KOENNEN (#1808). "Anpassen" endet in `PUT /preferences`, und ein Display
+  // schreibt genau zwei Routen (`DISPLAY_WRITE_ROUTES`, server/display-scopes.js)
+  // - die gehoert nicht dazu, mit Absicht: wer an der Kuechenwand vorbeigeht,
+  // hat das Geraet bedient, und "aendert keine Einstellungen" ist seit #1209
+  // zugesagt. Der Melder ordnete sein Brett um, tippte "Fertig" und bekam eine
+  // 403 - die Oberflaeche bot eine Handlung an, die der Server zu Recht
+  // verweigert. Die Suche daneben ist derselbe Fall (`search` steht nicht in
+  // DISPLAY_SCOPES); die Seitenleiste laesst sie am Display schon weg
+  // (router.js), dieser Kopf tat es nicht. Das Brett eines Tabletts ordnet ein
+  // Administrator ueber die Haushaltsvorgabe: ein Display speichert nie etwas
+  // Eigenes und folgt ihr deshalb immer.
+  const onDisplay = user?.access_scope === 'display';
 
   return `
     <section class="dashboard-overview">
@@ -3977,21 +4029,21 @@ function renderDashboardOverview(user, editing = false, weather = null, scope = 
                ein sechstes Ziel (gemessen: 52px je Slot, "Übersicht" und
                "Aufgaben" brechen), also steht sie hier, wo man ankommt - ein
                Icon-Knopf wie die zwei daneben. -->
-          <button class="dashboard-icon-btn" id="dashboard-search"
+          ${onDisplay ? '' : `<button class="dashboard-icon-btn" id="dashboard-search"
                   aria-label="${t('nav.search')}"
                   title="${t('nav.search')}" aria-haspopup="dialog">
             <i data-lucide="search" aria-hidden="true"></i>
-          </button>
+          </button>`}
           <button class="dashboard-icon-btn" id="dashboard-wall-enter"
                   aria-label="${t('dashboard.wallEnter')}"
                   title="${t('dashboard.wallEnter')}">
             <i data-lucide="maximize-2" aria-hidden="true"></i>
           </button>
-          <button class="dashboard-icon-btn" id="dashboard-customize-btn"
+          ${onDisplay ? '' : `<button class="dashboard-icon-btn" id="dashboard-customize-btn"
                   aria-label="${t('dashboard.customize')}"
                   title="${t('dashboard.customize')}">
             <i data-lucide="settings-2" aria-hidden="true"></i>
-          </button>
+          </button>`}
           ${offerNew && onDesktopStage() ? renderNewPill() : ''}`}
         </div>
       </div>
@@ -4630,7 +4682,7 @@ function renderDashboardLayout(cfg, data, weather, currency, { editing = false, 
     waste: (size) => renderWasteWidget(data.waste, size),
     pantry: (size) => renderPantryWidget(data.pantryExpiring, size),
     family: () => renderFamilyWidget(data.users ?? [], data, { manageHref: familyManage }),
-    meals: () => renderTodayMeals(data.todayMeals ?? [], visibleMealTypes),
+    meals: () => renderTodayMeals(data.todayMeals ?? [], visibleMealTypes, data.users),
     notes: (size) => renderPinnedNotes(data.pinnedNotes ?? [], size, data.notesTotal),
     shopping: () => renderShoppingLists(data.shoppingLists ?? [], data.shoppingOpenCount, data.shoppingOpenLists),
     // Hier ankommen heisst eingerichtet (`isWidgetModuleEnabled`); fehlt das
@@ -6181,7 +6233,10 @@ export async function render(container, { user, signal: routeSignal = null } = {
     const [dashRes, weatherRes, prefsRes, remindersRes] = await Promise.all([
       api.get(layoutHintQuery('/dashboard')),
       api.get(`/weather?lang=${encodeURIComponent(getLocale())}`).catch(() => ({ data: null })),
-      api.get('/preferences').catch(() => ({ data: {} })),
+      // Beim Start hat der Router dieselbe Antwort schon unterwegs und reicht
+      // sie herein (utils/start-handoff.js) - sonst zwei `/preferences` je
+      // Kaltstart. Danach gibt es nichts mehr abzuholen, und die Seite fragt selbst.
+      (window.yuvomi?.takeStartPreferences?.() ?? api.get('/preferences')).catch(() => ({ data: {} })),
       loadPendingReminders(),
     ]);
     // Ueberholt oder verlassen, waehrend die Antworten unterwegs waren (#977):

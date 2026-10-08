@@ -13,6 +13,8 @@ import { eachRule } from './css-rules.js';
 // /i18n.js wird durch test-browser-loader.mjs gemockt (--loader Flag)
 const {
   wireBlurValidation,
+  validateAll,
+  collapseEmptyBody,
   btnSuccess,
   btnError,
   focusRestoreTarget,
@@ -245,9 +247,10 @@ test('wireBlurValidation: registriert blur-Listener auf required inputs', () => 
   assert.equal(typeof input._listeners['blur'], 'function');
 });
 
-test('wireBlurValidation: blur mit leerem Wert setzt form-field--error', () => {
+test('wireBlurValidation: ein beschriebenes und wieder geleertes Feld ruegt beim Verlassen', () => {
   const input = makeInput({ value: '' });
   wireBlurValidation(makeContainer([input]));
+  input._listeners['input']();
   input._listeners['blur']();
   assert.ok(input._field._classes.has('form-field--error'));
   assert.ok(!input._field._classes.has('form-field--valid'));
@@ -266,6 +269,7 @@ test('wireBlurValidation: blur mit gültigem Wert setzt form-field--valid', () =
 test('wireBlurValidation: Whitespace-only gilt als leer → form-field--error', () => {
   const input = makeInput({ value: '   ' });
   wireBlurValidation(makeContainer([input]));
+  input._listeners['input']();
   input._listeners['blur']();
   assert.ok(input._field._classes.has('form-field--error'));
   assert.equal(input._attrs['aria-invalid'], 'true');
@@ -286,6 +290,7 @@ test('wireBlurValidation: legt Fehlermeldung an und verknüpft sie per aria-desc
   const input = makeInput({ value: '' });
   input.id = 'cardav-name';
   wireBlurValidation(makeContainer([input]));
+  input._listeners['input']();
   input._listeners['blur']();
 
   const errorEl = input._field._children.find((c) => c.className === 'form-field__error');
@@ -299,6 +304,7 @@ test('wireBlurValidation: legt die Meldung nur einmal an', () => {
   const input = makeInput({ value: '' });
   input.id = 'cardav-url';
   wireBlurValidation(makeContainer([input]));
+  input._listeners['input']();
   input._listeners['blur']();
   input._listeners['blur']();
   const errors = input._field._children.filter((c) => c.className === 'form-field__error');
@@ -312,8 +318,117 @@ test('wireBlurValidation: schlanker Container ohne DOM-API bleibt fehlerfrei', (
   input.closest = () => input._field;
   input.parentElement = input._field;
   wireBlurValidation(makeContainer([input]));
+  input._listeners['input']();
   assert.doesNotThrow(() => input._listeners['blur']());
   assert.ok(input._field._classes.has('form-field--error'));
+});
+
+// R18: EIN UNBERUEHRTES PFLICHTFELD RUEGT NICHT. Im Dialog "Neuer Termin" stand
+// "Dieses Feld ist erforderlich." am Titel, sobald der Fokus das leere Feld
+// zum ersten Mal verliess - beim ersten Tab, beim Griff zum Datumswaehler.
+test('wireBlurValidation: ein unberuehrtes leeres Feld bleibt beim Verlassen still', () => {
+  const input = makeInput({ value: '' });
+  wireBlurValidation(makeContainer([input]));
+  input._listeners['blur']();
+  assert.ok(!input._field._classes.has('form-field--error'), 'kein Fehlerrahmen');
+  assert.equal(input._attrs['aria-invalid'], undefined, 'kein aria-invalid');
+  assert.equal(input._field._children.length, 0, 'keine Meldung angelegt');
+});
+
+test('validateAll: beim Absenden ruegt auch das unberuehrte Feld - und danach jedes Verlassen', () => {
+  const input = makeInput({ value: '' });
+  input.matches = () => true;
+  const container = makeContainer([input]);
+  wireBlurValidation(container);
+  assert.equal(validateAll(container), false);
+  assert.ok(input._field._classes.has('form-field--error'), 'das Absenden meldet das leere Pflichtfeld');
+  assert.equal(input._attrs['aria-invalid'], 'true');
+  // Ein geruegtes Feld bleibt geruegt, wenn man es nur verlaesst.
+  input._listeners['blur']();
+  assert.ok(input._field._classes.has('form-field--error'));
+  // Und die Eingabe entwarnt sofort.
+  input.value = 'Zahnarzt';
+  input._listeners['input']();
+  assert.ok(!input._field._classes.has('form-field--error'));
+  assert.ok(input._field._classes.has('form-field--valid'));
+});
+
+test('ein unberuehrtes Feld MIT Wert wird beim Verlassen weiter als gueltig markiert', () => {
+  const input = makeInput({ value: 'Vorbelegt' });
+  wireBlurValidation(makeContainer([input]));
+  input._listeners['blur']();
+  assert.ok(input._field._classes.has('form-field--valid'));
+});
+
+test('die Meldung zieht auf (expandIn), einmal je Erscheinen - nicht bei jedem Verlassen', () => {
+  const seen = [];
+  globalThis.__expandIn = (el) => seen.push(el);
+  try {
+    const input = makeInput({ value: '' });
+    wireBlurValidation(makeContainer([input]));
+    input._listeners['input']();
+    input._listeners['blur']();
+    assert.equal(seen.length, 1, 'beim Erscheinen zieht die Meldung auf');
+    assert.equal(seen[0].className, 'form-field__error');
+    input._listeners['blur']();
+    assert.equal(seen.length, 1, 'eine stehende Meldung zieht nicht erneut auf');
+    input.value = 'x';
+    input._listeners['input']();
+    input.value = '';
+    input._listeners['input']();
+    input._listeners['blur']();
+    assert.equal(seen.length, 2, 'nach der Entwarnung erscheint sie wieder mit Bewegung');
+  } finally {
+    delete globalThis.__expandIn;
+  }
+});
+
+// R18: EINE RUECKFRAGE OHNE ERKLAERTEXT HAT KEINEN RUMPF. Nach dem Anheben der
+// Fusszeile blieben im Rumpf nur die Leerzeichen des Template-Literals - und
+// 32px Polster zwischen zwei Haarlinien (Abmelden).
+function makeBody({ children = [], text = '' } = {}) {
+  const body = {
+    children,
+    textContent: text,
+    emptied: 0,
+    replaceChildren() { body.emptied += 1; body.textContent = ''; body.children = []; },
+  };
+  return body;
+}
+
+test('collapseEmptyBody: ein Rumpf aus Leerzeichen wird wirklich leer', () => {
+  const body = makeBody({ text: '\n        \n      ' });
+  const panel = { querySelector: (sel) => (sel === '.modal-panel__body' ? body : null) };
+  assert.equal(collapseEmptyBody(panel), true);
+  assert.equal(body.emptied, 1);
+  assert.equal(body.textContent, '', ':empty greift nur ohne jeden Textknoten');
+});
+
+test('collapseEmptyBody: Text oder ein Kind bleiben stehen', () => {
+  for (const body of [makeBody({ text: 'Erklaerung' }), makeBody({ children: [{}], text: '' })]) {
+    const panel = { querySelector: () => body };
+    assert.equal(collapseEmptyBody(panel), false);
+    assert.equal(body.emptied, 0);
+  }
+  assert.equal(collapseEmptyBody({ querySelector: () => null }), false);
+});
+
+test('mountFooter leert den Rumpf nach dem Anheben, und das Stylesheet nimmt ihn aus dem Fluss', () => {
+  const src = readFileSync(fileURLToPath(new URL('../public/components/modal.js', import.meta.url)), 'utf8');
+  const fn = src.slice(src.indexOf('export function mountFooter'), src.indexOf('export function collapseEmptyBody'));
+  assert.match(fn, /panel\.appendChild\(bodyFooter\);[\s\S]*collapseEmptyBody\(panel\);/,
+    'erst anheben, dann pruefen - vorher ist die Fusszeile noch ein Kind des Rumpfs');
+
+  const rules = [...eachRule(readFileSync(fileURLToPath(new URL('../public/styles/layout.css', import.meta.url)), 'utf8'))];
+  const gone = rules.find((r) => r.selector === '.modal-panel__body:empty');
+  assert.ok(gone, 'die Regel fuer den leeren Rumpf fehlt');
+  assert.match(gone.body, /display:\s*none/);
+  const line = rules.find((r) => /\.modal-panel__body:empty\s*~\s*\.modal-panel__footer/.test(r.selector));
+  assert.ok(line, 'der Fuss unter einem leeren Rumpf gibt seine Linie ab');
+  assert.match(line.body, /border-top:\s*none/);
+  // Die Linie darf nicht von einer staerkeren Regel zurueckkommen: die Basis am
+  // angehobenen Fuss ist (0,2,0), die Ausnahme muss darueber liegen.
+  assert.ok((line.selector.match(/\.[\w-]+|:empty/g) ?? []).length >= 3, line.selector);
 });
 
 // --------------------------------------------------------
@@ -1296,7 +1411,13 @@ test('Sheet-Grammatik: das Mehr-Blatt zieht ueber denselben Helfer wie der Dialo
   assert.doesNotMatch(router, /clientY - _touchStartY > 60/, 'die alte Geste (erst bei touchend, ab 60px) ist weg');
   const more = [...eachRule(layout)].find((r) => r.selector === '.more-sheet' && !r.at.length)?.body ?? '';
   assert.match(more, /translate var\(--duration-lg\) var\(--ease-out\)/, 'Rueckfedern mit Token-Dauer und -Kurve');
-  assert.match(more, /border-radius:\s*var\(--radius-lg\)/, 'Radius des Dialog-Sheets');
+  // Derselbe Radius wie das Dialog-Sheet - aus dessen Regel gelesen, nicht als
+  // Literal: bis R18 stand hier `--radius-lg`, und der Guard waere beim Wechsel
+  // BEIDER Flaechen auf `--radius-xl` nur am Mehr-Blatt rot geworden.
+  const dialog = [...eachRule(layout)].find((r) => r.selector === '.modal-panel' && !r.at.length)?.body ?? '';
+  const radius = (body) => body.match(/border-radius:\s*([^;]+)/)?.[1].trim();
+  assert.ok(radius(dialog), 'das Dialog-Sheet traegt einen Radius');
+  assert.equal(radius(more), radius(dialog), 'Radius des Dialog-Sheets');
 });
 
 /* DER ERSTFOKUS NIMMT KEINEN SPAETER GESETZTEN FOKUS WEG (#1156).
@@ -1769,4 +1890,157 @@ test('A2 P1-2: in jedem Dialogfuss steht Loeschen am Anfang, Abbrechen und Prima
   assert.deepEqual(notFirst, [], 'Loeschen ist nicht der erste Knopf im Fuss - die Regel schoebe Abbrechen mit nach links');
   assert.deepEqual(notStart, [], 'hier steht Loeschen neben Abbrechen am Ende statt am Anfang');
   assert.ok(globalRule, 'die eine Regel in layout.css fehlt - jeder neue Fuss muesste wieder selbst schieben');
+});
+
+// --------------------------------------------------------
+// #1775: der Verwerfen-Schutz liest Haken mit
+// --------------------------------------------------------
+// serializeForm() verglich je Feld `value`. Eine Checkbox behaelt ihren Wert
+// ("on"), ob gesetzt oder nicht - wer NUR einen Haken umlegte ("Aktiv" im
+// Schichtplan, die Feld-Schalter einer Schichtart) und schloss, verlor die
+// Aenderung ohne Rueckfrage. Gefahren wird die echte Funktion an Feldern, die
+// tragen, was sie liest.
+test('#1775: der Schnappschuss des Verwerfen-Schutzes unterscheidet gesetzte von ungesetzten Haken', () => {
+  const { serializeForm } = modalTest;
+  const field = (props) => ({ name: '', id: '', value: '', type: 'text', checked: false, ...props });
+  const form = (fields) => ({ querySelectorAll: () => fields });
+
+  // Checkbox: derselbe Wert, anderer Zustand.
+  const active = field({ type: 'checkbox', id: 'pattern-active', value: 'on', checked: true });
+  const before = serializeForm(form([field({ name: 'name', value: 'Frueh' }), active]));
+  active.checked = false;
+  const after = serializeForm(form([field({ name: 'name', value: 'Frueh' }), active]));
+  assert.notEqual(after, before, 'ein umgelegter Haken ist eine Aenderung');
+  active.checked = true;
+  assert.equal(serializeForm(form([field({ name: 'name', value: 'Frueh' }), active])), before,
+    'zurueckgelegt ist es wieder der Stand vom Oeffnen - keine Rueckfrage');
+
+  // Radios: die Gruppe teilt den Namen, die Wahl steht nur in `checked`.
+  const all = field({ type: 'radio', name: 'cal-scope', value: 'all', checked: true });
+  const mine = field({ type: 'radio', name: 'cal-scope', value: 'mine', checked: false });
+  const radiosBefore = serializeForm(form([all, mine]));
+  all.checked = false; mine.checked = true;
+  assert.notEqual(serializeForm(form([all, mine])), radiosBefore, 'eine andere Wahl in der Radiogruppe ist eine Aenderung');
+
+  // Haken ohne Namen und ohne id (die Feld-Schalter einer Schichtart tragen
+  // nur ein data-Attribut): der Zustand zaehlt trotzdem.
+  const overlay = field({ type: 'checkbox', value: 'on', checked: false });
+  const unnamedBefore = serializeForm(form([overlay]));
+  overlay.checked = true;
+  assert.notEqual(serializeForm(form([overlay])), unnamedBefore);
+
+  // Was kein Haken ist, bleibt, wie es war: `checked` eines Textfelds, eines
+  // Selects oder eines verborgenen Felds geht nicht in den Vergleich ein.
+  for (const type of ['text', 'hidden', 'number', 'select-one', 'textarea']) {
+    const plain = field({ type, name: 'f', value: 'x', checked: false });
+    const plainBefore = serializeForm(form([plain]));
+    assert.equal(plainBefore, 'f=x', `${type}: Name und Wert, sonst nichts`);
+    plain.checked = true;
+    assert.equal(serializeForm(form([plain])), plainBefore);
+  }
+});
+
+// Ein Blatt, dessen Haken SOFORT speichern, hat nichts zu verwerfen - mit dem
+// Schnappschuss oben fragte sein Schliessen sonst nach einem Verlust, den es
+// nicht gibt. Die Teilnehmer der Belohnungen sind so ein Blatt (PUT je Haken).
+test('#1775: das Teilnehmer-Blatt der Belohnungen ist ein Ansichtsblatt (dirtyGuard: false)', () => {
+  const rewards = readFileSync(fileURLToPath(new URL('../public/pages/rewards.js', import.meta.url)), 'utf8');
+  const start = rewards.indexOf("title: t('rewards.manageParticipants'),");
+  assert.ok(start > 0, 'das Blatt heisst noch so');
+  const sheet = rewards.slice(start, rewards.indexOf('async function openMemberDetail', start));
+  assert.match(sheet, /cb\.addEventListener\('change', async \(\) => \{[\s\S]*?await api\.put\(`\/rewards\/participants\//, 'Vorbedingung: der Haken speichert sofort');
+  assert.match(sheet.replace(/^\s*\/\/.*$/gm, ''), /^\s*dirtyGuard: false,$/m);
+});
+
+// --------------------------------------------------------
+// #1784: die Dirty-Basis je Element aendert nichts fuer Dialoge, die nie tauschen
+// --------------------------------------------------------
+
+/* AEQUIVALENZ ZUR ALTEN FASSUNG. Bis #1784 war die Basis EIN Text - der Stand
+ * von serializeForm() beim Oeffnen - und "schmutzig" hiess: der Text von jetzt
+ * ist ein anderer. Seitdem steht die Basis je Element da, damit
+ * swapFieldsKeepingDirtyBase() Felder nachtragen kann. Fuer jeden Dialog, der
+ * die Funktion nie ruft, muss isFormDirty() dasselbe sagen wie vorher: nach
+ * jedem Schritt jedes Ablaufs wird der echte Waechter gegen die alte
+ * Textfassung gehalten - und gegen das, was dort herauskommen MUSS, sonst
+ * waeren zwei gleich falsche Antworten ein gruener Test. */
+test('#1784: isFormDirty() urteilt ohne Tausch exakt wie der Textvergleich davor', () => {
+  const { serializeForm, isFormDirty, adoptOverlayForTest, releaseOverlayForTest } = modalTest;
+  const text = (name, value = '') => ({ type: 'text', name, id: '', value });
+  const box = (value, checked = false) => ({ type: 'checkbox', name: '', id: '', value, checked });
+  const radio = (value, checked = false) => ({ type: 'radio', name: 'scope', id: '', value, checked });
+
+  // Jeder Ablauf: die Felder beim Oeffnen und Schritte [was geschieht, erwartet schmutzig].
+  const ablaeufe = {
+    'leeres Formular': () => {
+      const f = [];
+      return [f, [
+        [() => {}, false],
+        [() => { f.push(text('spaet')); }, true],
+        [() => { f.pop(); }, false],
+      ]];
+    },
+    'unbenannte Felder': () => {
+      const [a, b] = [text('', 'eins'), text('', 'zwei')];
+      const f = [a, b];
+      return [f, [
+        [() => { a.value = 'zwei'; b.value = 'eins'; }, true],
+        [() => { a.value = 'eins'; b.value = 'zwei'; }, false],
+        [() => { a.value = 'eins&=zwei'; }, true],
+      ]];
+    },
+    'Checkbox und Radiogruppe': () => {
+      const [haken, alle, meine] = [box('on'), radio('all', true), radio('mine')];
+      const f = [haken, alle, meine];
+      return [f, [
+        [() => { haken.checked = true; }, true],
+        [() => { haken.checked = false; }, false],
+        [() => { alle.checked = false; meine.checked = true; }, true],
+        [() => { alle.checked = true; meine.checked = false; }, false],
+      ]];
+    },
+    'Umsortieren': () => {
+      const [a, b, c] = [text('a', '1'), text('b', '2'), text('c', '3')];
+      const f = [a, b, c];
+      return [f, [
+        [() => { f.splice(0, 3, c, a, b); }, true],
+        [() => { f.splice(0, 3, a, b, c); }, false],
+        // Zwei Zeilen mit gleichem Namen und gleichem Wert zu tauschen war nie
+        // eine Aenderung - der Text ist derselbe.
+        [() => { b.name = 'a'; b.value = '1'; }, true],
+        [() => { f.splice(0, 3, b, a, c); }, true],
+      ]];
+    },
+    'Zeile hinzu und weg': () => {
+      const [a, b] = [text('titel', 'Suppe'), text('zutat', 'Linsen')];
+      const neu = text('zutat', '');
+      const f = [a, b];
+      return [f, [
+        [() => { f.push(neu); }, true],
+        [() => { f.pop(); }, false],
+        [() => { f.splice(1, 1); }, true],
+        // Ein ANDERES Element mit demselben Namen und Wert an derselben Stelle
+        // ist fuer den Waechter dieselbe Zeile - wie im Textvergleich.
+        [() => { f.push(text('zutat', 'Linsen')); }, false],
+      ]];
+    },
+  };
+
+  for (const [name, bau] of Object.entries(ablaeufe)) {
+    const [felder, schritte] = bau();
+    const panel = { querySelectorAll: () => felder.slice() };
+    const alt = serializeForm(panel);
+    adoptOverlayForTest({ querySelector: () => panel });
+    try {
+      assert.equal(isFormDirty(panel), false, `${name}: frisch geoeffnet ist sauber`);
+      schritte.forEach(([schritt, erwartet], i) => {
+        schritt();
+        const vorher = serializeForm(panel) !== alt;
+        assert.equal(vorher, erwartet, `${name}, Schritt ${i + 1}: der Textvergleich sagt ${erwartet}`);
+        assert.equal(isFormDirty(panel), vorher, `${name}, Schritt ${i + 1}: der Waechter sagt dasselbe`);
+      });
+    } finally {
+      releaseOverlayForTest();
+    }
+  }
 });
