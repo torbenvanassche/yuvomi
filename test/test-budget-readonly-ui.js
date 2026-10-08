@@ -62,7 +62,7 @@ function withAccess(modules, fn) {
   try { return fn(); } finally { clearPermissions(); }
 }
 
-const ohneKommentare = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+const ohneKommentare = (src) => src.replace(/\r\n/g, '\n').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
 const BUDGET_CODE = ohneKommentare(readFileSync(new URL('../public/pages/budget.js', import.meta.url), 'utf8'));
 const PLANS_CODE = ohneKommentare(readFileSync(new URL('../public/pages/budget-plans.js', import.meta.url), 'utf8'));
 const ABOS_CODE = ohneKommentare(readFileSync(new URL('../public/pages/subscriptions.js', import.meta.url), 'utf8'));
@@ -1667,8 +1667,55 @@ test('Abo: the payment reminder switch defaults on and displays a saved off choi
     assert.equal(/\bdisabled\b/.test(days), reminderEnabled === false);
     const detail = zeilen(abos.subscriptionReadSections(subscription));
     assert.equal(detail['subscriptions.reminderDaysLabel'], reminderEnabled === false
-      ? 'subscriptions.disabled' : 'subscriptions.reminderMeta{"count":3}');
+      ? 'subscriptions.noReminder' : 'subscriptions.reminderMeta{"count":3}');
     const card = withAccess({ budget: 'read' }, () => abos.renderCard(subscription));
     assert.equal(card.includes('subscriptions.reminderMeta'), reminderEnabled !== false);
+    assert.equal(card.includes('subscriptions.noReminder'), reminderEnabled === false);
+    const reminderIcon = reminderEnabled === false ? 'bell-off' : 'bell';
+    assert.ok(card.includes(`data-lucide="${reminderIcon}"`));
+    const reminderRow = abos.subscriptionReadSections(subscription)
+      .find(row => row.label === 'subscriptions.reminderDaysLabel');
+    assert.equal(reminderRow.icon, reminderIcon);
+  }
+});
+
+test('Abo: saving sends the reminder switch for both new and existing subscriptions', async () => {
+  const previousApi = globalThis.__apiStub;
+  const previousWindow = globalThis.window;
+  globalThis.window = { yuvomi: { showToast() {} } };
+  setPermissions({ admin: false, modules: { budget: 'write' }, widgets: {}, capabilities: {} });
+  try {
+    for (const existing of [null, abo({ id: 42 })]) {
+      for (const checked of [false, true]) {
+        let request;
+        const capture = async (url, body) => {
+          request = { url, body };
+          throw new Error('Request captured before modal reload');
+        };
+        globalThis.__apiStub = { post: capture, put: capture };
+        const values = {
+          '#subscription-next-date': '2026-10-08', '#subscription-currency': 'EUR',
+          '#subscription-end-type': 'never', '#subscription-amount': '9.99',
+          '#subscription-name': 'Test subscription', '#subscription-cycle': 'monthly',
+          '#subscription-interval': '1', '#subscription-reminder': '3',
+        };
+        const nodes = new Map();
+        const panel = { querySelector(selector) {
+          if (!nodes.has(selector)) nodes.set(selector, { value: values[selector] ?? '', files: [],
+            checked: selector === '#subscription-reminder-enabled' ? checked : true });
+          return nodes.get(selector);
+        } };
+        await abos.saveSubscription(panel, existing);
+        assert.ok(request, 'the dialog must send a save request');
+        assert.equal(request.url, existing ? '/budget/subscriptions/42' : '/budget/subscriptions');
+        assert.equal(request.body.reminder_enabled, checked);
+        assert.equal(request.body.reminder_days, 3);
+      }
+    }
+  } finally {
+    clearPermissions();
+    globalThis.window = previousWindow;
+    if (previousApi === undefined) delete globalThis.__apiStub;
+    else globalThis.__apiStub = previousApi;
   }
 });

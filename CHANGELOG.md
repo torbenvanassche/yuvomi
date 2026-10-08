@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Payment reminders can be turned off for each subscription** (#1708, from D#1226). Turn off the reminder
+  in the subscription dialog while keeping the subscription active and its cost in the budget.
+  Editing or renewing it keeps the reminder off. Existing subscriptions keep reminders enabled.
+
 ### Changed
 
 - **Rows show fewer buttons.** Lists no longer carry a pencil and a bin on every line. Editing,
@@ -619,10 +625,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   **English (Singapore)** as the region now sets the dollar together with the local date and time
   format in one step (06/10/2026, twelve-hour clock), and amounts are grouped the way they are
   written there.
-
-- **Payment reminders can be turned off for each subscription** (#1708, from D#1226). Turn off the reminder
-  in the subscription dialog while keeping the subscription active and its cost in the budget.
-  Editing or renewing it keeps the reminder off. Existing subscriptions keep reminders enabled.
 
 - **A meal can name the member who cooks it, and the week plan and the overview show who that
   is** (#1679, from D#1661, asked by @matejhermanek for a shared flat that plans who cooks which
