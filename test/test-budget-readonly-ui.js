@@ -1676,6 +1676,31 @@ test('Abo: the payment reminder switch defaults on and displays a saved off choi
   }
 });
 
+test('Abo: changing the reminder switch disables and re-enables the days field', () => {
+  for (const subscription of [null, abo({ reminder_enabled: true }), abo({ reminder_enabled: false })]) {
+    const editor = withAccess({ budget: 'write' }, () => modalOptionen(() => abos.openSubscriptionModal(subscription)));
+    const nodes = new Map();
+    const panel = { querySelector(selector) {
+      if (!nodes.has(selector)) nodes.set(selector, Object.assign(new EventTarget(), {
+        value: '', querySelector: (child) => panel.querySelector(child), querySelectorAll: () => [],
+      }));
+      return nodes.get(selector);
+    } };
+    const toggle = panel.querySelector('#subscription-reminder-enabled');
+    const days = panel.querySelector('#subscription-reminder');
+    toggle.checked = subscription?.reminder_enabled !== false;
+    days.disabled = !toggle.checked;
+    days.value = '7';
+    editor.onSave(panel);
+    for (const checked of [!toggle.checked, toggle.checked]) {
+      toggle.checked = checked;
+      toggle.dispatchEvent(new Event('change'));
+      assert.equal(days.disabled, !checked, 'the days field follows the switch after a change');
+      assert.equal(days.value, '7', 'switching reminders preserves the chosen lead time');
+    }
+  }
+});
+
 test('Abo: saving sends the reminder switch for both new and existing subscriptions', async () => {
   const previousApi = globalThis.__apiStub;
   const previousWindow = globalThis.window;
