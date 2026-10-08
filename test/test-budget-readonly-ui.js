@@ -1652,9 +1652,6 @@ test('Plan: kein zweites „+ Budget festlegen" im Koerper - der Budget-FAB ruft
   }
 });
 
-test.after(() => miniDomAbraeumen());
-
-
 test('Abo: the payment reminder switch defaults on and displays a saved off choice', () => {
   for (const reminderEnabled of [undefined, true, false]) {
     const subscription = abo({ reminder_enabled: reminderEnabled });
@@ -1719,3 +1716,5 @@ test('Abo: saving sends the reminder switch for both new and existing subscripti
     else globalThis.__apiStub = previousApi;
   }
 });
+
+test.after(() => miniDomAbraeumen());
