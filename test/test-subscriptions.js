@@ -71,7 +71,7 @@ try {
   const legacy = new DatabaseSync(':memory:');
   try {
     legacy.exec("CREATE TABLE budget_subscriptions (id INTEGER PRIMARY KEY, reminder_days INTEGER); INSERT INTO budget_subscriptions VALUES (1, 0), (2, 5);");
-    legacy.exec(db.MIGRATIONS.find(row => row.version === 237).up);
+    legacy.exec(db.MIGRATIONS.find(row => row.description === 'Subscriptions: optional payment reminder (#1708, from D#1226)').up);
     assert.deepEqual(legacy.prepare('SELECT * FROM budget_subscriptions ORDER BY id').all().map(row => ({ ...row })), [
       { id: 1, reminder_days: 0, reminder_enabled: 1 },
       { id: 2, reminder_days: 5, reminder_enabled: 1 },
