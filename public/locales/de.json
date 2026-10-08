@@ -1127,7 +1127,7 @@
         "monthDayMoreTitles_other": "und {{count}} weitere",
         "localCalendarLabel": "Kalender",
         "defaultLocalCalendar": "Kalender",
-        "manageCalendars": "Kalender",
+        "manageCalendars": "Kalender verwalten",
         "localCalendarName": "Kalendername",
         "localCalendarColor": "Kalenderfarbe",
         "localCalendarEventCount": "{{count}} Termine",

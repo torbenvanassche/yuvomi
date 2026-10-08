@@ -437,7 +437,7 @@ router.get('/:id', (req, res) => {
              COALESCE(ec.color, isub.color) AS cal_color,
              lc.id AS local_calendar_id,
              lc.name  AS local_calendar_name,
-             lc.color AS local_calendar_color,
+             CASE WHEN (SELECT COUNT(*) FROM local_calendars) > 1 THEN lc.color END AS local_calendar_color,
              ${SOURCE_CALENDAR_COLUMNS},
              COALESCE(bd.name, nd.name) AS birthday_name,
              bd.birth_date AS birthday_date,
@@ -574,6 +574,11 @@ router.post('/', async (req, res) => {
       });
     }
 
+    const calendarCheck = validateCalendarId(db.get(), vLocalCalendar.value);
+    if (calendarCheck.error) {
+      if (stagedUpload) await cleanupStagedUpload(stagedUpload);
+      return res.status(400).json({ error: calendarCheck.error, code: 400 });
+    }
     const rights = attachmentRights(req);
     const eventId = db.get().transaction(() => {
       const documentId = rights.createAttachmentDocument(
@@ -634,7 +639,7 @@ router.post('/', async (req, res) => {
              COALESCE(ec.color, isub.color) AS cal_color,
              lc.id AS local_calendar_id,
              lc.name  AS local_calendar_name,
-             lc.color AS local_calendar_color,
+             CASE WHEN (SELECT COUNT(*) FROM local_calendars) > 1 THEN lc.color END AS local_calendar_color,
              ${SOURCE_CALENDAR_COLUMNS},
              ${ASSIGNED_USERS_SQL}
       FROM calendar_events e
@@ -1247,7 +1252,7 @@ router.put('/:id', async (req, res) => {
              COALESCE(ec.color, isub.color) AS cal_color,
              lc.id AS local_calendar_id,
              lc.name  AS local_calendar_name,
-             lc.color AS local_calendar_color,
+             CASE WHEN (SELECT COUNT(*) FROM local_calendars) > 1 THEN lc.color END AS local_calendar_color,
              ${SOURCE_CALENDAR_COLUMNS},
              ${ASSIGNED_USERS_SQL}
       FROM calendar_events e

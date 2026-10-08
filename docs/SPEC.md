@@ -1097,6 +1097,11 @@ their source links and have no local-calendar membership. MCP-created events are
 A Google or CalDAV target (including Apple through CalDAV) and a local calendar are mutually
 exclusive. Successful sync clears local membership; database triggers reject overlap. Outlook
 continues to mirror events. Moving between local calendars never pushes outward.
+Legacy iCloud auto-upload leaves explicitly assigned local-calendar events in their local calendar.
+ICS imports deduplicate within the selected calendar: importing the same UID into two local
+calendars intentionally creates one copy in each.
+With exactly one local calendar, event names, the destination picker, and inherited calendar
+colors stay hidden; existing event and assignee colors keep their previous behavior.
 
 Membership belongs to the series: a single-occurrence edit cannot change it, a following edit
 can put its new series in another calendar, and whole-series moves include linked replacements.

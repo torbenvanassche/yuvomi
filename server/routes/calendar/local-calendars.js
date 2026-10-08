@@ -44,7 +44,7 @@ router.get('/calendars', (req, res) => {
 
 router.post('/calendars', (req, res) => {
   if (!mayWriteModule(req, 'calendar')) {
-    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403 });
+    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403, reason: 'cross_module_access' });
   }
   try {
     const vName = validateCalendarName(req.body?.name);
@@ -68,7 +68,7 @@ router.post('/calendars', (req, res) => {
 
 router.put('/calendars/:id', (req, res) => {
   if (!mayWriteModule(req, 'calendar')) {
-    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403 });
+    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403, reason: 'cross_module_access' });
   }
   try {
     const id = Number(req.params.id);
@@ -117,7 +117,7 @@ router.put('/calendars/:id', (req, res) => {
 
 router.delete('/calendars/:id', (req, res) => {
   if (!mayWriteModule(req, 'calendar')) {
-    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403 });
+    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403, reason: 'cross_module_access' });
   }
   try {
     const id = Number(req.params.id);
@@ -128,7 +128,7 @@ router.delete('/calendars/:id', (req, res) => {
       return res.status(400).json({ error: 'Der Standardkalender kann nicht gelöscht werden.', code: 400 });
     }
     if (row.feed_token && !isAdminUser(req)) {
-      return res.status(403).json({ error: 'Admin access is required to delete a calendar with an active feed.', code: 403 });
+      return res.status(403).json({ error: 'Admin access is required to delete a calendar with an active feed.', code: 403, reason: 'cross_module_access' });
     }
     database.prepare('DELETE FROM local_calendars WHERE id = ?').run(id);
     res.status(204).end();

@@ -71,7 +71,11 @@ test('local calendars: default exists and calendars can be created', async () =>
   assert.equal(before.status, 200);
   assert.ok(before.body.data.some((calendar) => calendar.is_default), 'default calendar exists');
 
+  const original = await createEvent('Single-calendar appearance');
+  assert.equal(original.local_calendar_color, null);
   const work = await createCalendar('Work', '#3366AA');
+  const projected = await call('GET', `/${original.id}`);
+  assert.equal(projected.body.data.local_calendar_color, before.body.data.find(c => c.is_default).color);
   assert.equal(work.name, 'Work');
   assert.equal(work.color, '#3366AA');
   assert.equal(work.is_default, false);
@@ -334,4 +338,74 @@ test('linked default-calendar occurrences keep resolved membership in API projec
   const calendar = ensureDefaultCalendar(db);
   assert.equal(edited.body.data.local_calendar_id, calendar.id);
   assert.equal((await call('GET', `/${child.id}`)).body.data.local_calendar_id, calendar.id);
+});
+
+test('the default calendar cannot be deleted through the API', async () => {
+  const calendar = ensureDefaultCalendar(db);
+  const result = await call('DELETE', `/calendars/${calendar.id}`);
+  assert.equal(result.status, 400);
+  assert.ok(db.prepare('SELECT id FROM local_calendars WHERE id = ?').get(calendar.id));
+});
+
+test('legacy iCloud auto-upload preserves explicit local-calendar membership', async () => {
+  const { __test: apple } = await import('../server/services/apple-calendar.js');
+  const local = await createCalendar('Stay local', '#3366AA');
+  const event = await createEvent('Local instead of iCloud', local.id);
+  assert.equal(apple.collectLocalOutboundEvents(db).some(row => row.id === event.id), false);
+});
+
+test('production HTTP calendar feed excludes private events and events from other calendars', { timeout: 20000 }, async () => {
+  const { spawn } = await import('node:child_process');
+  const script = `
+    const { server } = await import('./server/index.js');
+    const { get } = await import('./server/db.js');
+    const { ensureDefaultCalendar, regenerateCalendarFeedToken } = await import('./server/services/local-calendars.js');
+    if (!server.listening) await new Promise(resolve => server.once('listening', resolve));
+    const db = get();
+    const user = db.prepare("INSERT INTO users (username, display_name, password_hash, role) VALUES ('feed-test', 'Feed test', 'x', 'admin')").run().lastInsertRowid;
+    const calendar = ensureDefaultCalendar(db);
+    const other = db.prepare("INSERT INTO local_calendars (name) VALUES ('Other feed')").run().lastInsertRowid;
+    const insert = db.prepare('INSERT INTO calendar_events (title, start_datetime, created_by, visibility, local_calendar_id) VALUES (?, ?, ?, ?, ?)');
+    insert.run('Public feed event', '2035-05-01T09:00:00Z', user, 'all', calendar.id);
+    insert.run('Private feed event', '2035-05-01T09:00:00Z', user, 'private', calendar.id);
+    insert.run('Other calendar event', '2035-05-01T09:00:00Z', user, 'all', other);
+    const token = regenerateCalendarFeedToken(db, calendar.id);
+    process.send({ port: server.address().port, token });
+  `;
+  const child = spawn(process.execPath, ['--experimental-sqlite', '--input-type=module', '-e', script], {
+    cwd: new URL('..', import.meta.url),
+    env: { ...process.env, DB_PATH: ':memory:', DB_ENCRYPTION_KEY: '', PORT: '0', BIND_ADDRESS: '127.0.0.1', NODE_ENV: 'test' },
+    stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+  });
+  let errors = '';
+  child.stderr.on('data', chunk => { errors += chunk.toString(); });
+  try {
+    const details = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Feed server did not start: ' + errors)), 15000);
+      child.once('message', message => { clearTimeout(timer); resolve(message); });
+      child.once('error', err => { clearTimeout(timer); reject(err); });
+      child.once('exit', code => { clearTimeout(timer); reject(new Error('Feed server exited ' + code + ': ' + errors)); });
+    });
+    const response = await fetch(`http://127.0.0.1:${details.port}/feed/calendar/${details.token}.ics`);
+    assert.equal(response.status, 200);
+    const ics = await response.text();
+    assert.match(ics, /SUMMARY:Public feed event/);
+    assert.doesNotMatch(ics, /Private feed event|Other calendar event/);
+  } finally {
+    if (child.exitCode === null) {
+      const exited = new Promise(resolve => child.once('exit', resolve));
+      child.kill(); await exited;
+    }
+  }
+});
+
+test('import rejects a calendar removed before insertion instead of reporting duplicates', async () => {
+  const { importToLocal } = await import('../server/services/ics-subscription.js');
+  const calendar = await createCalendar('Removed import destination', '#112233');
+  assert.equal((await call('DELETE', `/calendars/${calendar.id}`)).status, 204);
+  await assert.rejects(importToLocal(ADMIN.id, {
+    localCalendarId: calendar.id,
+    ics: 'BEGIN:VCALENDAR\r\nBEGIN:VEVENT\r\nUID:removed-destination\r\nDTSTART:20350501T100000Z\r\nSUMMARY:Import race\r\nEND:VEVENT\r\nEND:VCALENDAR',
+  }), TypeError);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM calendar_events WHERE external_calendar_id = 'removed-destination'").get().n, 0);
 });

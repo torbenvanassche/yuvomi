@@ -5499,8 +5499,34 @@ function renderLocalCalendarsContent() {
 }
 
 async function copyText(value, toastKey) {
-  await navigator.clipboard.writeText(value);
-  window.yuvomi?.showToast(t(toastKey), 'success');
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(value);
+      window.yuvomi?.showToast(t(toastKey), 'success');
+      return;
+    } catch { /* Try selection-based copying below. */ }
+  }
+  const input = document.createElement('textarea');
+  input.value = value;
+  input.readOnly = true;
+  input.style.position = 'fixed';
+  input.style.opacity = '0';
+  document.body.appendChild(input);
+  const previousFocus = document.activeElement;
+  try {
+    input.focus();
+    input.select();
+    let copied = false;
+    try { copied = Boolean(document.execCommand?.('copy')); } catch { /* Expose the link below. */ }
+    if (copied) {
+      window.yuvomi?.showToast(t(toastKey), 'success');
+    } else {
+      window.prompt(t('calendar.localCalendarCopyExport'), value);
+    }
+  } finally {
+    input.remove();
+    previousFocus?.focus();
+  }
 }
 
 async function refreshLocalCalendarsPanel(panel) {
@@ -5971,6 +5997,7 @@ function localCalendarDisplayName(calendar) {
 }
 
 function eventLocalCalendarDisplayName(ev) {
+  if (ev?.local_calendar_id && state.localCalendars.length <= 1) return '';
   const localCalendar = state.localCalendars.find((calendar) => Number(calendar.id) === Number(ev?.local_calendar_id));
   return localCalendar
     ? localCalendarDisplayName(localCalendar)
@@ -6270,7 +6297,7 @@ export const __test = {
   calendarSources,
   restorePeopleFilter,
   restoreHiddenSources,
-  localCalendarDisplayName,
+  localCalendarDisplayName, eventLocalCalendarDisplayName, copyText, localCalendarState: state,
   persistHiddenSources,
   activeFilterCount,
   UNASSIGNED,
@@ -7752,7 +7779,7 @@ function wireEventForm(panel, { mode, event = null, reminder = null }) {
   // wird, sobald jemand den Beginn verschiebt (#1260).
   wireReminderRows(panel, { event });
 
-  // Load unified sync targets (Google + CalDAV)
+  // Populate the local calendar destination when several calendars exist.
   populateLocalCalendarSelect(panel.querySelector('#event-local-calendar'), event);
 
   // Load unified sync targets (Google + CalDAV)
@@ -8240,7 +8267,7 @@ function buildEventModalContent({ mode, event, date, reminder = null, time = nul
              placeholder="${t('calendar.titlePlaceholder')}" value="${esc(isEdit ? event.title : '')}">
     </div>
 
-    ${!isEdit || event.local_calendar_id ? `<div class="form-group">
+    ${state.localCalendars.length > 1 && (!isEdit || event.local_calendar_id) ? `<div class="form-group">
       <label class="form-label" for="event-local-calendar">${t('calendar.localCalendarLabel')}</label>
       <select class="form-input" id="event-local-calendar"></select>
     </div>` : ''}

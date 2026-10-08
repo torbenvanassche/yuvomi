@@ -41,6 +41,7 @@ function collectLocalOutboundEvents(database) {
   return database.prepare(`
     SELECT e.* FROM calendar_events e
     WHERE e.external_source = 'local' AND e.external_calendar_id IS NULL
+      AND e.local_calendar_id IS NULL
       AND e.recurrence_parent_id IS NULL
       AND NOT EXISTS (
         SELECT 1 FROM calendar_events child

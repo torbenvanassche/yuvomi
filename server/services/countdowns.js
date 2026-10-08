@@ -305,7 +305,7 @@ function eventCountdowns(d, userId, todayKey, graceDays, { withBirthdays = true 
              LIMIT 1
            )) AS assigned_color,
            COALESCE(ec.color, isub.color) AS cal_color,
-           lc.color AS local_calendar_color
+           CASE WHEN (SELECT COUNT(*) FROM local_calendars) > 1 THEN lc.color END AS local_calendar_color
     FROM calendar_events e
     LEFT JOIN users u ON u.id = e.assigned_to
     LEFT JOIN external_calendars ec ON ec.id = e.calendar_ref_id

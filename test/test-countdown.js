@@ -817,13 +817,19 @@ test('eine eigene Farbe schlaegt die geliehene weiterhin', () => {
   assert.equal(zeile.color, '#3CA368', 'eine ausdrueckliche Farbe bleibt');
 });
 
-test('ein lokaler Countdown ohne eigene Farbe erbt die Kalenderfarbe', () => {
+test('ein lokaler Countdown erbt die Kalenderfarbe erst mit mehreren Kalendern', () => {
   reset();
   seedEvent({ title: 'Lokal', start: '2026-09-10', color: null, assignedTo: null });
-  const calendar = get().prepare('SELECT color FROM local_calendars WHERE is_default = 1').get();
-  const item = getCountdowns(get(), { userId: ALICE, todayKey: '2026-08-27' }).items.find((c) => c.title === 'Lokal');
-  assert.ok(calendar.color);
-  assert.equal(item.color, calendar.color);
+  const item = () => getCountdowns(get(), { userId: ALICE, todayKey: '2026-08-27' }).items.find(c => c.title === 'Lokal');
+  assert.equal(item().color, null);
+  const id = get().prepare("INSERT INTO local_calendars (name, color) VALUES ('Second', '#3366AA')").run().lastInsertRowid;
+  try {
+    const calendar = get().prepare('SELECT color FROM local_calendars WHERE is_default = 1').get();
+    assert.equal(item().color, calendar.color);
+  } finally {
+    get().prepare('DELETE FROM local_calendars WHERE id = ?').run(id);
+  }
+  assert.equal(item().color, null);
 });
 
 test('ohne jede Quelle bleibt die Farbe null, damit der Modulton greift', () => {
@@ -834,8 +840,7 @@ test('ohne jede Quelle bleibt die Farbe null, damit der Modulton greift', () => 
   const zeile = getCountdowns(get(), { userId: ALICE, todayKey: '2026-08-27' }).items.find((c) => c.title === 'Nackt');
   assert.equal(zeile, undefined, 'Vorbedingung: noch nichts angelegt');
 
-  const id = seedEvent({ title: 'Nackt', start: '2026-09-10', color: null, assignedTo: null });
-  get().prepare("UPDATE calendar_events SET external_source = 'caldav' WHERE id = ?").run(id);
+  seedEvent({ title: 'Nackt', start: '2026-09-10', color: null, assignedTo: null });
   const nackt = getCountdowns(get(), { userId: ALICE, todayKey: '2026-08-27' }).items.find((c) => c.title === 'Nackt');
   assert.equal(nackt.color, null, 'keine Quelle heisst null, nicht Grau');
 });

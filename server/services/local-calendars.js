@@ -131,7 +131,7 @@ export function resolveLocalCalendarId(conn, eventId) {
 
 export function localCalendarProjection(conn, eventId) {
   return conn.prepare(`
-    SELECT lc.id AS local_calendar_id, lc.name AS local_calendar_name, lc.color AS local_calendar_color
+    SELECT lc.id AS local_calendar_id, lc.name AS local_calendar_name, CASE WHEN (SELECT COUNT(*) FROM local_calendars) > 1 THEN lc.color END AS local_calendar_color
     FROM calendar_events e LEFT JOIN local_calendars lc ON lc.id = ${localCalendarIdSql()}
     WHERE e.id = ?
   `).get(eventId);

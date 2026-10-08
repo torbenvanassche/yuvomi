@@ -7,7 +7,7 @@
  *                  server/utils/http.js (node-nativer Safe-HTTP-Client)
  */
 
-import { localCalendarIdSql, defaultCalendarId } from './local-calendars.js';
+import { localCalendarIdSql, defaultCalendarId, validateCalendarId } from './local-calendars.js';
 
 import { runExternalJob } from '../utils/restore-state.js';
 import dns from 'node:dns/promises';
@@ -371,6 +371,8 @@ async function importToLocal(userId, { ics, url, color, localCalendarId = null }
   } else {
     throw new Error('Either an ICS file or a URL is required.');
   }
+  const calendarCheck = validateCalendarId(db.get(), localCalendarId);
+  if (calendarCheck.error) throw new TypeError(calendarCheck.error);
   // RECURRENCE-ID-Overrides zusammenführen: Master behält die Serie, geänderte
   // Einzel-Vorkommen werden eigenständige Termine statt die Serie zu killen (#549).
   rawEvents = normalizeRecurrenceOverrides(rawEvents);
