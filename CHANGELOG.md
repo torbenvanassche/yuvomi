@@ -13,8 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entry dialog, with category and subcategory selection. The linked outgoing and incoming entries
   update each account's balance and stay consistent when edited or deleted. Transfers are shown
   separately in the month summary and category chart and do not count as income or spending in
-  summaries, statistics, budget plans, or the dashboard. Savings remains a subcategory of Financials,
-  with savings transfers shown in a separate Transfers chart section. Summary labels are translated
+  summaries, statistics, budget plans, or the dashboard. Savings is created as a subcategory of Financials
+  without rewriting household categories, entries, series or plans. Savings transfers appear in a separate
+  Transfers chart section. Summary labels are translated
   in all supported languages.
 
 ## [2.75.0] - 2026-10-07
