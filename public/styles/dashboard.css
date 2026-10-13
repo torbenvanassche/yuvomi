@@ -418,10 +418,13 @@
   inset: calc(-1 * var(--space-2)) 0;
 }
 
-.widget__link:hover {
-  opacity: 1;
-  color: var(--widget-accent, var(--color-accent));
-  background-color: color-mix(in srgb, var(--widget-accent, var(--color-accent)) var(--tint-state), transparent);
+/* Nur am echten Zeiger (R18) - auf Touch blieb "Alle" nach dem Tipp getoent. */
+@media (hover: hover) {
+  .widget__link:hover {
+    opacity: 1;
+    color: var(--widget-accent, var(--color-accent));
+    background-color: color-mix(in srgb, var(--widget-accent, var(--color-accent)) var(--tint-state), transparent);
+  }
 }
 
 .widget__badge {
@@ -1246,6 +1249,8 @@
   /* Kategorienamen trennen statt brechen (W1, test:typography). */
   hyphens: auto;
   hyphenate-limit-chars: 6 4 4;
+  -webkit-hyphenate-limit-before: 4;
+  -webkit-hyphenate-limit-after: 4;
   overflow-wrap: anywhere;
   color: var(--color-text-primary);
   background: var(--color-surface);
@@ -1338,10 +1343,10 @@
 
 /* DER LICHTHAUCH - und warum er kein Rückfall in den Verlauf ist, den Runde 3
  * entfernt hat. Der alte Verlauf WAR die Karte: eine deckende Fläche von Kante
- * zu Kante, im globalen Akzent, unter dem jeder Text stand. Das hier ist die
- * Gattung der Backdrop-Blobs hinter dem Glas - ein weiches, kreisrundes Feld
+ * zu Kante, im globalen Akzent, unter dem jeder Text stand. Das hier ist ein
+ * Lichtfeld (DESIGN.md, "Colors") - ein weiches, kreisrundes Feld
  * HINTER der Glyphe, das aus der Glyphe zu kommen scheint und lange vor dem
- * Text ausläuft. Es teilt deshalb die Ausschalter der Blobs
+ * Text ausläuft. Es teilt deshalb die Ausschalter seiner Gattung
  * (--weather-glow-opacity, in prefers-reduced-transparency und
  * prefers-contrast auf 0) und trägt den Ton der LAGE, nicht den der App.
  *
@@ -1503,7 +1508,8 @@
 .weather-widget__range {
   display: flex;
   gap: var(--space-1);
-  font-size: var(--text-sm);
+  /* Footnote (13px), nicht 14: siehe "VIER LESESTUFEN" am Dateiende. */
+  font-size: var(--type-caption);
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
   margin-bottom: var(--space-0h);
@@ -1519,8 +1525,8 @@
 }
 
 .weather-widget__desc {
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--type-caption);
+  font-weight: var(--font-weight-regular);
   text-transform: capitalize;
   margin-bottom: 1px;
   overflow: hidden;
@@ -1529,8 +1535,8 @@
 }
 
 .weather-widget__city {
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--type-caption);
+  font-weight: var(--font-weight-regular);
   color: var(--color-text-secondary);
   margin-bottom: var(--space-1);
   overflow: hidden;
@@ -2050,13 +2056,35 @@ svg.weather-forecast__icon {
 /* Plus wird zum X. Der Zustand steht schon im `aria-expanded`, das der
  * Speed-Dial ohnehin pflegen muss - eine Klasse daneben wäre eine zweite
  * Wahrheit über denselben Zustand, und die beiden liefen bisher schon
- * auseinander, wenn eine von ihnen vergessen wurde. */
-.page-fab[aria-expanded="true"] {
+ * auseinander, wenn eine von ihnen vergessen wurde.
+ *
+ * ES DREHT DAS ICON, NIE DER KNOPF (R18). Die Drehung stand am `.page-fab`
+ * selbst, und derselbe Selektor trifft am Desktop die beschriftete Kapsel
+ * `.page-fab--docked` ("+ Neu", Popover-Auslöser): sie kippte samt Wort um
+ * 45 Grad (gemessen `matrix(0.707, 0.707, ...)`, Bounding-Box 92x92 statt
+ * 92x40). Am runden FAB sieht die Icon-Drehung aus wie die alte - ein Kreis
+ * in einer Farbe hat keine Lage -, nur der Schatten wandert nicht mehr mit.
+ * Guard in test-motion.js: keine Drehung auf einem Knoten, der Text trägt. */
+.page-fab[aria-expanded="true"] > svg,
+.page-fab[aria-expanded="true"] > i {
   transform: rotate(45deg);
-  /* Hier ist das Nachfedern die Aussage, nicht Zierrat - es quittiert den
-     Zustandswechsel. Über das Token statt als Literal, damit die Kurve eine
-     benannte Entscheidung bleibt (tokens.css §g). */
+}
+
+/* Hier ist das Nachfedern die Aussage, nicht Zierrat - es quittiert den
+ * Zustandswechsel. Über das Token statt als Literal, damit die Kurve eine
+ * benannte Entscheidung bleibt (tokens.css §g). Am Icon in BEIDEN Zuständen,
+ * damit auch der Rückweg federt. */
+.page-fab[aria-expanded] > svg,
+.page-fab[aria-expanded] > i {
   transition: transform var(--transition-glass);
+}
+
+/* Das Grau gehört dem schwebenden Speed-Dial: sein offener Zustand heisst
+ * "Schliessen", und das Backdrop dahinter nimmt der Seite die Farbe. Die
+ * angedockte Kapsel bleibt die violette Primäraktion - ihr Menü ist ein
+ * Popover ohne Backdrop, und ein ergrauter Primärknopf läse sich dort als
+ * deaktiviert. */
+.page-fab[aria-expanded="true"]:not(.page-fab--docked) {
   background-color: var(--neutral-600);
 }
 
@@ -2076,11 +2104,34 @@ svg.weather-forecast__icon {
    * und Modal bleibt die Reihenfolge, die die Gruppe selbst hat. */
   z-index: -1;
   pointer-events: none;
+  /* EIN- UND AUSGANG (Critique R18): das Backdrop sprang in einem Frame, samt
+   * seinem Blur (glass.css). Jetzt das Muster des Popover-Menues: `display`
+   * geht diskret mit (`allow-discrete`), `@starting-style` gibt der Einfahrt
+   * ihren Start. In RUHE bleibt es `display: none` - #166 gilt weiter, es liegt
+   * nur fuer die Dauer des Ausgangs (--duration-xs) noch im Baum.
+   * ZWEI DEKLARATIONEN: ein Browser ohne `allow-discrete` verwirft die zweite
+   * und behaelt die erste - dort schliesst es hart wie bisher. */
+  opacity: 0;
+  transition: opacity var(--duration-xs) var(--ease-out);
+  transition:
+    opacity var(--duration-xs) var(--ease-out),
+    display var(--duration-xs) allow-discrete;
 }
 
 .fab-backdrop--visible {
   display: block;
+  opacity: 1;
   pointer-events: auto;
+  transition: opacity var(--duration-md) var(--ease-out);
+  transition:
+    opacity var(--duration-md) var(--ease-out),
+    display var(--duration-md) allow-discrete;
+}
+
+@starting-style {
+  .fab-backdrop--visible {
+    opacity: 0;
+  }
 }
 
 .fab-actions--visible {
@@ -2557,9 +2608,16 @@ svg.weather-forecast__icon {
  * links zeigt es); ein neutraler Hover warf diese Auskunft im Moment der
  * Beruehrung weg. --tint-state (12%) ist die Skalenstufe fuer genau das:
  * „Zustand auf einer ungetoenten Flaeche". */
-.today-cockpit-card[data-route]:hover,
 .today-cockpit-card[data-route]:focus-visible {
   background: color-mix(in srgb, var(--today-card-accent) var(--tint-state), var(--color-surface));
+}
+
+/* Der Zeiger-Zwilling steht fuer sich unter (hover: hover) (R18): auf Touch
+ * klebte er nach dem Tipp. Der Fokus oben bleibt in jeder Eingabeart. */
+@media (hover: hover) {
+  .today-cockpit-card[data-route]:hover {
+    background: color-mix(in srgb, var(--today-card-accent) var(--tint-state), var(--color-surface));
+  }
 }
 
 /* Der Träger clippt per overflow:hidden (Radius-Schnitt der Zeilenliste) -
@@ -2603,10 +2661,22 @@ svg.weather-forecast__icon {
 
 /* Modul-Label als ruhiger Untertitel (Footnote, Sekundaerfarbe) - nie versal,
  * nie ueber dem Titel (Craft-Floor-Bann Eyebrow). */
+/* EINE ZEILE (#1698). Seit die Unterzeile eines Termins den Namen seines
+ * Kalenders traegt, steht dort Nutzereingabe: „Familienkalender Schule, Vereine
+ * und alle Arzttermine" braeche auf dem Telefon um und machte die Zeile hoeher
+ * als ihre Nachbarn. Die Zustandskarte spricht in einem Satz und darf weiter
+ * umbrechen. */
 .today-cockpit-card__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-text-secondary);
   font-size: var(--type-caption);
   line-height: var(--line-height-tight);
+}
+
+.today-cockpit-card--state .today-cockpit-card__sub {
+  white-space: normal;
 }
 
 /* Zeit als trailing Detail: die Programm-Zeile beantwortet „wann", nicht „wie
@@ -2652,10 +2722,16 @@ svg.weather-forecast__icon {
   transition: background-color var(--transition-fast), color var(--transition-fast);
 }
 
-.today-cockpit__more--link:hover,
 .today-cockpit__more--link:focus-visible {
   background: color-mix(in srgb, var(--color-text-primary) var(--tint-state), var(--color-surface));
   color: var(--color-text-primary);
+}
+
+@media (hover: hover) {
+  .today-cockpit__more--link:hover {
+    background: color-mix(in srgb, var(--color-text-primary) var(--tint-state), var(--color-surface));
+    color: var(--color-text-primary);
+  }
 }
 
 .today-cockpit__more--link:focus-visible {
@@ -2689,9 +2765,14 @@ button.today-cockpit__more--link {
  * Sie ist ein Aufklapp-Knopf ohne Route, zeigt aber dieselbe Beruehrung wie
  * jede Zeile mit Ziel - im Ton ihres Raums. Am Ende stehen die gestapelten
  * Avatare und das Chevron, wo sonst die Zeit steht. */
-.today-cockpit-card--group:hover,
 .today-cockpit-card--group:focus-visible {
   background: color-mix(in srgb, var(--today-card-accent) var(--tint-state), var(--color-surface));
+}
+
+@media (hover: hover) {
+  .today-cockpit-card--group:hover {
+    background: color-mix(in srgb, var(--today-card-accent) var(--tint-state), var(--color-surface));
+  }
 }
 
 .today-cockpit-card--group:focus-visible {
@@ -3757,6 +3838,9 @@ button.today-cockpit__more--link {
 
 .birthday-widget-item__name {
   color: var(--color-text-primary);
+  /* Zeilentitel der Uebersicht: 15px semibold wie der Notiztitel daneben
+   * (vorher geerbte 16px - siehe "VIER LESESTUFEN" am Dateiende). */
+  font-size: var(--type-secondary);
   font-weight: var(--font-weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3790,8 +3874,9 @@ button.today-cockpit__more--link {
   white-space: nowrap;
   background: var(--color-fill-well);
   color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-bold);
+  /* Footnote semibold statt 14px fett ("VIER LESESTUFEN" am Dateiende). */
+  font-size: var(--type-caption);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Countdown-Kachel (#647). Bewusst dieselbe Zeilenform wie die Geburtstage
@@ -4189,14 +4274,16 @@ button.today-cockpit__more--link {
 
 .budget-widget__savings span {
   color: var(--color-text-secondary);
-  font-size: var(--text-sm);
-  font-weight: var(--font-weight-medium);
+  font-size: var(--type-caption);
+  font-weight: var(--font-weight-regular);
 }
 
+/* Headline (17px semibold) statt 18px fett: die Stuetzmetrik steht auf der
+ * Stufe der Kacheltitel, eine unter dem Saldo darueber. */
 .budget-widget__savings strong {
   color: var(--module-budget);
-  font-size: var(--text-lg);
-  font-weight: var(--font-weight-bold);
+  font-size: var(--type-card-title);
+  font-weight: var(--font-weight-semibold);
 }
 
 /* Sparziel-Fortschritt im Budget-Widget (#468) */
@@ -4264,7 +4351,8 @@ button.today-cockpit__more--link {
 }
 
 .budget-widget__flow-item > strong {
-  font-size: var(--text-sm);
+  font-size: var(--type-caption);
+  font-weight: var(--font-weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4407,6 +4495,8 @@ button.today-cockpit__more--link {
   line-height: var(--line-height-snug);
   hyphens: auto;
   hyphenate-limit-chars: 6 4 4;
+  -webkit-hyphenate-limit-before: 4;
+  -webkit-hyphenate-limit-after: 4;
   overflow-wrap: anywhere;
 }
 
@@ -4557,7 +4647,9 @@ button.today-cockpit__more--link {
 
 .rewards-member__name {
   color: var(--color-text-primary);
-  font-weight: var(--font-weight-medium);
+  /* Zeilentitel: 15px semibold (vorher geerbte 16px medium). */
+  font-size: var(--type-secondary);
+  font-weight: var(--font-weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -5321,8 +5413,17 @@ button.today-cockpit__more--link {
  * Ausstieg und Timer-Startknoepfen, und der Stapel rechnet dort mit einer
  * Tab-Leiste, die hier gar nicht steht: der Hinweis beim Einschalten lag am
  * Telefon acht Sekunden lang auf „5 Min" und nahm den Tipp. Oben steht nur die
- * Uhr, die nichts annimmt. Die Lage neben einem offenen Dialog
- * (`[data-dock]`, utils/toast-placement.js) bleibt dessen Sache. */
+ * Uhr, die nichts annimmt.
+ *
+ * DAS IST DIE AUSGANGSLAGE, NICHT DAS LETZTE WORT (#1917). Die Uhr nimmt
+ * keinen Tipp, aber sie ist das, wofuer die Flaeche da ist, und bis rund 834px
+ * Breite lag der Hinweis acht Sekunden auf ihr (390x844: Uhrzeit und Datum zu
+ * 100 % verdeckt). Uhr und Fuss tragen deshalb `data-toast-keepout`
+ * (pages/dashboard.js), und utils/toast-placement.js schiebt den Stapel von
+ * hier aus an die naechste freie Kante - am Telefon direkt unter das Datum,
+ * am Desktop bleibt er stehen, weil er neben der Uhr Platz hat. Gesetzt wird
+ * die Lage wie neben einem Dialog ueber `[data-dock]`; diese Regel gilt, solange
+ * der Platzierer nichts zu sagen hat. */
 [data-wall-mode] .shell-bottom-stack:not([data-dock]) {
   top: calc(var(--safe-area-inset-top) + var(--space-4));
   bottom: auto;
@@ -5358,9 +5459,14 @@ button.today-cockpit__more--link {
    * zwei Metern ablesbar sein, ohne der Uhr den Rang abzulaufen. */
   --wall-timer:      clamp(var(--text-4xl), 7vw, var(--text-5xl));
 
+  /* Der Abstand zwischen Uhr, Buehne und Fuss. Als Variable, weil der Fuss
+   * aus ihm die Hoehe seiner Scroll-Kante und seinen Endabstand rechnet
+   * (`.wall__foot`, #1917). */
+  --wall-gap:        clamp(var(--space-4), 3vmin, var(--space-8));
+
   display: flex;
   flex-direction: column;
-  gap: clamp(var(--space-4), 3vmin, var(--space-8));
+  gap: var(--wall-gap);
   min-height: 100dvh;
   padding: var(--wall-pad);
   background: var(--color-bg);
@@ -5540,10 +5646,24 @@ button.today-cockpit__more--link {
   }
 }
 
+/* AUCH DIE UNTERZEILE BLEIBT EINE ZEILE (#1698). Bis dahin stand dort ein
+ * Wort aus der App („Termin", „Aufgabe"); seit sie den Namen des Kalenders
+ * traegt, steht dort Nutzereingabe - „Familienkalender Schule und Vereine"
+ * braeche um und kostete die Hoehe, die WALL_ROW_CAP fuer vier Zeilen
+ * gerechnet hat. */
 .wall-row__sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--wall-row-sub);
   line-height: var(--line-height-tight);
   color: var(--color-text-secondary);
+}
+
+/* Die Zustandszeile des leeren Tages spricht in einem Satz („Als Naechstes
+ * morgen: …") und steht allein - sie darf umbrechen wie bisher. */
+.wall-row--state .wall-row__sub {
+  white-space: normal;
 }
 
 .wall-row__time {
@@ -5551,6 +5671,18 @@ button.today-cockpit__more--link {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   color: var(--color-text-secondary);
+}
+
+/* DAS ENDE WEICHT, WO DIE ZEILE ZU SCHMAL IST (#1698). Auf dem Wandtablet
+ * nimmt „9:30 PM - 11:30 PM" 161 von 617px Zeilenbreite. Auf einer Flaeche
+ * unter Tablettbreite - jemand hat den Schalter auf dem Telefon erwischt -
+ * waren es 132 von 254px: die Uhrzeit breiter als der Titel, der dann nach elf
+ * Zeichen umbrach. Dort bleibt der Beginn allein, wie vor #1698. Dieselbe
+ * Grenze wie beim Titel darueber. */
+@container wall (max-width: 519px) {
+  .wall-row__time-end {
+    display: none;
+  }
 }
 
 .wall-row__time--overdue {
@@ -5585,9 +5717,10 @@ button.today-cockpit__more--link {
 }
 
 /* ── Wer heute dran ist ── */
-/* Gesichter, nicht Namenszeilen. Die Zahl am Rand sagt, wie viel von heute
- * jemanden angeht; WAS es ist, steht links im Programm und wird hier bewusst
- * nicht wiederholt. */
+/* Gesichter, darunter die Aufgaben von heute beim Namen (#1817). Die Zahl am
+ * Rand sagt, was noch offen ist. Ohne Titel - niemand hat eine Aufgabe, oder
+ * die Flaeche hat keinen Platz dafuer (`fitWallWho`) - bleibt es bei der
+ * Reihe von Gesichtern. */
 .wall-who__list {
   list-style: none;
   margin: 0;
@@ -5658,6 +5791,113 @@ button.today-cockpit__more--link {
   white-space: nowrap;
   font-size: var(--wall-row-sub);
   color: var(--color-text-secondary);
+}
+
+/* MIT TITELN wird aus der Reihe von Gesichtern ein Raster von Personen: das
+ * Gesicht mit dem Namen daneben als Kopf, darunter die Zeilen in voller
+ * Spaltenbreite. Ein Titel ist laenger als ein Vorname - unter einem 48px-
+ * Gesicht in einer 72px-Spalte stuende „Spuelma…".
+ *
+ * HOECHSTENS ZWEI NEBENEINANDER, und keine schmaler als drei Gesichter breit.
+ * `auto-fill` allein stellte auf einem grossen Schirm drei schmale Spalten
+ * hin und schnitt „Pack sports bag for t…" ab, waehrend die vierte Person
+ * allein in der zweiten Reihe stand (gemessen 1920x1080). Der Platz gehoert
+ * den Titeln, nicht einer dritten Spalte. */
+.wall-who__list--tasks {
+  --wall-who-cols: 2;
+  --wall-who-min: calc(var(--space-16) * 3);
+  --wall-who-gap: var(--space-5);
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(max(var(--wall-who-min), (100% - (var(--wall-who-cols) - 1) * var(--wall-who-gap)) / var(--wall-who-cols)), 1fr)
+  );
+  gap: var(--space-4) var(--wall-who-gap);
+  align-items: start;
+}
+
+/* Ab fuenf Personen drei nebeneinander: zwei Spalten ergaeben drei Reihen, und
+ * auf 1280x800 bliebe dann unter keinem Gesicht mehr Platz fuer einen Titel
+ * (gemessen: 214px fuer die Liste, drei Koepfe allein brauchen 176px). Eine
+ * schmalere Spalte, die den Anfang jeder Aufgabe nennt, sagt mehr als sechs
+ * Gesichter ohne ein Wort. Gezaehlt wird am Traeger (`:has`), wie beim
+ * Programm. */
+.wall-who__list--tasks:has(> :nth-child(5)) {
+  --wall-who-cols: 3;
+  --wall-who-min: calc(var(--space-16) * 2);
+  --wall-who-gap: var(--space-4);
+}
+
+.wall-who__list--tasks .wall-who__member {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  text-align: start;
+}
+
+.wall-who__list--tasks .wall-who__name {
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+}
+
+.wall-who__tasks {
+  grid-column: 1 / -1;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-0h);
+  min-width: 0;
+}
+
+/* EINE ZEILE JE AUFGABE, wie im Programm: ein Umbruch kostete die Hoehe einer
+ * weiteren Aufgabe, und die Zeilenzahl ist hier das knappe Gut. */
+.wall-who__task {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1h);
+  min-width: 0;
+  white-space: nowrap;
+  font-size: var(--wall-row-sub);
+  line-height: var(--line-height-snug);
+  color: var(--color-text-primary);
+}
+
+/* Erledigtes tritt zurueck, bleibt aber lesbar: Sekundaerfarbe statt
+ * Deckkraft, damit der Kontrast auf der Buehne der einer Unterzeile ist. Der
+ * Haken traegt den Zustand, kein Durchstreichen - durchgestrichene Schrift
+ * liest auf zwei Metern niemand. */
+.wall-who__task--done {
+  color: var(--color-text-secondary);
+}
+
+.wall-who__task-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wall-who__task-check {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  color: var(--color-success-ink);
+}
+
+.wall-who__task--more {
+  color: var(--color-text-tertiary);
+}
+
+/* Alles erledigt: die Marke am Gesicht traegt den Haken statt einer Zahl. */
+.wall-who__count--done {
+  min-height: var(--space-8);
+  color: var(--color-success-ink);
+}
+
+.wall-who__count--done svg {
+  width: 1em;
+  height: 1em;
 }
 
 .wall-who__more,
@@ -5831,13 +6071,74 @@ button.today-cockpit__more--link {
    * Kante hindurch -, und unten haelt er den Abstand der Flaeche, mindestens
    * aber die Safe-Area (Home-Indikator). `--nav-tail` ist im Wandmodus 0
    * (layout.css, Leiste ausgeblendet) - dieselbe Regel wie jede klebende
-   * Fusszeile im Inhalt (test:mobile-chrome). */
+   * Fusszeile im Inhalt (test:mobile-chrome).
+   *
+   * OBEN HAT ER KEIN POLSTER MEHR, DAFUER DEN ENDABSTAND DER FLAECHE (#1917).
+   * Dort stand ein deckender Streifen von `--space-2` mit Gegenrand, und er
+   * machte die Oberkante hart. Jetzt haelt der Fuss zum Inhalt davor genau die
+   * Hoehe seiner Scroll-Kante: der Abstand der Flaeche (`gap`) plus dieser
+   * Rand ergeben `--wall-foot-edge`. Am Scrollende und bei passender Wand
+   * steht der letzte Eintrag damit frei UEBER der Kante.
+   *
+   * ER WOHNT HIER UND NICHT AM SCROLLPORT (`.app-content`): ein Nachlauf dort
+   * laege HINTER dem Fuss. Der Fuss klebt nur innerhalb der Flaeche; endete
+   * die Flaeche ueber der Unterkante des Scrollports, hoebe sie den Fuss am
+   * Scrollende mit an, und die Kante laege weiter auf der letzten Zeile. Der
+   * Endabstand des Inhalts ist der Abstand VOR dem Fuss.
+   *
+   * `--wall-foot-edge` IST DIE EINE ZAHL FUER BEIDES: die Kante liest sie als
+   * Hoehe, der Rand hier als Endabstand - sie koennen nicht auseinanderlaufen.
+   * Auf der Wand ist sie der Abstand der Flaeche selbst: der Rand ist dann 0,
+   * die Flaeche keinen Pixel hoeher als zuvor (1280x800 passt weiter - eine
+   * Wand scrollt nicht), und die Kante liegt im leeren Streifen. Am Telefon
+   * hebt die Containerregel darunter sie auf die Hoehe eines Gesichts. */
+  --wall-foot-edge: var(--wall-gap);
+
   position: sticky;
   bottom: var(--nav-tail);
   z-index: 1;
-  margin-block: calc(-1 * var(--space-2)) calc(-1 * var(--wall-pad));
-  padding-block: var(--space-2) max(var(--wall-pad), var(--safe-area-inset-bottom));
+  margin-block: calc(var(--wall-foot-edge) - var(--wall-gap)) calc(-1 * var(--wall-pad));
+  padding-block: 0 max(var(--wall-pad), var(--safe-area-inset-bottom));
   background: var(--color-bg);
+}
+
+/* Das Telefon - dieselbe Grenze wie bei Zeilentitel und Zeitspanne oben:
+ * schmaler als jedes Wandtablet, alles gestapelt, die Flaeche scrollt ohnehin
+ * (`wallIsStacked`). Nur dort kostet der Endabstand nichts, was die Wand
+ * braucht, und nur dort verdeckte der Fuss Gesichter. */
+@container wall (max-width: 519px) {
+  .wall__foot {
+    --wall-foot-edge: var(--space-12);
+  }
+}
+
+/* DIE SCROLL-KANTE DES FUSSES (#1917). Am Telefon ist die Flaeche laenger als
+ * das Bild, der Fuss klebt, und sein deckender Grund schnitt "Wer heute dran
+ * ist" an einer unsichtbaren harten Kante ab: bei 390x844 ein Gesicht ganz
+ * und eines halb verdeckt, ohne jedes Zeichen, dass es darunter weitergeht.
+ * Abgeschnitten war nichts - es fehlte die Kante. Jetzt laeuft der Inhalt in
+ * einem Verlauf vom Grund der Flaeche unter die Leiste aus.
+ *
+ * EINE FESTE KANTE, IN JEDEM BROWSER DIESELBE (`--wall-foot-edge`): am Telefon
+ * so hoch wie ein Gesicht. Niedriger traegt sie dort nicht - mit dem Abstand
+ * der Flaeche allein (16px) sah man von ihr nichts, sobald die Kante des
+ * Fusses in eine Luecke zwischen zwei Zeilen fiel (gemessen 390x844). Sie
+ * braucht keinen Zustand, kein Skript und keine Bewegung: der Endabstand des
+ * Fusses ist genau ihre Hoehe, am Ende des Scrollwegs und bei passender Wand
+ * liegt sie also auf leerem Grund derselben Farbe und ist unsichtbar.
+ *
+ * Kein Tipp bleibt an ihr haengen (`pointer-events: none`). Die Farbe ist die
+ * des Grundes selbst, in beiden Themen und nachts dieselbe Variable; es
+ * entsteht keine neue Flaeche und kein Licht (DESIGN.md, Der Wand-Modus:
+ * genau ein gefuellter Traeger). Die Achse ist die Blockachse, in RTL gleich. */
+.wall__foot::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 100%;
+  block-size: var(--wall-foot-edge);
+  background: linear-gradient(to bottom, transparent, var(--color-bg));
+  pointer-events: none;
 }
 
 .wall__foot > :first-child {
@@ -5848,13 +6149,31 @@ button.today-cockpit__more--link {
   justify-self: end;
 }
 
+.wall__foot-end {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 /* Eine Zeile braucht Platz fuer beides: fuenf Startknoepfe (340px) und je
- * Aussenspalte einen wachen Ausstieg samt Beschriftung (220px, de). Fehlt er,
- * werden die Aussenspalten ungleich und die Mitte rutscht wieder (gemessen: bei
- * einer 800px breiten Flaeche um 26px). Die Bedienung bekommt dann eine eigene
- * Zeile ueber Stand und Ausstieg; der alte Fuss lief bei 390px sogar rechts
- * aus dem Bild (Ausstieg wach bei 356-478). Gefragt wird die FLAECHE
- * (`container: wall`, siehe `.wall`), nicht das Fenster. */
+ * Aussenspalte die Gruppe am Ende - den Ausstieg samt Beschriftung (220px, de)
+ * und seit #1766 daneben den Schoner-Knopf (48px plus 8px Abstand), zusammen
+ * 276px. Fehlt der Platz, werden die Aussenspalten ungleich und die Mitte
+ * rutscht wieder (gemessen: bei einer 800px breiten Flaeche um 26px). Die
+ * Bedienung bekommt dann eine eigene Zeile ueber Stand und Ausstieg; der alte
+ * Fuss lief bei 390px sogar rechts aus dem Bild (Ausstieg wach bei 356-478).
+ * Gefragt wird die FLAECHE (`container: wall`, siehe `.wall`), nicht das
+ * Fenster.
+ *
+ * DIE SCHWELLE BLEIBT, DIE RESERVE SCHRUMPFT. Ab 1024px Flaeche hat jede
+ * Aussenspalte 326px (1024 - 340 - 2 x 16, halbiert): fuer de 50px Luft statt
+ * 106. Gemessen mit Knopf, alle Sprachen: bei 1024px Flaeche stehen die
+ * Startknoepfe in 23 von 26 mittig, ab 1192px in allen. Dazwischen reicht es
+ * den drei laengsten Ausstiegen nicht (ru bis 14px, pt-BR bis 9px, el bis
+ * 58px versetzt; el rutschte dort schon ohne Knopf). Der Versatz steht still -
+ * die Gruppe ist schlafend und wach gleich breit -, der Nachtipp trifft also
+ * denselben Knopf. Eine hoehere Schwelle naehme dafuer jeder Sprache bis
+ * rund 1140px die eine Zeile. */
 @container wall (max-width: 1023px) {
   .wall__foot {
     grid-template-columns: minmax(0, 1fr) auto;
@@ -5865,6 +6184,37 @@ button.today-cockpit__more--link {
     grid-column: 1 / -1;
     grid-row: 1;
     justify-self: center;
+  }
+
+  /* MIT DEM SCHONER-KNOPF REICHT DIE ZWEITE ZEILE NICHT MEHR IN JEDER SPRACHE
+   * (#1766). Auf 390px bleiben 342px: Stand, Knopf und Ausstieg brauchen in de
+   * 366. Das Raster oben drueckt die Stand-Spalte dann unter die Breite ihres
+   * laengsten Wortes, und der Stand liegt UNTER dem Knopf (gemessen: ru 43px,
+   * uk 20px). Hier bricht deshalb der Inhalt um, nicht die Spalte: der Stand
+   * gibt zuerst nach und laeuft auf zwei Zeilen (die Fusshoehe bleibt, er ist
+   * auch zweizeilig niedriger als der Knopf), aber nie unter sein laengstes
+   * Wort. Reicht selbst das nicht, rutscht die Gruppe als Ganzes in eine
+   * dritte Zeile. Ohne den Knopf - also auch solange ein Timer laeuft - gilt
+   * das Raster wie bisher. */
+  .wall__foot:has(.wall__foot-btn--icon) {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .wall__foot:has(.wall__foot-btn--icon) > :first-child {
+    flex: 1 1 0;
+    min-inline-size: min-content;
+  }
+
+  .wall__foot:has(.wall__foot-btn--icon) > :nth-child(2) {
+    order: -1;
+    flex: 0 0 100%;
+    min-inline-size: 0;
+    justify-content: center;
+  }
+
+  .wall__foot:has(.wall__foot-btn--icon) > :last-child {
+    margin-inline-start: auto;
   }
 }
 
@@ -5928,6 +6278,23 @@ button.today-cockpit__more--link {
 .wall__foot-btn:focus-visible {
   outline: var(--focus-ring-width) solid var(--focus-ring-color);
   outline-offset: var(--focus-ring-offset);
+}
+
+/* DER SCHONER-START TRAEGT NUR SEIN ZEICHEN, IN JEDER BREITE (#1766). Mit Wort
+ * war die Gruppe aus Schoner und Ausstieg in de 416px breit und in jeder Sprache
+ * anders: die Aussenspalten wurden ungleich und die Startknoepfe rutschten
+ * (gemessen bis 100px, el bei 1280), auf 390px lag der Stand unter dem Knopf.
+ * Ein Kreis von `--target-lg` ist in jeder Sprache gleich breit.
+ *
+ * Das widerspricht dem Satz oben nicht: „mit Wort" gilt dem AUSSTIEG, weil ein
+ * namenloses Zeichen dort der einzige Weg hinaus war. Der Schoner ist ein
+ * Zusatzweg - wer ihn nicht erkennt, verliert nichts, er startet nach der
+ * Wartezeit ohnehin von selbst. Den Namen tragen `aria-label` und `title`. */
+.wall__foot-btn--icon {
+  justify-content: center;
+  inline-size: var(--target-lg);
+  padding: 0;
+  flex-shrink: 0;
 }
 
 /* ── Küchentimer (#844) ──────────────────────────────────────────────────────
@@ -6044,7 +6411,9 @@ button.today-cockpit__more--link {
 [data-wall-night] .wall-row__title,
 [data-wall-night] .wall-weather__temp,
 [data-wall-night] .wall-weather__range-high,
-[data-wall-night] .wall-weather__day-high {
+[data-wall-night] .wall-weather__day-high,
+[data-wall-night] .wall-who__task,
+[data-wall-night] .wall-who__list--tasks .wall-who__name {
   color: var(--color-text-secondary);
 }
 
@@ -6053,9 +6422,20 @@ button.today-cockpit__more--link {
 [data-wall-night] .clock-widget--wall .clock-widget__date,
 [data-wall-night] .wall-who__name,
 [data-wall-night] .wall-weather__desc,
-[data-wall-night] .wall-weather__day-label {
+[data-wall-night] .wall-weather__day-label,
+[data-wall-night] .wall-who__task--done,
+[data-wall-night] .wall-who__task--more,
+[data-wall-night] .wall-who__task-check,
+[data-wall-night] .wall-who__count--done {
   color: var(--color-text-tertiary);
 }
+
+/* Die Aufgaben unter den Gesichtern (#1817) gehen mit: der offene Titel und
+ * der Name darueber eine Stufe zurueck (oben), Erledigtes und die Zaehlzeile
+ * eine weitere - und der Haken gibt sein Gruen ab wie das Wetterzeichen sein
+ * Bernstein, am Titel wie an der Marke des Gesichts. Die Reihenfolge der
+ * beiden Regeln oben traegt die Stufen: `--done` und `--more` stehen in der
+ * spaeteren und gewinnen gegen `.wall-who__task`. */
 
 /* NACHTS GIBT DIE WAND IHRE FARBE AB, und der Wetterton macht da keine
  * Ausnahme. Der Nachtmodus senkt jede Stimme dieser Flaeche um eine Stufe,
@@ -6224,8 +6604,11 @@ button.today-cockpit__more--link {
   transition: background var(--transition-fast);
 }
 
-.quick-link-tile:hover,
 .quick-link-tile:focus-visible { background: var(--color-surface-hover); }
+
+@media (hover: hover) {
+  .quick-link-tile:hover { background: var(--color-surface-hover); }
+}
 
 .quick-link-tile__face {
   display: grid;
@@ -6462,7 +6845,7 @@ button.today-cockpit__more--link {
 .nutrition-widget { display: grid; gap: var(--space-3); padding: var(--space-4); }
 .nutrition-widget__rows { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); }
 .nutrition-widget__row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: var(--space-2) var(--space-3); }
-.nutrition-widget__label { font-size: var(--text-sm); color: var(--color-text-secondary); min-width: 0; hyphens: auto; hyphenate-limit-chars: 6 4 4; overflow-wrap: anywhere; }
+.nutrition-widget__label { font-size: var(--text-sm); color: var(--color-text-secondary); min-width: 0; hyphens: auto; hyphenate-limit-chars: 6 4 4; -webkit-hyphenate-limit-before: 4; -webkit-hyphenate-limit-after: 4; overflow-wrap: anywhere; }
 .nutrition-widget__bar { grid-column: 1 / -1; grid-row: 2; display: block; block-size: var(--space-2); border-radius: var(--radius-full); background: var(--color-fill-well); overflow: hidden; }
 .nutrition-widget__fill { display: block; block-size: 100%; inline-size: 100%; transform: scaleX(var(--nutrition-scale, 0)); transform-origin: left center; border-radius: inherit; background: var(--module-health); }
 .nutrition-widget__bar--over .nutrition-widget__fill { background: var(--color-warning); }
@@ -6476,3 +6859,50 @@ button.today-cockpit__more--link {
   .nutrition-widget__row { grid-template-columns: minmax(5rem, 8rem) 1fr auto; }
   .nutrition-widget__bar { grid-column: auto; grid-row: auto; }
 }
+
+/* ZAHLEN STEHEN IN GLEICH BREITEN ZIFFERN - auf der ganzen Uebersicht, an EINER
+ * Stelle (Critique R18, 2026-10-07). Gemessen trugen 20 von 62 Textknoten mit
+ * Ziffern `tabular-nums` (im ersten Lauf 19 von 36): der Budgetsaldo ja, die
+ * beiden Betraege darunter nicht; die Uhrzeit des Termins ja, die der
+ * Familienkarte nicht. Untereinander stehende Zeiten, Betraege und Zaehler
+ * springen sonst je nach Ziffernform ("11" ist schmaler als "08").
+ *
+ * Die Liste nennt die Traeger von GELD, ZEIT und ZAEHLERN, `font-variant-numeric`
+ * erbt auf ihre Kinder. Fliesstext mit Zahlen (Notizen) bleibt bei den
+ * Proportionalziffern der Schrift - dort ist eine Zahl ein Wort im Satz.
+ * Guard: test-dashboard-clarity.js haelt die Liste gegen das Markup. */
+.dashboard-overview__date,
+.today-cockpit-card__value,
+.today-cockpit-card__sub,
+.today-cockpit__more,
+.family-member__status,
+.family-widget__footer,
+.budget-widget__savings,
+.budget-widget__flow-item,
+.widget__badge,
+.widget-list-more,
+.birthday-widget-item__meta,
+.birthday-widget-item__age,
+.rewards-widget__footer {
+  font-variant-numeric: tabular-nums;
+}
+
+/* VIER LESESTUFEN AUF DEN INHALTSFLAECHEN (Critique R18, 2026-10-07).
+ *
+ * Gemessen standen auf der Uebersicht 11 bis 14 Schriftgroessen, in
+ * 1-px-Schritten von 12 bis 18. Inhalt liest auf vier Stufen: 17 (Headline,
+ * Kacheltitel und Leitwert einer Zeile), 15 (Subheadline, Zeilentitel und
+ * Fliesstext), 13 (Footnote, Nebenzeile) und 12 (Caption, Meta und Badge).
+ * 14 und 16 bleiben den Bedienelementen (Knopf, Link, Feld), die Display-
+ * Werte (28, 34) den Kennzahlen.
+ *
+ * Umgestellt ist, was dabei KLEINER oder gleich breit wird - so entsteht kein
+ * neuer Umbruch: Wetter (Spanne, Lage, Ort 14 -> 13), Budget (Sparquote
+ * 18 fett -> 17 semibold, ihr Label und die beiden Fluesse 14 -> 13),
+ * Geburtstage (Name geerbte 16 -> 15, "wird 41" 14 fett -> 13 semibold),
+ * Belohnungen (Name 16 medium -> 15 semibold). Die Regeln stehen bei ihren
+ * Kacheln weiter oben; dieser Absatz ist ihr gemeinsamer Grund. Gemessen
+ * (1440, hell): 22 -> 16 Groesse/Gewicht-Paare; bei 390px in `fi` und `de`
+ * weder Umbruch noch Ellipse an den umgestellten Klassen.
+ * Guard: test-dashboard-clarity.js (die genannten Klassen stehen auf
+ * Leiter-Tokens). */

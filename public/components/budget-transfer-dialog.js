@@ -2,7 +2,7 @@
 import { api } from '/api.js';
 import { t } from '/i18n.js';
 import { esc, REQUIRED_MARK } from '/utils/html.js';
-import { openModal, closeModal, reportFieldError } from '/components/modal.js';
+import { openModal, closeModal, reportFieldError, refocusAfterRender } from '/components/modal.js';
 import { budgetCategoryLabel } from '/utils/category-labels.js';
 import { todayKey, monthPeriodKeys, defaultDateInPeriod } from '/utils/date.js';
 import { amountStep, amountMin } from '/utils/money.js';
@@ -24,11 +24,11 @@ export function transferFieldsHtml({ transfer = null, accounts, categories, mont
     ${field('bt-category', 'budget.categoryLabel', `<select class="form-input" id="bt-category">${categoryOptions}</select>`)}
     <div class="form-group" id="bt-subcategory-group" hidden><label class="form-label" for="bt-subcategory">${t('budget.subcategoryLabel')}</label><select class="form-input" id="bt-subcategory"></select></div>
     ${field('bt-date', 'budget.dateLabel', `<yuvomi-datepicker id="bt-date" type="date" value="${date}"></yuvomi-datepicker>`)}
-    ${budgetMode === 'personal' ? field('bt-visibility', 'budget.visibilityLabel', `<select class="form-input" id="bt-visibility">${['private', 'shared', 'shared_amount'].map(v => `<option value="${v}"${v === (transfer?.visibility ?? 'private') ? ' selected' : ''}>${t('budget.visibility_' + v)}</option>`).join('')}</select>`) : ''}
+    ${budgetMode === 'personal' ? field('bt-visibility', 'budget.visibilityLabel', `<select class="form-input" id="bt-visibility">${['private', 'shared', 'shared_amount'].map(v => `<option value="${v}"${v === (transfer?.visibility ?? 'private') ? ' selected' : ''}>${t(`budget.visibility_${v}`)}</option>`).join('')}</select>`) : ''}
     ${recurring ? field('bt-scope', 'budget.recurringSeriesScope', `<select class="form-input" id="bt-scope"><option value="this">${t('budget.recurringThisOnly')}</option><option value="series">${t('budget.recurringEditSeries')}</option></select>`) : ''}
     <label class="form-label"><input id="bt-recurring" type="checkbox"${recurring ? ' checked' : ''}${transfer ? ' disabled' : ''}> ${t('budget.recurringLabel')}</label>
     <div id="bt-recurrence"${recurring ? '' : ' hidden'}>
-      ${field('bt-interval', 'budget.recurringIntervalLabel', `<select class="form-input" id="bt-interval">${['weekly', 'monthly', 'yearly'].map(v => `<option value="${v}"${v === (transfer?.series_interval ?? transfer?.recurrence_interval ?? 'monthly') ? ' selected' : ''}>${t('budget.interval' + v[0].toUpperCase() + v.slice(1))}</option>`).join('')}</select>`)}
+      ${field('bt-interval', 'budget.recurringIntervalLabel', `<select class="form-input" id="bt-interval">${[['weekly', 'budget.intervalWeekly'], ['monthly', 'budget.intervalMonthly'], ['yearly', 'budget.intervalYearly']].map(([v, key]) => `<option value="${v}"${v === (transfer?.series_interval ?? transfer?.recurrence_interval ?? 'monthly') ? ' selected' : ''}>${t(key)}</option>`).join('')}</select>`)}
       ${field('bt-count', 'rrule.labelEvery', `<input class="form-input" id="bt-count" type="number" min="1" max="99" value="${transfer?.series_interval_count ?? transfer?.recurrence_interval_count ?? 1}">`)}
       <label class="form-label"><input id="bt-confirm" type="checkbox"${transfer?.series_confirm || transfer?.recurrence_confirm ? ' checked' : ''}> ${t('budget.confirmFirstLabel')}</label>
     </div>
@@ -40,8 +40,9 @@ export function wireTransferForm(panel, { transfer = null, subcategories = {}, r
     const subs = subcategories[panel.querySelector('#bt-category').value] ?? [];
     const select = panel.querySelector('#bt-subcategory');
     const value = subs.some(s => s.key === selected) ? selected : (subs.length === 1 ? subs[0].key : '');
-    select.innerHTML = (subs.length > 1 ? `<option value="" disabled${value ? '' : ' selected'}>${esc(t('budget.subcategoryPlaceholder'))}</option>` : '')
-      + subs.map(s => `<option value="${esc(s.key)}"${s.key === value ? ' selected' : ''}>${esc(budgetCategoryLabel(s.key, s.name, t))}</option>`).join('');
+    select.replaceChildren();
+    select.insertAdjacentHTML('beforeend', (subs.length > 1 ? `<option value="" disabled${value ? '' : ' selected'}>${esc(t('budget.subcategoryPlaceholder'))}</option>` : '')
+      + subs.map(s => `<option value="${esc(s.key)}"${s.key === value ? ' selected' : ''}>${esc(budgetCategoryLabel(s.key, s.name, t))}</option>`).join(''));
     select.value = value;
     select.required = subs.length > 1;
     panel.querySelector('#bt-subcategory-group').hidden = subs.length === 0;
@@ -49,7 +50,7 @@ export function wireTransferForm(panel, { transfer = null, subcategories = {}, r
   panel.querySelector('#bt-category').addEventListener('change', () => syncSubcategory());
   syncSubcategory(transfer?.subcategory ?? 'saving');
   panel.querySelector('#bt-recurring').addEventListener('change', e => { panel.querySelector('#bt-recurrence').hidden = !e.target.checked; });
-  panel.querySelector('#bt-delete')?.addEventListener('click', async () => { await closeModal({ force: true }); await onDelete(transfer.id); });
+  panel.querySelector('#bt-delete')?.addEventListener('click', async () => { await onDelete(transfer.id); refocusAfterRender(); });
   return async (button = panel.querySelector('#bt-save')) => {
     if (readOnly()) return;
     const value = id => panel.querySelector('#bt-' + id).value;
@@ -70,7 +71,7 @@ export function wireTransferForm(panel, { transfer = null, subcategories = {}, r
     try {
       if (transfer) await api.put(`/budget/transfers/${transfer.id}${suffix}`, body);
       else await api.post('/budget/transfers', body);
-      await closeModal({ force: true }); await onSaved();
+      await closeModal({ force: true }); await onSaved(); refocusAfterRender();
     } catch (err) { onError(err); button.disabled = false; }
   };
 }

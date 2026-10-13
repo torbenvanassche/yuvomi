@@ -17,6 +17,856 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   without rewriting household categories, entries, series or plans. Savings transfers appear in a separate
   Transfers chart section. Summary labels are translated
   in all supported languages.
+- **Organize events in several local calendars** (#1243, from D#1231). Create and rename household
+  calendars, reorder them through the manager's More menu, choose the destination when importing an ICS
+  file, and share a separate ICS subscription link for each calendar. Calendar links include only events
+  visible to everyone in the household. Legacy iCloud auto-upload continues for the default calendar,
+  including when explicitly selected; events in other local calendars stay local. Deleting a calendar
+  moves its events to the default calendar, so with the legacy Apple Calendar connection they then
+  upload to iCloud; the delete confirmation says so when that connection is set up.
+- **Checked-off shopping items collect in one section at the end of the list** (#1816, from D#1624).
+  Ticking an item moves it out of its category into "Checked off", a collapsed section at the
+  bottom that shows how many items it holds. The items stay on the list, and the list above gets
+  shorter as you shop. Nothing moves while you are still ticking: the rows wait until you pause
+  for a moment and then move together. Whether the section is open is remembered per person and
+  per list. Adding a name that is checked off on the open list - picked from the suggestions or
+  typed - brings that row back instead of adding a second one, and a short note says so; an
+  amount you typed replaces the row's, an empty field keeps it. A name that is not checked off
+  on the list is added as before.
+- **Dutch date format DD-MM-YYYY** (#1847). The new `DD-MM-YYYY` choice is in Settings → Account →
+  Appearance → Date format, and the Netherlands region now uses it instead of `DD.MM.YYYY`.
+  Dates, the date field placeholder, short dates and typed input all follow it. Existing households
+  keep the format they have set. A household that already has the Netherlands as its region gets
+  the new format by setting "Region" to "Custom" and then "Preferred date format" to `DD-MM-YYYY`.
+- **Wall mode names today's tasks under each person** (#1817, from D#1604). "Who's up today"
+  used to show a face and a number. It now lists each person's open tasks for today by title, and
+  below them, dimmed and with a checkmark, what they have already done today - so a glance shows
+  what is left and what is finished. The wall still does not scroll: it shows as many lines as
+  the screen has room for and says "+2 more" for the rest. When space runs short, finished tasks
+  give way first. Someone who has finished everything keeps their ticked tasks until the next
+  day. Only tasks the whole household may see appear; a task set to "Assignees only" is not on
+  the wall, whoever is signed in on the device.
+- **A profile picture can be fetched from Gravatar once, if the operator turns it on.** Off by
+  default: while `GRAVATAR_BASE_URL` is unset or empty nothing is sent and Settings → Account shows
+  no button. An operator opts in by setting it to `https://gravatar.com/avatar/` or a Libravatar
+  mirror; a household member can then fetch the picture for their saved address, named in the
+  hint, and it is stored exactly like an upload, never fetched again. Split-expense guests are
+  refused. Only a SHA-256 hash of the address and the server's IP leave the server, through the
+  SSRF-guarded client with an 8 second limit, a 512 KiB cap and a signature check. If the
+  picture, the address or the account changes while the fetch runs, nothing is stored (409).
+  The hint and the error messages name the service the operator chose by its host name, so a
+  mirror is never called gravatar.com, and a failed fetch is announced once, in the form's error
+  line.
+- **Tapping a category or subcategory in the budget overview filters the transactions list.**
+  (#1593, from D#1583) The filter applies in place and can be cleared again. A category with
+  both income and spending is marked in both blocks, because the list then shows both; keyboard
+  focus stays on the bar that was tapped and its ring is no longer cut off, and whether the tap
+  jumps to the list follows the width of the budget area, not of the window. The bars answer to
+  the pointer.
+- **The screensaver can show the time and fill the screen, chosen on each device** (#1766, from
+  D#885). Two switches under Settings → Account → Appearance, below the delay: the current time,
+  on unless switched off, in the household's time format and zone, turning on the full minute and
+  sitting in the corner opposite the photo caption, moving with it so no text stays in one place;
+  and photos that fill the whole screen instead of fitting inside it, off unless chosen, because it
+  crops portrait photos. Both are stored in the browser like wall mode and the delay, so the frame
+  in the hallway and the kitchen tablet decide for themselves, and both apply from the next start
+  of the screensaver without a reload.
+- **Tasks can be put in an order of your own within a category.** In the task list grouped by
+  category, every row has a grip: drag it, or press the arrow keys at the focused grip, and the
+  order is saved for the whole household. Tasks you never placed keep the old order (due date,
+  then priority) and sort after the placed ones, so a new task lands at the end of its category.
+  A recurring task passes its place on to its next occurrence; a task that moves to another
+  category loses its place. A "Sort automatically" button in the group header returns a category
+  to the automatic order. Grouping by due date, the board, selection mode, `tasks: read` and the
+  wall display are unchanged. The API gets `PATCH /api/v1/tasks/reorder` and
+  `POST /api/v1/tasks/reorder/reset`, and `sort_order` on each task (migration 242).
+
+- **Custom modules can be installed from Settings, from GitHub or as a ZIP file, where the operator
+  allows it.** Until now a third-party module reached Yuvomi only as a folder copied into `modules/`
+  on the server. The new page Settings → Modules → Add custom module (admin only) takes the address
+  of a public GitHub repository or an uploaded `.zip` and installs the module from it. **The feature
+  is off unless the operator sets `MODULES_ALLOW_WEB_INSTALL`**: a module is JavaScript that runs
+  with the session of every member who opens it, so installing one is the operator's choice. A
+  module installed this way arrives disabled until an admin approves it in Active modules from a
+  browser session, and the web interface removes or replaces only what it installed. Limits, checks
+  and the API are in `MODULES.md` under "Installing From Settings".
+- **Move a shopping item to another list** (#1700, from D#998). The edit dialog has a list
+  selector under amount and category when there is more than one list. The item moves as it is -
+  name, amount, category, note, link, price and shop - and lands at the end of its category on
+  the other list, so nothing has to be typed again. Between two lists mirrored from a CalDAV
+  server the entry itself moves: Yuvomi reads it in the old list, stores it unchanged in the new
+  one and only then removes it from the old one, so its tags, alarms and everything another app
+  keeps on it come along - also from one account to another. If the server does not accept it
+  in the new list, the entry stays untouched where it was, and after the fifth refusal the item
+  is back on the list it came from, with a line in the sync log. The same happens when the new
+  list no longer exists on the server. While the new list is switched off in the reminder sync,
+  the move waits until it is switched on again. Moving an item to a
+  list that is not mirrored removes it on the server without deleting it in Yuvomi.
+  `PATCH /api/v1/shopping/items/:itemId` takes `list_id` for the same move (migration 243).
+- **Wall mode: a button in the footer starts the photo screensaver by hand** (#1766). When
+  Immich is connected, a picture symbol sits in the wall footer next to the exit button. Tapping
+  it starts the screensaver at once, the same as the idle timer would. The button shows the
+  symbol only and carries its name, "Screensaver", as a tooltip and for screen readers, so it
+  takes the same room in every language and does not push the timer buttons aside. While a
+  kitchen timer is running the button is not there: a photo covering the countdown is not a
+  timer. If the screensaver cannot start (no photos configured, Immich unreachable, or a
+  connection error), the button answers with one line instead. For a paired display the button
+  appears only when an administrator has switched the photo screensaver on for it under
+  Settings → Household → Wall tablets.
+
+### Changed
+
+- **Recipes mirrored from a Norwegian Mealie or Tandoor sort into shopping categories.** The
+  keyword list that guesses a category from an ingredient's name now knows Norwegian words as
+  well as German and English, so "hvetemel" lands under baked goods and "oppvaskmiddel" under
+  household instead of everything ending up under "Other". Matching stays whole-word, so a
+  compound such as "kyllinglår" still falls through unless it is listed on its own.
+- **The wall shows only what the whole household may see** (#1817). Wall mode is a shared
+  surface, not a personal screen: it hangs in the kitchen, whoever opened it. The day's
+  programme and "Who's up today" now leave out every task and appointment that is not visible
+  to everyone - a task set to "Assignees only" or private, an appointment set to "Assignees
+  only" or private, and appointments from a calendar subscription that is not shared with the
+  household - also when the wall was opened from the session of the person they belong to.
+  Someone who would only be "up today" because of such an entry is not listed. The same holds
+  for what concerns one person alone: a wall opened from a member's session no longer shows
+  that person's medication doses, own shift, due reminders or the reward requests waiting for
+  their approval - a coupled display never showed them, and now every wall reads the same.
+  And the device on the wall no longer receives what the wall never draws: pinned notes, the
+  budget, shared-expense balances, quick links, countdowns and the housekeeper's unpaid amount
+  used to travel along in the background and now stay off it, as does anything a future module
+  adds until it is given a place on the wall.
+  The normal overview and "Today at a glance" stay personal and show all of it as before.
+
+### Fixed
+
+- **A photo screensaver started with the mouse stays open** (#1766). Started from the wall footer
+  or as the preview in the Immich settings, it closed again as soon as the mouse left the button,
+  if the pointer had rested on it for more than a second before the click. While the photos were
+  still loading, that same move cancelled the start and the app said the screensaver was not
+  available. Moving the mouse now leaves it alone while the photos load and for the first second
+  after it appears; after that a move closes it as before. A key, a click, a touch or the wheel
+  close it at once, and the screensaver that starts by itself is unchanged.
+- **Sign-in and setup: a form you are filling in is no longer cleared after a few minutes** (#1919).
+  The photo screensaver started its idle timer on every page, also where nobody is signed in. Once
+  the idle delay had passed it asked for its photos, was refused, and the app took that for an
+  expired session and drew the sign-in page again - over whatever had been typed so far. The
+  screensaver now waits for somebody to be signed in, or for a paired wall display, and stops when
+  you sign out. After signing in it is ready without a reload.
+- **Waste: an address that stops serving its calendar no longer wipes your pickups** (#1938). A
+  subscribed waste calendar is fetched on its own. When the other side answered with something
+  that holds no calendar entry - a maintenance or login page, an empty calendar - Yuvomi took
+  that for a calendar with zero pickups: every imported pickup of the source was removed, the
+  reminders for them went with it, and the source looked healthy. Now such an answer is a failed
+  fetch like any other. The pickups and reminders stay, the source records the error and tries
+  again sooner, and the page says that no calendar with entries arrived. Adding a new address
+  that serves no calendar says so instead of showing a working source, and a file without a
+  single calendar entry is refused in the import assistant before anything can be confirmed.
+  A calendar that has entries is applied as before, also when it has fewer than last time.
+  For API clients: `POST /waste/sources/{id}/refresh` answers 200 with `outcome: "error"` and
+  `reason: "waste_source_fetch_no_events"` where it answered `outcome: "committed"` with
+  `diff.removed`; `POST /waste/sources` answers 201 with the same outcome and reason. The four
+  import endpoints (`/waste/import/preview`, `/waste/import/commit` and
+  `/waste/sources/{id}/reimport/preview`, `.../reimport/commit`) refuse a file without calendar
+  entries with 400 and `reason: "waste_import_no_events"` where they answered 200 or 201, and a
+  URL source's re-import answers 502 with `reason: "waste_source_fetch_no_events"`. Re-importing
+  an empty calendar no longer empties a source; delete the source instead.
+- **Calendar: an event moved away while it was uploading stays where you put it** (#1926). The
+  legacy Apple Calendar connection uploads the events of the default calendar to iCloud. If an
+  event was moved to another local calendar in the moment its upload was running, it was recorded
+  as uploaded anyway: it was on iCloud and had lost the calendar it had just been given. The same
+  could happen with Google when an event gave up its Google calendar during the upload, and an
+  event deleted in that moment stayed behind at Google. Now such an event stays local and keeps
+  its calendar, and the copy that reached the provider is removed on the next sync.
+- **Google Calendar: an edit made while the event is uploading is sent afterwards** (#1932).
+  Sending a new event to Google takes a moment. If you changed its title, time or another
+  detail in that moment, Google kept the event as it was before the edit and Yuvomi recorded it
+  as up to date, so the change never reached Google - and the next sync could write Google's
+  older version back over your edit. Yuvomi now looks at the event again after Google has
+  answered and sends an edit made in the meantime with the next sync. CalDAV and iCloud already
+  did this (#1862).
+- **Shopping: an error message is in your language** (#1909). When something could not be
+  saved, the note showed the server's own sentence, in English or German whatever the app was set
+  to - "Unbekannte Liste." in an English session, when an item was moved to a list somebody had
+  just deleted. The shopping page now says it in the language of the app: the list, item, shop or
+  category no longer exists, or a shop of that name already exists (choose a different name). The
+  same goes for the dialogs that manage shops and shopping categories. Anything else on the shopping page shows the general sentence instead of a server
+  text. The other pages are unchanged for now and follow module by module. For API clients: the
+  affected answers of `/api/v1/shopping` carry a
+  `reason` next to `error` (`shopping_list_not_found`, `shopping_item_not_found`,
+  `shopping_store_not_found`, `shopping_store_exists`, `shopping_category_not_found`,
+  `category_exists`, `category_last`); status codes are unchanged, and three German `error`
+  sentences are now English ("Unknown list.", "Unknown store.", "Store already exists.").
+- **Shopping: the page catches up by itself when something is gone** (#1909). If somebody else
+  in the household deleted a list, an item, a shop or a category while your page was open, the
+  next thing you did with it failed, and the note told you to reload the page. The page now does
+  that for you: it fetches the lists, shops, categories and items again and shows the current
+  state, and the note only says what happened ("This item no longer exists."). If the list you
+  were looking at is gone, you land on the first remaining one. An edit dialog for an item that
+  no longer exists closes; in any other case it stays open with what you typed and offers the
+  current lists, shops and categories. The dialogs that manage shops and shopping categories
+  refresh their rows the same way. One case stays quiet: if you delete an item that somebody else
+  has already deleted, it is simply gone - no note, and the row does not come back for a moment.
+  The same holds for a list, a shop or a shopping category that somebody else deleted first: the
+  list stays gone without a note, and the dialog confirms the shop or category as deleted instead
+  of reporting an error.
+- **Waste collection: an error message is in your language and names the cause** (#1909). The
+  waste page showed the server's own English sentence when something could not be saved, for
+  example "anchor_date must fall on month_day itself (its day-of-month must equal month_day)."
+  for a monthly schedule whose first pickup is not on the chosen day. Types, schedules, moved or
+  skipped pickups, one-off pickups, the rename and mapping of a source and the reminder settings
+  now say it in the language of the app, each cause with its own sentence: no weekday chosen, the
+  end date before the first pickup, an interval or day of the month out of range, a first pickup
+  that does not fall on the chosen day, a missing date, a pickup moved to the day it is already
+  on, a reminder outside 0 to 14 days or without a time. If somebody else in the household
+  deleted the type, schedule, pickup or source in the meantime, the note says so, an open dialog
+  closes and the page fetches the current state by itself. Deleting something that is already
+  deleted, or resetting a pickup that is already back on its day, simply succeeds. Saving a
+  reminder with an emptied time field no longer ends in a server error. The ICS import, the
+  mapping profile and sources with an address say it the same way, with the number where the
+  cause has one: a calendar larger than the upload limit, with more entries, pickups or labels
+  than the import takes, an address that is none or does not start with https://, an interval
+  out of range, a source that is being refreshed right now. A calendar that could not be fetched
+  says why by its kind - the address answered but delivered no calendar, the calendar is too
+  large, the address is on a private network, or it cannot be reached - instead of
+  "Fetching the source URL failed: HTTP 404". A file over the limit is refused before it is
+  sent. If only the type you picked in a dialog is gone (a schedule, a one-off pickup, a mapping
+  of a source, an import decision), the dialog stays open with everything you entered, the list
+  of types is fetched again and the focus is on it; nothing else is chosen in its place. The
+  failure text a source keeps from its last automatic fetch, shown in the source dialog, is
+  still the server's. For API clients: the affected answers of `/api/v1/waste` carry a `reason`
+  next to `error` (`waste_*_not_found`, `waste_type_in_use`, `waste_pickup_exists`,
+  `waste_schedule_*`, `waste_pickup_date_invalid`, `waste_override_*`, `waste_reminder_*`,
+  `waste_import_*`, `waste_profile_*`, `waste_source_*`, listed in the OpenAPI description), and
+  `params` with the number where the cause has one (`{ "limit_mb": 5 }`); a refresh or create
+  that ends with `outcome: "error"` names the class of the failed fetch as `reason` in `data`.
+  Status codes and `error` texts are unchanged, except that an empty `delivery_time` on
+  `PUT /waste/reminder-settings/{typeId}` now answers 400 instead of 500.
+- **Two texts no longer suggest that wall mode follows the arrangement of the overview** (#1908).
+  Wall mode always shows the same four things - the time, today's schedule, who's up today and
+  the weather - on every device. The hint under Settings → Household → Wall tablets now names
+  them, and the note shown when entering wall mode calls it a fixed programme, independent of
+  your overview. The household default still sets a wall tablet's normal overview, as before;
+  nothing about the behaviour changes.
+- **A task due late tomorrow evening is no longer labelled "Due today" on the dashboard.** A task
+  due tomorrow at 22:00 or later and less than 24 hours away gets its own label next to the date,
+  "Due soon". In English and 17 other languages that label carried the text of "Due today", so the
+  tile said "today" in front of tomorrow's date. It now reads "Due soon" in each of them. Dutch
+  gets its own label with the Dutch wording corrections below (#1892).
+- **An archived shared-expense group now refuses changes on the server too** (#1747). Until now only
+  the page was locked: an API client or a stale tab could still add, edit or delete expenses,
+  comments, settlements and recurring expenses in a group the household had put away, and the
+  hourly run kept booking its recurring expenses. Every write on an archived group is now answered
+  with 409 (`group_archived`) and changes nothing; restoring the group, reading it and deleting it
+  under the existing rules work as before. The hourly run skips an archived group without booking
+  or pausing anything, and restoring the group moves its active recurring expenses to their first
+  date from today on, so the months in between are never booked afterwards.
+- **Moving an event to another CalDAV calendar no longer leaves it in both** (#1861). A move
+  stores the event in the new calendar and then removes it from the old one. When the server
+  stored the copy but refused the removal - an old calendar that is shared read-only, or a server
+  that was briefly overloaded - Yuvomi booked the move as done and never tried again: every other
+  app on that account showed the event twice from then on, and in Yuvomi it could jump back to
+  its old calendar. The refused removal is now remembered and tried again with every sync, up to
+  five times like any other refused deletion, and until then Yuvomi shows the event once, in the
+  calendar you moved it to. After the fifth refusal Yuvomi gives up, and the event stays in both
+  calendars until you remove one copy yourself. Events that were left doubled before the update
+  are not cleaned up. A removal that is still waiting only takes the entry as it was when you
+  moved the event (#1883): if the entry in the old calendar has been changed since, or the event
+  was put back there from another app, Yuvomi no longer removes it.
+- **Editing or deleting an entry while it is being uploaded is no longer lost or undone**
+  (#1862). Sending an entry to a CalDAV or iCloud server takes a moment, and Yuvomi booked the
+  result against the entry as it was before that moment. If you deleted a new event, task or
+  shopping item while it was being uploaded, it stayed on the server and came back with the next
+  sync. If you edited it during the upload, or edited an event while others were being uploaded
+  before it, the server kept the old text and the next sync wrote that old text back over your
+  edit. And a second edit to a task or shopping item made while the first one was on its way was
+  replaced by the first. Yuvomi now looks at the entry again after the server has answered: an
+  entry deleted in the meantime is removed from the server too, and an edit made in the meantime
+  is sent after it.
+- **Changing where an entry is synced to while it is being uploaded is now followed** (#1881). If
+  you picked another CalDAV calendar for a new event, or set it back to "Local", in the moment
+  its upload was on the way, the event stayed in the calendar it had just been sent to, and saving
+  it again changed nothing. It now ends up where you last put it: moved to the other calendar of
+  the same account, or removed from the server again and kept as a local event (or uploaded
+  through the other account, if you chose one). The same holds for a new task whose reminder list
+  you changed or took back during the upload, and for a new shopping item that left its synced
+  list in that moment. Until now such a task also lost the list you had just chosen and stayed in
+  the old one.
+- **An entry deleted after an interrupted upload no longer comes back** (#1882). When a new
+  event, task or shopping item reached the CalDAV or iCloud server but the server's answer got
+  lost on the way - a dropped connection, a timeout, a server error after saving - Yuvomi kept
+  the entry as not yet uploaded. If you deleted it before the next sync, the copy stayed on the
+  server and the next sync brought the deleted entry back. If you instead picked another calendar
+  or list for it, or set it back to "Local", the next sync added the server copy as a second
+  entry. Yuvomi now remembers that an upload was sent and never confirmed: the next sync removes
+  the copy from the server instead of importing it, and the entry ends up only where you last
+  put it. The copy is removed with the next sync run, not at the moment you delete the entry,
+  and only after Yuvomi has read that the entry at that address is really its own. An upload
+  that the server finishes late is covered for 24 hours after the last attempt. A copy that is
+  still waiting to be removed does not keep an event or task in Yuvomi (#1905): if the entry has
+  meanwhile gone to another calendar or list of the same account and is deleted there in another
+  app, it disappears from Yuvomi with the next sync, also while the server refuses to remove the
+  old copy. A shopping item in that situation stays and returns to the list of the copy that is
+  left, as before.
+- **A CalDAV event belongs to the account that brought it** (#1860). With two or more CalDAV
+  accounts, an event was identified by its UID alone. When a second account served an event with
+  the same UID, it took over the entry of the first: title, calendar and address then came from
+  the second account, and an edit made in Yuvomi went there. An event now belongs to one account
+  and is changed, moved and deleted only through that account. The same UID in two accounts is
+  still shown once, and it belongs to the account that delivered it first; if that account is
+  removed or no longer has the event, the other account takes it on with its next sync. What to
+  know after the update:
+  - Existing events are assigned to their account automatically. With several accounts, an event
+    whose calendar is in the selection of more than one account, or of none, cannot be assigned
+    with certainty. It stays without an account, is not sent to any server, and is taken on by
+    the first account that delivers it at the next sync. A change you made to such an event
+    before the update and that had not been sent yet is not sent and is dropped after five sync
+    runs; the event then shows what the server has.
+  - With exactly one CalDAV account, all existing CalDAV events go to it, including leftovers of
+    an account that was removed earlier.
+  - A deletion that was still waiting to be sent and cannot be assigned to an account is dropped.
+    The event may come back once with the next sync; delete it again then.
+  - Two different events that happen to carry the same UID in two accounts show as one.
+  - As a sync target, Yuvomi accepts only a calendar that is switched on for that account - the
+    ones the event form offers. A new target outside that selection is rejected. A target saved
+    earlier for a calendar that has since been switched off stays as it is, but the event is no
+    longer uploaded until the calendar is switched on again; changing it to one of the offered
+    calendars works. An event that is already synchronised can only be moved to another calendar
+    of its own account.
+  - Pointing an account at a different server or a different user drops its deletions that were
+    still waiting to be sent, since they named objects on the old server.
+  - Deleting an account while keeping its events drops any edits of those events that had not
+    been sent yet.
+  - An event that belongs to no account is deleted only in Yuvomi, never at a server.
+  - Events without an account that no account delivers any more stay until you delete them.
+  - If you delete an event that a second account also keeps as its own copy, that account adds it
+    back on its next sync.
+- **Norwegian Bokmål reads more naturally.** A second pass over the app
+  and the installer after using them day to day: one word for a shift ("vakt"), a reminder
+  ("påminnelse") and a tablet ("nettbrett") throughout, "container" and "image" for Docker
+  instead of literal translations, and singular forms for a count of one instead of "(er)".
+- **Dutch wording corrections from daily use** (#1892). The notes module was called "Bord" in the
+  navigation, as its page title and in the API token scopes, and "Notities" elsewhere; it is
+  "Notities" in all three now. The due labels on the dashboard, in Tasks, Housekeeping and health
+  prevention read "Vervalt vandaag" and "Vervalt morgen" instead of "Vandaag vervallen" and
+  "Morgen vervallen", and the dashboard's "Due soon" label has its own text, "Vervalt
+  binnenkort", where it repeated the one for today. The empty housekeeping tile says
+  "huishoudhulp" instead of "huishoudelijke hulp".
+- **Deleting an entry of a switched-off CalDAV calendar or reminder list no longer deletes it on
+  the server, and is no longer lost or stuck** (#1884). Switching a calendar or reminder list off
+  in Settings is meant to leave everything in it alone. A deletion made in Yuvomi for an entry of
+  such a calendar was sent to the server right away all the same; if the server refused it five
+  times, Yuvomi gave up, and the deleted event came back when you switched the calendar on
+  again. For tasks and shopping items the deletion always went through.
+  In other cases the deletion waited for good, also after the calendar itself had been deleted on
+  the server. Now the deletion waits while the calendar or list is switched off: nothing is
+  deleted there, and waiting does not use up its retries. It is carried out when you switch the
+  calendar or list on again, so the entry does not come back, and it is dropped when the
+  calendar or list no longer exists on the server or the account is removed. The sync log names
+  how many deletions are waiting. For iCloud, a deletion for a calendar that no longer exists is
+  dropped the same way.
+- **A paired wall tablet can show the photo screensaver** (#1766). Its account could not read the
+  screensaver photos, so the screensaver never started on the one device it was built for. An
+  administrator now switches it on per tablet under Settings → Household → Wall tablets; it is off
+  until then, so a wall that shows the calendar today keeps showing it after the update. A tablet
+  that has it on reads the same photos every signed-in device shows - with their date, city and
+  country - and nothing else of the screensaver: the Immich connection stays out of its reach.
+  The switch reaches a tablet nobody touches in both directions: a screensaver that could not
+  get its photos asks again after the next idle period instead of waiting for a touch, and one
+  whose next photo is refused closes instead of leaving a black screen.
+- **Shopping: deleting a shop no longer says "Category deleted"** (#1929). The shop manager
+  borrowed three messages from the category managers: adding, renaming and deleting a shop each
+  ended with "Category ...", and a screen reader announced the delete button as "Delete category
+  <name>". All four now name the shop, in every language; the category managers read as before.
+  A deleted shopping list also no longer leaves its "Checked off is open" entry behind in the
+  browser's storage.
+- **Health: a switched-off medication no longer shows a dose as due today** (#1950). The Health page
+  listed a dose under "Due today" and among the next reminders for a medication that was no longer
+  active, while the Overview tile and the reminders left it out. The page now leaves it out too,
+  so both show the same number, and adherence and the streak count only the medications still
+  being taken. The medication stays in the list, and the doses already logged stay in the intake
+  log.
+- **Wall mode on a phone: the note on entering no longer covers the clock, and the footer shows
+  that the list goes on** (#1917). Up to a width of about 834 px the note that explains wall mode
+  lay on the time and date for eight seconds; it now sits directly below them and still clear of
+  the timer buttons, and on wider screens it stays where it was, next to the clock. Any later
+  message on the wall keeps the clock and the footer free in the same way. "Who's up today" was
+  never cut off, but the footer that stays at the bottom covered faces behind a hard edge; on a
+  phone the content now fades out softly above the footer, and at the end of the list the last
+  entry stands clear of it. On a tablet or a wall display the layout is unchanged.
+
+## [2.76.0] - 2026-10-11
+
+### Added
+
+- **The demo household has pocket money** (#1750). The Rewards overview of a demo database now
+  shows the pocket money section: Emma has an account in euros with a monthly plan, three
+  credits by that plan, a birthday bonus from a parent, an approved withdrawal and one request
+  that is still open. Leo has no account, so he appears as someone a parent can set up. Only a
+  database filled by `scripts/seed-demo.js` is affected.
+- **Payment reminders can be turned off for each subscription** (#1708, from D#1226). Turn off the reminder
+  in the subscription dialog while keeping the subscription active and its cost in the budget.
+  Editing or renewing it keeps the reminder off. Existing subscriptions keep reminders enabled.
+- **Loans can be put in order by interest rate or by remaining balance** (#1706, from D#935). The
+  loans tab has a sort menu: highest rate first, smallest balance first, or by start as before.
+  Each loan now also names the month it is projected to end, which follows the payments you
+  actually booked and counts from today if instalments have not been recorded up to date. A loan in another currency is compared at its stored rate, a loan without
+  interest counts as 0 %, and paid-off loans stay at the end. In these two orders the loans you
+  took out come first and the money you lent follows as its own group. While the list is not in
+  its default order, a line above it says which order applies; tap it to change. The order is a calculation to read:
+  Yuvomi does not suggest which loan to pay first and does not move payments between loans.
+- **Choose which shopping lists the overview shows** (#1818, from D#1624). The shopping tile now
+  has options in "Customize": tick the lists you want on it. With nothing ticked it shows every
+  list with open items, as before. A list you picked stays on the tile even when everything on it
+  is bought, so it is one tap away when you want to add the first item. The tile shows up to
+  three lists; a further one you picked is named as "+1 more list". The choice is yours alone,
+  does not change what anyone else in the household sees, and only applies to the tile: the
+  today sheet, the wall and the menu keep counting every list.
+
+### Changed
+
+- **"Grant bonus" is on the Rewards overview** (#1787). Giving bonus points was only possible from
+  the history tab, which is not where parents look first. They now find a "Grant bonus" button
+  in the head of the point standings, next to "Manage participants"; it opens the same dialog. The button in the history tab stays. Children and members who can only read
+  Rewards do not see it.
+- **Today's programme says which calendar an appointment comes from, and the wall when it
+  ends** (#1698, from D#988). Every appointment in "Today at a glance" and on the wall carried
+  the same word underneath, "Event". It now shows the name of its calendar there, so "Early"
+  reads as the shift from the work calendar. An appointment that lives in Yuvomi only keeps the
+  word "Event". In wall mode the time also shows start and end ("06:00 - 14:00", or "6:00 AM -
+  2:00 PM" in the 12-hour format) instead of the start alone; all-day appointments, ones carried
+  over from yesterday and ones that run for a day or longer read as before, and on a phone-sized
+  screen the wall keeps the start alone so the title keeps its room. The line under a title is
+  now a single line in both places: a long calendar name, or any other long text there, ends in
+  an ellipsis instead of wrapping.
+- **The notes grid stops at four columns** (#1765, from D#826). The four-column step now starts at
+  1200px of grid width instead of 900px, and the fifth column is gone. A note card is never
+  narrower than 232px, where it could be 216px before, so the title and first lines of a note
+  stay readable on a wide screen. Phones and narrow windows look as they did.
+- **Rows show fewer buttons.** Lists no longer carry a pencil and a bin on every line. Editing,
+  deleting and anything further sit behind one "more" button per row that is always visible and
+  names what it does in words. This applies to shopping items, birthdays, tasks, loan payments
+  and the five lists of the shift planner, where "Edit" and a red-outlined "Delete" stood on
+  every row. Deleting stays undoable or asks first, exactly as before, and swiping still works.
+  Meal cards no longer show a bin at all: open the meal to delete it.
+- **Shopping rows are one line.** The amount now stands at the end of the line with the name
+  instead of underneath it, so amounts line up in a column and the list shows more at once. A
+  long name still wraps instead of being cut off.
+- **Fields are quieter and all look alike.** A field used to be drawn twice - a fill plus a
+  heavy outline - and in dark mode it was a near-black box with a bright edge. Fields now have
+  one skin everywhere: a thin outline that still meets the contrast needed to find it, on a fill
+  that carries it; in dark mode the field is a soft well instead of a black hole. Dropdowns are
+  as tall as the text fields beside them and show the same small arrow on every browser, number
+  fields no longer show the tiny up/down arrows, and the quick-add row of the shopping list
+  focuses in violet like every other field.
+- **Settings read like a list, not like a form.** A choice in a settings row was a bordered
+  box at the end of the line, anywhere between a third and the full width of the row. It is now
+  the plain value with a small arrow, the way phone settings show it - "Language ... German".
+- **Recording a measurement is quicker to read and fill in.** Blood pressure was three wide
+  boxes named "Systolic", "Diastolic" and "Pulse", none with a unit. It is now written the way
+  it is said: "120 / 80 mmHg", with the pulse on the line below, each with an example value and
+  its unit. Type, time and visibility stand as rows with the label on the left and the value on
+  the right; the note keeps its own field. Screen readers still announce every part by name, and
+  in right-to-left languages the reading keeps its order.
+- **Documents look like documents.** The preview shows the whole page as a sheet on a quiet
+  background instead of the cropped top of a white rectangle, and in dark mode it is no longer
+  the brightest thing on the screen. Cards are as tall as their content, with their buttons
+  right below the text, and there is room between the filter bar and the first row. The list
+  view shows the category symbol instead of a preview too small to read. On a desktop, opening a
+  PDF no longer shows the browser's own toolbar inside the viewer; "Open in new tab" and
+  "Download" remain the way to zoom and print (Safari keeps its toolbar).
+- **Reading a note looks like the note.** The text stood in a tinted box with a coloured edge,
+  which above the red "Delete" read like an error message. The whole reading view now takes the
+  colour of the note. "Edit" is one button instead of a button and a tab.
+- **One empty-state message per page.** Waste collection and the shift planner stacked two or
+  three large "nothing here yet" blocks. The main section keeps its message; the sections below
+  say it in one line with their button.
+- **The task board has depth.** Columns were as bright as the cards on them; they are now a
+  recessed lane with the cards lying on top, and an empty column no longer shows a dashed box.
+- **Opening an event, a task or a birthday shows what matters first.** The reading view listed
+  everything as rows of equal weight, people as a comma-separated line, under a thin colour
+  strip. An event now opens with its time in words ("Today, 20:00 - 22:00") beside a dot in the
+  calendar colour and the people as avatars with names. A task opens with its due date and its
+  people, and "Done" is the one main button. A birthday opens with the picture, "turns 41" and
+  "in 26 days". The popover on a desktop carries the title in the same size as the sheet on a
+  phone.
+- **A recipe without a picture opens with a head of its own.** Its details began with a list of
+  ingredients and nothing that said "recipe". They now open with a flat band in the kitchen
+  colour that carries the sign of the meal the recipe is for. Recipes with a picture keep it,
+  and the list stays as it is.
+- **Ingredient amounts line up.** "200 g", "1 tbsp" and "2" stood inside the same text as the
+  ingredient, so every line started somewhere else. Amounts now have their own right-aligned
+  column in front of the names.
+- **The agenda names its days in words.** "Today - Thursday, 8 October" and "Saturday, 10
+  October" instead of "08.10.2026 Thursday".
+- **Each money screen has one number that leads.** On a phone the largest thing on every budget
+  tab was the word "Budget"; the balance stood beside it in small type. Now one figure per tab
+  carries the screen: the balance in the overview, net worth in accounts, the remaining debt in
+  loans, the monthly cost in subscriptions. Income and expenses stand as a quiet line below it.
+  On a desktop the same figure leads its column and the others step back. Long amounts and long
+  currency signs take a smaller size instead of breaking.
+- **The budget trend reads at a glance.** The area under income is tinted, today carries a dot
+  with both values, and what has not happened yet is dotted - for both lines, where expenses
+  used to be dashed as well. "Today" no longer sits on a grid line, the axis says "1.", "16.",
+  "31." instead of three full dates under a header that names the month, and three grid lines
+  replace up to seven. Trend and ring now sit on a card like the lists beside them.
+- **The spending ring shows its total in the middle.** The sentence next to it ("7 segments,
+  largest: ...") is still read out by screen readers.
+- **Account balances are no longer green.** Nearly every balance and the net worth above them
+  were green merely for being above zero. A balance now stands in the text colour and only a
+  negative one is red; green is kept for income and for changes.
+- **Figure tiles line up.** In the vitals row the dates stood at three different heights. Label,
+  value, trend line and date now share the same four rows across a row of tiles, value and unit
+  share a baseline, and labels are written normally instead of in spaced capitals, so a long one
+  such as oxygen saturation fits on one line. On the vitals page "116/74 mmHg" stands on one
+  line; in the narrower tiles of the health overview the unit still moves below the value. This
+  holds for every tile of this kind: budget, health, housekeeping, inventory and the overview.
+- **The small trend lines in the vitals tiles are visible.** They were grey hairlines; they now
+  carry the colour of the health area with a soft fill, and the latest reading is marked.
+- **Hovering a figure tile no longer looks like selecting it.** The tile lifts slightly; the
+  coloured ring is kept for the selected one.
+- **The week of activity is easier to read.** Bars have a round top and a flat foot, today's
+  bar stands in full colour with its value while the other days step back, and three grid
+  lines replace five. On a phone the chart is taller, and the weekdays no longer run into the
+  feet of the bars.
+- **The overview uses fewer type sizes.** Weather, birthdays, rewards and the budget tile mixed
+  sizes one pixel apart; their content now reads on four steps.
+- **Numbers no longer jump sideways.** On the overview, times, amounts and counters now use
+  digits of equal width everywhere, not only in some tiles.
+- **Everything that floats has one shape, and the sidebar floats too.** Dialogs, the "More"
+  sheet and the search palette had tighter corners (16 px) than the event popover and the
+  toasts (26 px); they now share the larger radius, with fields, tiles and menu rows rounded to
+  match, and catch a fine line of light at the top. The dialog header is no longer a grey strip
+  above a white body. On a desktop the sidebar is a glass panel 8 px off the window edge instead
+  of a full-height bar; the content keeps its width. Light glass takes the warm tone of the
+  page instead of a cool white, and the icon wells in the sidebar are visible in the light
+  theme (they were 1.007:1 against the bar).
+- **Login, setup, invitation and password reset have a place.** The form stood as a small card
+  on a plain page. It is now a glass panel in front of a still field of soft light in the
+  colours of the Yuvomi mark, which also stands behind the loading screen. Everything on these
+  pages sits on the panel, where text keeps its contrast (label 5.4:1 light, 6.2:1 dark, in the
+  worst spot); with "reduce transparency" or "increase contrast" the light is off and the panel
+  is solid. A form taller than the window can now be scrolled by hand - on a small phone or in
+  landscape its lower end could only be reached with the Tab key.
+- **The app no longer animates a backdrop nobody could see.** Four blurred colour fields drifted
+  behind the content the whole time the app was open, and the content covered them completely.
+  They are gone, together with a gradient that was covered the same way. Nothing looks
+  different; the browser has four large layers less to carry.
+- **Rows and cards answer a tap.** List rows, task cards, the cards on the overview and the rows
+  in the settings now show that they are being pressed, instead of doing nothing until the next
+  screen arrives.
+- **"New task" closes right away.** After saving, the dialog showed a check mark for about
+  three quarters of a second before it closed. It now closes with the save, and the new task
+  pulls open in the list: visible after about 0.2 seconds instead of 0.9.
+- **A sheet you flick away travels out of the screen.** Dragging a sheet down and letting go made
+  it dissolve where the finger had left it. It now leaves the screen from there, as fast as the
+  flick was; let go too early and it springs back just as briskly. Behind the "More" sheet the
+  dimming fades with the pull.
+- **Going one level deeper has a direction.** On a phone, opening a settings page or a health
+  area slides in from the side you are heading to, and going back comes from the other; both
+  used to cut or only fade. Switching between light and dark fades instead of flipping, the
+  blood pressure and weight curves draw themselves once, and a few menus that appeared or
+  vanished in one frame now fade.
+- **The app starts faster on a slow connection.** Before the overview asked for its data, the
+  start made five requests one after the other, two of them twice. What does not depend on each
+  other now runs at the same time, and the second copy is served from the first. Measured on a
+  throttled phone (4x CPU, "Fast 4G"), three runs each, before and after: the overview asked for
+  its data after about 0.8 seconds instead of 1.3, and the greeting appeared after about 1.0
+  seconds instead of 1.5.
+- **Health loads in three steps instead of six.** The overview asked for vitals and medication,
+  then for the cycle history, then for the cycle settings, each only after the previous answer
+  had arrived. These now go out together; who may see what is decided as before. Measured on the
+  same throttled phone: the last answer arrived 747 ms after the first health request instead of
+  1119 ms.
+- **A weak connection no longer holds up the start.** With a network that is neither offline nor
+  answering - on a train, in a lift, at the edge of the Wi-Fi - the app waited for it although
+  everything it needed was already stored on the device. It now waits 1.5 seconds once, then
+  uses the stored copies and picks up the fresh ones in the background for the next start.
+  Measured with a server that accepts connections and never answers: the app's own files were
+  loaded after 1.6 seconds instead of never. Signing in and loading data still need the network.
+- **An update no longer downloads every language.** Each release fetched all 26 language files,
+  of which a device uses one. Only German, the language the app falls back to, is stored in
+  advance now; the language of the device is stored the first time it is used and stays
+  available offline. A language that was never used on a device needs a connection once.
+- **An update transfers only the files that changed.** After every release the app fetched all
+  of its roughly 300 files again. It now asks the server which of them differ and loads only
+  those; the server answers from the content of each file, so a changed file always arrives and
+  an unchanged one never does, also after a new image was installed.
+- **The app's files travel smaller.** The server compresses each script, stylesheet and language
+  file once at the highest Brotli level and keeps the result in memory, instead of compressing
+  at a low level on every request: 4.9 MB instead of 5.9 MB for all of them, about 5 MB of
+  memory, and some 25 seconds of background work on one core spread over the first requests
+  after a start. The files themselves are unchanged. `STATIC_BROTLI=off` restores the previous
+  behaviour.
+
+### Fixed
+
+- **An event written to Google keeps its time when the Google calendar is set to another time zone**
+  (#1875). Yuvomi sent the time you typed together with the time zone of the Google calendar it
+  went into. If that calendar was set to UTC while your household lives in Amsterdam, a 14:00
+  event arrived in Google as 14:00 UTC, showed there at 16:00, and came back to Yuvomi at 16:00
+  with the next sync. The same happened to an event from Google once it was edited in Yuvomi.
+  The time now goes out in the household time zone. This applies only when the household time
+  zone is set under Settings; without it Yuvomi keeps using the time zone of the Google calendar,
+  as before. Events that were already shifted are not corrected automatically: set them to the
+  right time once, in Yuvomi or in Google.
+- **"Mark as renewed" follows the same permission as editing a subscription.** In the personal
+  budget mode a subscription can only be changed or deleted by the member it belongs to. Marking
+  it as renewed did not ask that question and now does: another member gets the same refusal as
+  for editing, and nothing is changed. The shared budget mode is unchanged.
+- **A subscription now shows in every month of the budget it is due in** (#1844). A subscription
+  with "Include in budget" kept one expense, on its next payment date, so the budget showed it in
+  that month only. The following months now show it as an expected line that is not booked yet,
+  worked out from the subscription's cycle when the month is read. Nothing is written ahead of
+  time, and the booked expense still comes from "Mark as renewed". Expected lines count in no
+  total; the line under the summary names their number and amount, and the CSV export marks them
+  `Expected`. A tap on one leads to the Subscriptions tab. Months that are already over show none.
+  If you deleted a subscription's expense in the budget by hand, save or renew the subscription
+  to get it and the following months back.
+- **Managing budget categories shows the built-in categories in your language** (#1859, from D#1841).
+  "Manage categories" in Budget listed the built-in categories and subcategories in English,
+  whatever language Yuvomi ran in. They now appear in the language of the interface you are
+  using, as they do everywhere else in Budget. Categories you created keep their name. For
+  API users this changes an answer: `GET /api/v1/budget/categories` and
+  `GET /api/v1/budget/categories/{categoryKey}/subcategories` without `lang`, or with a value
+  that is not supported, now return the labels in the household language instead of English.
+  Send `lang=en` to keep English; a supported `lang` works as before, and the response still
+  names the language it used.
+- **Long words break at a sensible place in Safari and on the iPhone** (Refs #1774). Where a long
+  word does not fit its line, Yuvomi hyphenates it and keeps at least four letters on each side of
+  the hyphen (three in the calendar's week view). Safari ignored that limit, so a name such as
+  "Wertpapierdepot" could end up as "Wertpapierde-pot". The limit is now also written the way
+  Safari understands it, in every place that hyphenates, and the word breaks as
+  "Wertpapier-depot". Chrome, Edge and Firefox are unchanged.
+- **Pocket money without an account now says what it is for** (#1774). Before an admin had opened
+  an account for any child, "Pocket money" was a heading with a button and nothing below it, which
+  read like a section that failed to load. It now shows one sentence below the heading, in the same
+  list the accounts appear in later. Only admins who can open an account see it; a child without an
+  account still sees no section.
+- **Wall mode counts a shared event for everyone it is assigned to** (#1828). An event assigned to
+  two or more people added to the number of only one of them, and whoever had nothing else that day
+  was missing from the row of faces. Each assigned person now gets the event in their number. The
+  same holds for a task assigned to several people. On a phone, the row that collects several
+  overdue tasks on the overview had the same fault and now shows every person those tasks are
+  assigned to.
+- **Wall mode shows the icon you chose for an event** (#1829). Events on the wall always carried the
+  generic calendar icon, whatever was picked in the event editor. They now show their own icon, as
+  the calendar does; an event without one keeps the calendar icon.
+- **"Today at a glance" shows the icon you chose for an event** (#1829). The overview kept the
+  generic calendar icon on every event after the wall had learned to show the chosen one. Both now
+  read the icon the same way; the colour of the badge still says the row comes from the calendar,
+  and an event without an icon of its own keeps the calendar icon.
+- **The first-run state of Waste sits in the middle of the page on a desktop** (#1771). Without a
+  waste type the page showed its first-run block left of the middle with an empty column beside
+  it. On a wide window it now spans the content area and is centred in it. With at least one
+  waste type the two columns are unchanged. From a window of about 1500px the page's width cap
+  leaves it slightly left of centre again.
+- **A long account name on a phone breaks between word parts, not inside one** (#1774). On the
+  accounts tab at 390px, "Wertpapierdepot" was split as "Wertpapierde-pot" and "Housekeeping cash"
+  as "Housekeepin" and "g cash", because the amount column kept its full width. A word is now only
+  hyphenated with at least four letters on each side ("Wertpapier-depot"), and the column with the
+  amount gives up its width, down to the amount itself, before the name is broken inside a word.
+  The amount is never squeezed or overlapped.
+- **A wall tablet shows events again when the household overview is set to "Assigned to me"** (#1808).
+  A paired display follows the household default of the overview. If that default had the calendar
+  tile set to "Assigned to me", the tablet looked for events assigned to the tablet itself and
+  showed none - in the event list and in the week strip; tasks and the other tiles were not
+  affected. On a display the option now means all events; for members it works as before. The
+  hint under Settings > Wall tablets now says where a tablet takes its overview from and names
+  what it shows: calendar, tasks, rewards and weather.
+- **A wall tablet no longer ends up with an empty calendar or task list from "Assigned to me"** (#1808).
+  That switch is remembered per browser. If someone had turned it on while signed in on the device
+  that later became the wall tablet, the tablet kept filtering on itself and showed nothing - in
+  the calendar without any switch to turn it off again. A wall tablet now ignores the remembered
+  choice, and the task filters no longer offer the switch there. The choice itself stays stored
+  for the person who made it.
+- **A calendar or reminder server that says no is no longer taken for a yes.** When a CalDAV
+  server refused a request - a calendar or list shared read-only, a full account, a server that
+  was briefly overloaded, or an entry somebody else had just changed - Yuvomi booked the request
+  as done. An event, task or shopping item created here and refused by the server was then removed
+  from Yuvomi by the next sync, as if it had been deleted on the server. An edit that the server
+  refused was undone by the next sync. Something deleted here came back. And moving an event into
+  a calendar that refused it deleted the event from its old calendar, so it was gone on both
+  sides. Now an entry created here that the server refuses stays in Yuvomi and is offered again
+  with every sync, for as long as it takes. A refused change or deletion is retried up to five
+  times, as it always was after a network error; after the fifth refusal Yuvomi gives up on it,
+  and the next sync brings the server's version back - the old text of an edited entry, or the
+  entry you deleted. A move into a calendar that refuses it leaves the event where it was. A
+  server that briefly refused to list your calendars, reminder lists or address books, or
+  answered with an empty list, also used to get all of them switched off in the sync settings;
+  they now stay on. This affects CalDAV accounts, iCloud calendars and CardDAV address books. The
+  update cannot bring back entries that were already removed this way, and a calendar or list
+  that was switched off has to be switched on again in the sync settings. An entry that an
+  earlier version booked as uploaded although the server had refused it, and that is still in
+  Yuvomi, is not rescued either: the first sync after the update still removes it (#1839).
+- **An entry no longer doubles when the server's answer gets lost.** If the server saved a new
+  event, task or shopping item but its confirmation never arrived, Yuvomi now recognises its own
+  entry on the server instead of importing it as a second one. For that, entries created in Yuvomi
+  from now on get a file name on the server that also carries an identifier of this installation,
+  so two Yuvomi installations using the same account can no longer overwrite each other's
+  entries. Entries that are already on the server keep their name.
+- **The contact sync says why a connection failed.** Adding or testing a CardDAV account that the
+  server refuses now shows the server's answer instead of a generic error.
+- **A locked field looks locked.** A field you cannot change looked exactly like one you can -
+  same text, same fill, same outline; only the mouse pointer gave it away, and on a phone nothing
+  did. Text, number and date fields, dropdowns and text areas now all show it the same way,
+  everywhere in the app: the fill goes, the outline turns quiet and the value steps back to grey
+  while staying easy to read. Settings and the reminder section used to fade such fields, which
+  made the value hard to read in light mode, and a locked date was close to invisible in both
+  modes; both now follow the one look. A locked dropdown drops its small arrow, so it reads as a
+  value rather than something to open, and a locked field no longer shows its example text: an
+  empty locked share in a split expense showed a grey "30" that looked like a value of 30. The
+  calendar button of a locked date also steps back when a whole group of fields is locked, not
+  only when the date itself is.
+- **A row on the overview opens what it shows** (#1821). A note on the overview opened the notes
+  page instead of the note, and so did a note found through search: the notes page now opens the
+  note it is asked for. A birthday row opens that birthday, on the phone as well, and so does a
+  birthday found through search. A bin without
+  an upcoming pickup leads to that bin, and "n open" for shopping in the today sheet opens the
+  list when only one list has open items.
+- **The keyboard focus stays on an overview row.** When the overview refreshed quietly - on
+  coming back to the tab, every quarter of an hour, at a day boundary - the focused row lost the
+  focus and Enter did nothing. Tabbing into a row in the instant after the page appeared could
+  lose it the same way. Both keep the focus now, and a dialog that a link opens directly keeps
+  it too.
+- **Overview rows that lead to one item open as fast as the others.** A row for an event, a
+  shopping list or a pantry filter did not preload the page behind it on hover or press, so its
+  first tap was slower than on any other row.
+- **"n open" for shopping counts every list.** With more than three lists that still had open
+  items, the today sheet and the wall added up only three of them and showed a smaller number
+  than the shopping page.
+- **A shopping list on the overview opens that list.** The shopping tile shows up to three lists,
+  the most recently changed first, but tapping any of them opened the shopping page on its first
+  list - tap "Drugstore" and you got "Weekly shop". Each row now opens its own list, by tap, click
+  and keyboard. The "All" link in the tile header still opens the shopping page as before.
+- **Starting on an older Node.js 22 says what is wrong instead of dying silently** (reported in
+  #1728). Without Docker, Yuvomi claimed to run on any Node.js 22, but before 22.14 the
+  server stopped right at startup without a single line of output, and so did the demo seed
+  script. The required version is now stated correctly as Node.js 22.14 or newer, and an older
+  one gets a one-line message that names the running version, what is needed, and that updating
+  Node.js fixes it. The Docker image ships its own Node.js 24 and was never affected.
+- **A wall tablet no longer offers to rearrange the overview or to search** (#1808). A paired
+  display showed the "Customise" button, let you rearrange the tiles, and answered "Done" with
+  "Token scope does not permit this operation." - a display changes no settings, and that
+  includes its own board. The search button beside it failed the same way. Both are gone on a
+  display. To decide what the tablet shows, arrange the overview as an administrator and choose
+  "Set as household default" while customising: a display never stores an arrangement of its
+  own, so it always follows that default.
+- **Waste: a calendar URL whose provider renames every entry on each download can be imported**
+  (#1795). Some providers hand out a new internal ID for every pickup each time the calendar is
+  fetched (limburg.net does). Yuvomi fetches the address once for the preview and once more to
+  apply it, took the new IDs for new content and refused every time with "The file content
+  changed since you last previewed it". The check now compares what the preview shows - which
+  waste type on which day, and how many - so the import goes through, and a calendar that really
+  changed in between is still refused. Later refreshes of such an address no longer report every
+  pickup as removed and added again. The refusal itself is now shown in the app's language.
+- **SSO sign-in no longer fails when `OIDC_REDIRECT_URI` is written differently from how a URL
+  is normally printed.** The first request to the provider sent the value exactly as written,
+  the second one - the code exchange - a rebuilt form of it, with the path of the incoming
+  request. The two differed with a default port written out (`https://host:443/...`), capital
+  letters in the host name, a query of its own, or a path the reverse proxy rewrites. A provider
+  has to refuse such an exchange, so the sign-in failed with `invalid_grant` after the login at
+  the provider had looked successful. Both requests now carry the same value, character for
+  character; the same goes for linking an account under Settings. Nothing changes for an
+  installation whose value was already in its plain form. A sign-in that is under way while the
+  update is installed is refused once and works on the second click (#1768).
+- **The installation guide says what `OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM` does not do.** It
+  covers a provider that leaves `email_verified` out, not one that sends `email_verified: false`,
+  which authentik does by default since 2025.10. The guide and `.env.example` now name the fix
+  on the provider side (#1780).
+- **Blood pressure and its unit stay on one line in the health tiles.** In a narrow tile "mmHg"
+  dropped below "116/74". The size of the value used to follow the width of the whole row of
+  tiles, which says little where the row fills itself with as many tiles as fit; it now follows
+  the tile. A narrow tile shows the value one step smaller, the narrowest one also a smaller
+  unit, and on a very small phone the vitals page shows one tile per line instead of two that are
+  too narrow. Tiles in budget, housekeeping and inventory are unchanged.
+- **Screen readers name the field picker in the shift type dialog.** Under "Custom fields" the
+  dropdown next to "Add" had no name, so it was announced as an unnamed combo box with the first
+  field as its value. It is now announced as "Field to attach". Nothing changes on screen.
+- **In the shift planner "To" follows "From".** When adding an exception or an extra shift,
+  moving "From" past "To" left "To" where it was; "Add" then failed, and the message was the
+  server's English sentence in whatever language the app was set to. "To" now moves along with
+  "From", in the add dialog and in the two dialogs that edit an existing range. A range that is
+  still the wrong way round is named at the "To" field, in the language of the app, before
+  anything is sent. For API clients the refusal keeps its sentence and gains
+  `reason: "range_reversed"`.
+- **The first visit no longer reloads itself and empties the login form.** One to four seconds
+  after the very first load the page reloaded, and whatever had been typed into the login form
+  was gone. The reload was meant for an update of the app, but it also fired when the app was
+  installed in the browser for the first time.
+- **An update of the app no longer interrupts what you are doing.** When a new version arrived,
+  the page reloaded 200 ms later - with a dialog open, a half-filled form or an unsaved overview
+  layout. Now it reloads right away only when nothing is open and nobody is typing. Otherwise a
+  notice with a "Reload" button appears, and the new version loads with the next page change or
+  when the app goes to the background. The notice says the same in every language; in German,
+  Persian, Indonesian, Korean and Polish it used to announce a reload that was already over.
+- **Switching the language without a connection no longer leaves the app half switched.** If the
+  language file could not be loaded, texts stayed in the old language while numbers and dates
+  followed the new one, the setting showed a parser error, and the next start fell back to
+  German without a word. A switch that cannot load its file now changes nothing: the selection
+  returns to the language in use and the line below says that there is no connection.
+- **Health on a phone no longer jumps while it loads** (cause of #1770). The block above the list
+  of areas - person, "Due today", "Quick add" - appeared only once its data had arrived and
+  pushed the list down by almost 500 px, under the finger; each row then grew again when its
+  status came in. The block now holds its place from the first frame with a placeholder in its
+  final shape, and the rows have their two-line height from the start. Measured layout shift at
+  390x844: 0.58 before, below 0.01 after. The areas themselves load with a placeholder in the
+  shape of their content instead of the word "Loading".
+- **A required field no longer complains before anything was entered.** In "New event" the title
+  showed "This field is required." on the first Tab or when reaching for the date picker, and
+  everything below it jumped down by a line. An untouched empty field now stays quiet until the
+  form is submitted or until something was typed into it and removed again, and the message
+  slides in instead of pushing the form. This applies to every dialog that marks required fields
+  (events, tasks, meals, recipes, pantry, inventory, contact sync).
+- **Checked items no longer twitch when the list changes.** Adding or deleting an item in the
+  shopping list, or opening a group, replayed the little "checked" animation on every item that
+  had been ticked off long ago. It now plays once, on the box you touch - also when you take a
+  tick back - and has become calmer. The same applies to tasks, subtasks, the housekeeping
+  list and checklists in notes.
+- **The tab bar keeps its glass while you change pages.** On a phone the bar at the bottom went
+  see-through for a moment on every tab change, and the round "+" button popped in again each
+  time. Both now stand still while the page underneath changes; the "+" only arrives with an
+  entrance when the page before had none.
+- **A tapped row no longer stays highlighted on a phone.** After a tap, list rows, task cards and
+  the cards on the overview kept the look they have under a mouse pointer until something else
+  was tapped.
+- **Overview on a desktop: opening "New" no longer tips the button over.** The plus turns into
+  a cross by rotating - and it was the whole button that rotated, label included, so the capsule
+  stood diagonally at 45 degrees and turned grey while its menu was open. Only the icon turns
+  now, and the capsule keeps its colour. The round button on a phone looks as before.
+- **Swiping a row shows its whole label at the point where the swipe takes effect.** Icon and
+  word sat in the middle of a panel half the row wide, while the action triggers after 80 px -
+  at that moment a phone showed "Che" and half a tick. They now stand inside the strip the swipe
+  uncovers, on both sides and in right-to-left languages, in every list that swipes.
+- **Dark theme: the selected segment and the switch knob are the lighter surface again.** The
+  selected tab of a segmented control was darker than its track and read as a dent, and the knob
+  of a switch was a dark dot on a light rail. The thumb now sits one step above its track
+  (module-coloured labels on it keep at least 4.5:1), and the knob is white in both themes; a
+  switch that is on uses the same violet as a primary button, so the knob stands at 5.7:1 instead
+  of 2.7:1.
+- **The budget tile on the overview wears the budget colour.** Its mark was violet, the colour of
+  the overview itself, because the colour was derived from the tile's link and that link carries
+  a `?tab=` part. The fasting tile, which had no colour of its own either, now wears the health
+  colour like the other health tiles.
+- **The login pages show the Yuvomi mark as it is.** In the dark theme the mark on login,
+  invitation and password reset was three dark dots on a lilac tile, and the circles filled less
+  than a third of it. Sidebar and login pages now draw the same mark - the gradient tile with
+  the three light circles of the app icon - and it no longer changes with the theme.
+- **A confirmation without an explanation has no empty gap.** Dialogs such as "Log out of this
+  device?" showed an empty band between two hairlines, between the question and its buttons.
+- **A meal dialog you did not touch no longer asks "Discard changes?".** If the household members
+  could not be loaded with the page, the meal dialog fetches them when it opens and fills in the
+  cook selection a moment later. Closing the dialog after that asked whether to discard changes,
+  although nothing had been changed. What you typed before the selection arrived still counts as
+  a change, as it should.
+- **Fast clicks on the month arrows in the budget land on the right month.** Clicking "next"
+  twice while a month was still loading moved one month instead of two, and going forward and
+  straight back could leave the wrong month on screen - whichever answer arrived last won. Each
+  click now counts from the month you asked for, and a late answer for a month you already left
+  is ignored. The same holds for "Current" and for swiping.
+- **Opening Settings > Calendar no longer shows "An unexpected error occurred."** When Edge or
+  Chrome filled in a saved password there, two red error messages could appear, because the
+  browser's autofill sends a key press without a key and the keyboard shortcuts did not expect
+  one. Such a key press is now ignored; the shortcuts work as before.
 
 ## [2.75.0] - 2026-10-07
 

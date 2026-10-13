@@ -36,8 +36,10 @@
  * geprüft und schalteten eine Stufe zu früh. Jetzt ist Container-Content ==
  * Grid-Breite. Folge: knapp oberhalb eines Breakpoints kippt die Spaltenzahl
  * eine Stufe nach unten (bei 900px Viewport 3 statt 4). Das ist die Korrektur
- * des alten Fehlers, keine Regression — die Werte 520/720/900/1200 bleiben
- * bewusst stehen und meinen jetzt echte Rasterbreite.
+ * des alten Fehlers, keine Regression — die Werte 520/720/1200 bleiben
+ * bewusst stehen und meinen jetzt echte Rasterbreite. Das Raster hat höchstens
+ * vier Spalten (#1765): die Stufe mit vier Spalten beginnt erst bei 1200px,
+ * damit eine Karte nirgends schmaler als 232px wird (bei 720px in drei Spalten).
  *
  * Container für das Masonry-Grid: Spaltenzahl reflowt nach EIGENEM Platz
  * (Sidebar-bewusst), nicht nach Viewport. Siehe tokens.css §11c. */
@@ -199,12 +201,8 @@
   .notes-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-@container notes-page (min-width: 900px) {
-  .notes-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
-
 @container notes-page (min-width: 1200px) {
-  .notes-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .notes-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 .notes-grid > .empty-state {
@@ -758,16 +756,32 @@
   }
 }
 
-/* Leseansicht: gerendertes Markdown (.note-md-* aus typography.css) auf einer
- * dezent mit der Notizfarbe getönten Fläche (--note-color am .note-modal),
- * damit der Reader als „dieselbe Notiz, vergrößert" lesbar ist. Der Tint liegt
- * über transparent → theme-agnostisch; Text bleibt --color-text-primary für
- * durchgehend ≥4.5:1. Weiße Notizen ergeben keinen sichtbaren Tint. */
+/* LESEANSICHT: DER DIALOGKOERPER TRAEGT DIE ZETTELFARBE (R18, 2026-10-07).
+ *
+ * Bis dahin stand das gerenderte Markdown in einem KASTEN: getoente Flaeche,
+ * 12px Radius und eine Kante in 50 % der Notizfarbe. Bei einem roten oder
+ * rosa Zettel war das ein rosa Kasten mit roetlicher Kante direkt ueber dem
+ * roten "Loeschen" im Fuss - die Form einer Fehlermeldung.
+ *
+ * Jetzt ist der Zettel der Koerper selbst: die Ansicht zieht sich mit
+ * negativem Rand ueber die Polsterung von `.modal-panel__body` (--space-4,
+ * layout.css) bis an Kopf- und Fusslinie, ohne Kante und ohne Radius. Die
+ * FARBE ist dieselbe wie vorher (--note-color zu --tint-surface ueber der
+ * Tafel) - Text bleibt --color-text-primary, die Kontrastrechnung der
+ * Zettelfarben gilt unveraendert. Weisse Notizen ergeben keinen Tint. */
 .note-read-view {
+  margin: calc(-1 * var(--space-4));
   padding: var(--space-4);
-  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--note-color, transparent) var(--tint-surface), transparent);
-  border: 1px solid color-mix(in srgb, var(--note-color, transparent) var(--tint-hint), transparent);
+}
+
+/* EIN WEG ZUM BEARBEITEN. In der Leseansicht standen zwei: der Reiter
+ * "Bearbeiten" oben und der Primaerknopf "Bearbeiten" im Fuss. Der Knopf
+ * bleibt (er ist die Hauptaktion des Lesedialogs, Critique 2026-09-26); der
+ * Umschalter erscheint erst im Editor, wo "Lesen" die Vorschau ist und sonst
+ * kein Weg zurueck fuehrt. */
+.note-modal[data-view="read"] .note-mode-switch {
+  display: none;
 }
 
 .note-read__body {

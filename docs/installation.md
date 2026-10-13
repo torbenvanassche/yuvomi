@@ -313,9 +313,9 @@ docker compose up -d
 Docker pulls `ghcr.io/ulsklyc/yuvomi:latest` automatically. No build step, no Node.js installation needed.
 
 > **Pinning a version.** Every release is also published under immutable tags:
-> `2.75.0` (exact version), `2.74` (latest patch of that minor), plus a moving `main`
+> `2.76.0` (exact version), `2.76` (latest patch of that minor), plus a moving `main`
 > tag for the current development state. To pin production to a known-good release,
-> set `image: ghcr.io/ulsklyc/yuvomi:2.75.0` in your compose file and bump it
+> set `image: ghcr.io/ulsklyc/yuvomi:2.76.0` in your compose file and bump it
 > deliberately; `latest` always points at the newest release.
 
 > **Verifying what you pull.** Every image the publish workflow builds is signed at build
@@ -324,7 +324,7 @@ Docker pulls `ghcr.io/ulsklyc/yuvomi:latest` automatically. No build step, no No
 > image you are about to run is one GitHub built from a release tag of this repository:
 >
 > ```bash
-> cosign verify ghcr.io/ulsklyc/yuvomi:2.75.0 \
+> cosign verify ghcr.io/ulsklyc/yuvomi:2.76.0 \
 >   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
 >   --certificate-identity-regexp '^https://github.com/ulsklyc/yuvomi/.github/workflows/docker-publish.yml@refs/tags/v'
 > ```
@@ -333,7 +333,7 @@ Docker pulls `ghcr.io/ulsklyc/yuvomi:latest` automatically. No build step, no No
 > anything else means the image is not one this repository released. The `main` tag is
 > signed too, under `refs/heads/main`, which the pattern above deliberately excludes. Tags
 > published before September 2026 carry no signature. Provenance and SBOM travel inside the
-> image: `docker buildx imagetools inspect ghcr.io/ulsklyc/yuvomi:2.75.0 --format '{{ json .Provenance }}'`.
+> image: `docker buildx imagetools inspect ghcr.io/ulsklyc/yuvomi:2.76.0 --format '{{ json .Provenance }}'`.
 
 Continue with [Step 4 — Verify](#4-verify-the-container-is-running).
 
@@ -378,7 +378,7 @@ docker compose logs -f
 You should see output like:
 
 ```
-yuvomi  | [Yuvomi] Server running on port 3000 | Version 2.75.0
+yuvomi  | [Yuvomi] Server running on port 3000 | Version 2.76.0
 yuvomi  | [Yuvomi] Environment: production
 yuvomi  | [Sync] Auto-sync active every 15 minutes.
 ```
@@ -531,6 +531,7 @@ All configuration happens in the `.env` file. The container reads these values o
 | `TZ` | Container timezone (e.g. `Europe/Berlin`). Affects log timestamps and the automated-backup schedule, and is the **default** for the household zone. Since v2.34.0 the household zone is a setting of its own (Settings → Account → Appearance → Region), and where both exist the setting wins: `TZ` lives in the compose file, which is out of reach on Umbrel, TrueNAS and Unraid, and it also drives things that have nothing to do with the family calendar. A household whose admin account is created on the first-run page in the browser gets that setting right away: the page sends the browser's zone and the server stores it (#1607); a browser that reports no usable zone, or only UTC, sends nothing, and an admin account created by the installer leaves the setting empty, so `TZ` applies there. A household set up earlier is not changed; if an admin's browser is in a different zone, the overview asks once whether to use it. Whichever applies is the zone used wherever a time carries none of its own: the calendar day server-side jobs call "today" (upcoming events, countdowns, recurring split expenses, birthdays), events pushed to Google Calendar when the target calendar reports no zone, events pushed to Outlook, events pushed to a CalDAV server (#938 - before that they carried no zone at all, leaving every server free to read them on its own clock), the due times of CalDAV reminders synced into Tasks, and the times in the exported calendar feed (`/feed/calendar/<token>.ics`), which subscribers read in this zone - a wrong zone shifts every appointment for everyone subscribed. **Since v2.36.0 the app's own display follows it too**, so a device travelling in another zone shows the household's clock rather than its own; that half applies only when the setting is set, since `TZ` alone leaves the display on the browser as before. | `UTC` | No |
 | `NODE_ENV` | Runtime environment | `production` | No |
 | `LOG_LEVEL` | Lowest severity written to the container log (`debug`, `info`, `warn`, `error`). Set to `debug` to see the per-run detail of the calendar, contact and holiday sync, which stays quiet at `info` when a run has nothing to do. | `info` | No |
+| `STATIC_BROTLI` | The app's own files (scripts, styles, language files) are compressed once with a high Brotli level and then served from memory: about 5 MB of RAM and, spread over the first requests after a start, some 25 s of CPU on one core in the background. Set to `off` to compress per request at a low level instead, as it was before. Content, `ETag` and `Cache-Control` are the same either way. | `on` | No |
 | `TRUST_PROXY` | Number of reverse-proxy hops to trust, or a subnet string (e.g. `1`, `172.16.0.0/12`, `loopback`). The default already trusts a single hop, so `req.ip` returns the real client IP behind one Caddy/Nginx/Traefik proxy without any configuration. Set to `loopback` for direct, proxy-less deployments, or to a subnet/higher hop count behind multiple proxy layers. Numeric values are treated as a hop count; named values (`loopback`, `linklocal`, `uniquelocal`) work as expected. | `1` | No |
 
 ### Security
@@ -679,6 +680,25 @@ encrypted at rest when `DB_ENCRYPTION_KEY` is enabled. See the dedicated
 [Immich screensaver guide](immich-screensaver.md) for setup, Docker networking, preview behavior,
 security, and troubleshooting.
 
+### Gravatar Profile Picture (Optional)
+
+Off unless you set `GRAVATAR_BASE_URL`: while it is empty nothing is sent and the button is not
+shown. To opt in, set it to `https://gravatar.com/avatar/` or to a Libravatar mirror. A household
+member can then fetch the picture that the service holds for their saved email address under
+**Settings → Account → Use my Gravatar**. The server fetches it once, on that click, and stores it
+exactly like an uploaded picture; nothing is fetched again later. Split-expense guests do not get
+the button. Only a SHA-256 hash of the lowercased address, this server's IP and its User-Agent
+reach the service, never the address itself. The hint under the button and the error messages
+name the service by the host name of the URL you set, so with a mirror they name the mirror. The fetch uses HTTPS only, follows at most five
+redirects, refuses private network targets, times out after 8 seconds and accepts at most 512 KiB
+of PNG, JPEG or WebP. Only A-Z is lowercased (the same key as the email matching,
+`emailMatchKey`), while Gravatar lowercases everything: an address with a non-ASCII capital
+letter hashes differently from Gravatar and gets "no picture".
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `GRAVATAR_BASE_URL` | Base URL the avatar hash is appended to, e.g. `https://gravatar.com/avatar/` or a Libravatar-compatible mirror (`https://` and a public host). Unset or empty switches the import off: no button, and the route answers `404` with `reason: "gravatar_disabled"` | (empty = off) | No |
+
 ### Database & Storage
 
 | Variable | Description | Default | Required |
@@ -688,6 +708,7 @@ security, and troubleshooting.
 | `DB_ALLOW_NEWER_SCHEMA` | Emergency switch, normally unset. An older Yuvomi refuses to start on a database a newer version has opened (see [Going back](#going-back)); `1` starts it anyway, at your own risk, with a warning on every start. | - | No |
 | `DATA_DIR` | Host directory mounted at `/data` inside the container (set in `.env` or `docker-compose.yml`). | `./data` | No |
 | `MODULES_DIR` | Host directory mounted at `/app/modules` inside the container - the drop-in folder for [third-party modules](../MODULES.md). Like `BACKUP_DIR`, the app also reads this name itself as the directory *inside* the container, which is why `docker-compose.yml`, `podman-compose.yml` and the Quadlet pin it to `/app/modules` there. With Compose the value in `.env` therefore only moves the mount source; the Quadlet keeps its host folder in the unit file, and Portainer uses a named volume. | `./modules` | No |
+| `MODULES_ALLOW_WEB_INSTALL` | Let an admin install third-party modules from Settings (ZIP upload or GitHub URL) into that folder (`true`/`false`). What it opens: an admin in a browser session can put same-origin script on the server without any file access, and what it writes stays after the session ends. A module installed that way stays off until an admin approves it in a browser session, and the web interface deletes only what it installed. Off by default: modules are then copied into the folder by hand, as described in [MODULES.md](../MODULES.md). | `false` | No |
 | `BACKUP_DIR` | In `.env`/`docker-compose.yml`: the **host** directory mounted at `/backups`. Inside the container the app reads the same name as the **container** path it writes to - the compose files pin it to `/backups`, and the image defaults to `/backups` as well. Only override it inside the container if you mount your backup volume somewhere else. | `./backups` (host) / `/backups` (container) | No |
 
 > **Where the backups go.** There is no `BACKUP_DIR` in the setup wizard, and that is deliberate.
@@ -1037,7 +1058,7 @@ Pocket ID documents Yuvomi as one of its [client examples](https://pocket-id.org
 | `OIDC_CLIENT_ID` | Client ID registered with your OIDC provider | - | No |
 | `OIDC_CLIENT_SECRET` | Client secret for the registered application | - | No |
 | `OIDC_REDIRECT_URI` | OAuth callback URL — must be registered with the provider (e.g. `https://yuvomi.example.com/api/v1/auth/oidc/callback`) | - | No |
-| `OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM` | Set to `true` to allow account linking when the IdP omits the `email_verified` claim entirely. Only enable for IdPs fully under your control that never issue unverified addresses (e.g. older Authentik without an explicit `email_verified` property mapping). | - | No |
+| `OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM` | Set to `true` to allow account linking when the IdP omits the `email_verified` claim entirely. It does not cover a provider that sends `email_verified: false` - such an address is never linked, with or without this setting. Only enable for IdPs fully under your control that never issue unverified addresses. | - | No |
 | `OIDC_ALLOW_SIGNUP` | Set to `false` so an SSO sign-in never provisions a new account. Sign-in and account linking are unaffected, so the admin creates the account and the user signs in with SSO. Use this when your identity provider serves more people than this household. | `true` | No |
 | `AUTH_ALLOW_PASSWORD_LOGIN` | Set to `false` to make SSO the only way in: the login form, password login and password reset are all switched off. Ignored until all four OIDC variables are set **and** at least one administrator account is linked to the provider, so a typo - or a fresh install - can never lock everyone out. | `true` | No |
 
@@ -1046,7 +1067,7 @@ When all four OIDC variables are set, a **"Sign in with SSO"** button appears on
 - **The address is on more than one account.** The sign-in is refused with "Your email address belongs to more than one account here"; keep the address on one account only (Settings → Household → Family) and have the person sign in again.
 - **The address belongs to a member account that has a password.** A member maintains their own address and could enter someone else's, so the first SSO sign-in of that other person would land in the member's account. The sign-in is refused with a message that points to the fix: the person signs in with their password and links SSO under **Settings → Account → Single sign-on**, or an admin switches the account to "SSO sign-in only" under **Settings → Household → Family**, after which the next SSO sign-in links it.
 
-Unverified emails never take over an existing account; without a match a new account is provisioned (unless `OIDC_ALLOW_SIGNUP=false`). If your provider omits the `email_verified` claim, set `OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM=true` to enable linking. A member cannot set an email address on their own profile, their own contact or a shared-expense guest that already belongs to another account; an admin can, for example for a shared family mailbox, and SSO then treats that address as ambiguous.
+Unverified emails never take over an existing account; without a match a new account is provisioned (unless `OIDC_ALLOW_SIGNUP=false`). If your provider omits the `email_verified` claim, set `OIDC_TRUST_EMAIL_WITHOUT_VERIFIED_CLAIM=true` to enable linking. The setting covers a missing claim only: a provider that explicitly sends `email_verified: false` is taken at its word, and the address is not linked. authentik does this since 2025.10 - its default `email` scope mapping used to send `true` and now sends `false`. There the fix is on the provider side: create a custom `email` scope mapping that returns `email_verified` as `True` and select it in the provider instead of the default one. Only do that if every address in your authentik is one you entered or checked yourself. A member cannot set an email address on their own profile, their own contact or a shared-expense guest that already belongs to another account; an admin can, for example for a shared family mailbox, and SSO then treats that address as ambiguous.
 
 **Who gets an account.** By default every identity your provider accepts gets one on first sign-in - convenient for a provider you run for this household alone, but a directory is a list of people, not a list of household members. Set `OIDC_ALLOW_SIGNUP=false` and provisioning stops: an unknown identity is turned away with "There is no account here yet for this SSO sign-in" instead of the generic SSO error, while known accounts sign in as before. Linking still happens too, which is what makes the switch usable: create the account under **Settings → Household → Family** with the member's email address and "SSO sign-in only" switched on, and their first SSO sign-in binds the two together (the provider must report `email_verified: true`, or the account owner links it themselves under **Settings → Account → Single sign-on**).
 

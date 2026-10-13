@@ -25,6 +25,7 @@ import * as googleCalendar from './services/google-calendar.js';
 import * as appleCalendar from './services/apple-calendar.js';
 import * as icsSubscription from './services/ics-subscription.js';
 import * as icsExport from './services/ics-export.js';
+import { findCalendarByFeedToken } from './services/local-calendars.js';
 import * as inventoryDeadlinesIcs from './services/inventory-deadlines-ics.js';
 import * as cycleIcs from './services/cycle-ics.js';
 import * as scheduleIcs from './services/schedule-ics.js';
@@ -104,6 +105,7 @@ import { sessionModuleAccessRequirement, tokenAccessRequirement, tokenAllows } f
 import { moduleAccessVerdict, MODULE_ACCESS_DENIED, MODULE_ACCESS_READ_ONLY } from './permissions.js';
 import { BODY_LIMIT, MAX_UPLOAD_BYTES, MAX_UPLOAD_MB } from './utils/upload-limit.js';
 import { createServiceWorkerResponseLoader } from './utils/service-worker.js';
+import { createStaticAssets } from './utils/static-assets.js';
 
 const log     = createLogger('Server');
 const logSync = createLogger('Sync');
@@ -257,35 +259,76 @@ app.get('/sw.js', (_req, res) => {
   res.send(response.body);
 });
 
-app.use(express.static(path.join(import.meta.dirname, '..', 'public'), {
+const PUBLIC_DIR = path.join(import.meta.dirname, '..', 'public');
+
+/**
+ * Header jeder Datei aus public/ - EINE Funktion fuer beide Wege, auf denen sie
+ * das Haus verlaesst: express.static und die Brotli-Fassung aus dem Speicher
+ * (utils/static-assets.js). Sonst traegt dieselbe Adresse je nach Weg ein
+ * anderes Cache-Control.
+ */
+function setStaticHeaders(res, filePath, stat) {
+  const ext = path.extname(filePath).toLowerCase();
+  const isPwaIcon = /\/icons\/(icon-|apple-touch-icon|favicon)/.test(filePath);
+  if (isPwaIcon) {
+    // PWA-Icons müssen bei Deployments sofort aktualisiert werden
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  } else if (['.png', '.jpg', '.jpeg', '.ico', '.svg', '.webp', '.woff2', '.woff'].includes(ext)) {
+    res.setHeader('Cache-Control', 'public, max-age=2592000, immutable'); // 30 Tage
+  } else {
+    // HTML, JS, CSS, JSON und manifest immer revalidieren.
+    res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+  }
+  // manifest.json: korrekter MIME-Type für PWA-Erkennung durch Chrome/Android
+  if (filePath.endsWith('manifest.json')) {
+    res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+  }
+  // .mjs (z. B. gevendorte pdf.js-Module + Worker) müssen als JS-Modul ausgeliefert
+  // werden; nicht jede `send`-Version mappt die Endung, sonst schlägt der Modul-Import fehl.
+  if (ext === '.mjs') {
+    res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+  }
+  // ETag aus dem Inhalt statt aus Groesse und Aenderungszeit (Begruendung in
+  // utils/static-assets.js): der Service Worker revalidiert beim Precache und
+  // verlaesst sich darauf, dass ein gleicher ETag gleichen Inhalt heisst.
+  // Scheitert das Lesen, setzt express.static seinen eigenen wie bisher.
+  try {
+    res.setHeader('ETag', staticAssets.etagFor(filePath, stat));
+  } catch { /* siehe oben */ }
+}
+
+// STATIC_BROTLI=off schaltet nur die vorkomprimierte Auslieferung ab; die
+// compression()-Middleware oben uebernimmt dann jede Anfrage wie vor R18.
+const staticAssets = createStaticAssets(PUBLIC_DIR, {
+  brotli: String(process.env.STATIC_BROTLI || '').trim().toLowerCase() !== 'off',
+  setHeaders: setStaticHeaders,
+});
+// Die Bremse vor dem Speicher (Begruendung in utils/static-assets.js, Punkt 3).
+// Grosszuegig: ein kalter Start holt rund 125 Dateien, der Precache eines neuen
+// Workers rund 310, und hinter einem Router teilen sich alle Geraete eines
+// Haushalts EINE Adresse - fuenf Telefone, die nach einem Release gleichzeitig
+// aktualisieren, bleiben darunter. Wer darueber liegt, verliert nur die
+// vorkomprimierte Fassung, nie die Datei.
+const staticStoreLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 3000,
+  standardHeaders: false,
+  legacyHeaders: false,
+  handler: staticAssets.overLimit,
+});
+// Benannt: der Guard ueber die globalen Middlewares (test:restore-gate-routes)
+// fuehrt jede mit Namen und Begruendung, und rateLimit() liefert eine namenlose.
+Object.defineProperty(staticStoreLimiter, 'name', { value: 'staticStoreLimiter' });
+app.use(staticStoreLimiter, staticAssets.middleware);
+
+app.use(express.static(PUBLIC_DIR, {
   etag: true,
   lastModified: true,
   // Kein automatischer Trailing-Slash-Redirect für Verzeichnisse (z. B. /settings →
   // /settings/), sonst kollidiert das public/settings/-Verzeichnis mit der SPA-Route
   // /settings und der Client-Router landet beim Hard-Load auf dem Dashboard.
   redirect: false,
-  setHeaders(res, filePath) {
-    const ext = path.extname(filePath).toLowerCase();
-    const isPwaIcon = /\/icons\/(icon-|apple-touch-icon|favicon)/.test(filePath);
-    if (isPwaIcon) {
-      // PWA-Icons müssen bei Deployments sofort aktualisiert werden
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-    } else if (['.png', '.jpg', '.jpeg', '.ico', '.svg', '.webp', '.woff2', '.woff'].includes(ext)) {
-      res.setHeader('Cache-Control', 'public, max-age=2592000, immutable'); // 30 Tage
-    } else {
-      // HTML, JS, CSS, JSON und manifest immer revalidieren.
-      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
-    }
-    // manifest.json: korrekter MIME-Type für PWA-Erkennung durch Chrome/Android
-    if (filePath.endsWith('manifest.json')) {
-      res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
-    }
-    // .mjs (z. B. gevendorte pdf.js-Module + Worker) müssen als JS-Modul ausgeliefert
-    // werden; nicht jede `send`-Version mappt die Endung, sonst schlägt der Modul-Import fehl.
-    if (ext === '.mjs') {
-      res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
-    }
-  },
+  setHeaders: setStaticHeaders,
 }));
 
 // Globaler API-Rate-Limiter auf alle /api/-Endpunkte (Definition siehe oben).
@@ -439,10 +482,13 @@ const feedLimiter = rateLimit({
 app.get('/feed/calendar/:token.ics', feedLimiter, (req, res) => {
   try {
     const userId = icsExport.findUserIdByFeedToken(db.get(), req.params.token);
-    if (!userId) return res.status(404).type('text/plain').send('Not found');
-    const ics = icsExport.buildFeed(db.get(), userId);
+    const localCalendar = userId ? null : findCalendarByFeedToken(db.get(), req.params.token);
+    if (!userId && !localCalendar) return res.status(404).type('text/plain').send('Not found');
+    const ics = userId
+      ? icsExport.buildFeed(db.get(), userId)
+      : icsExport.buildCalendarFeed(db.get(), localCalendar.id);
     res.set('Cache-Control', 'private, no-store');
-    res.set('Content-Disposition', 'inline; filename="yuvomi.ics"');
+    res.set('Content-Disposition', `inline; filename="${localCalendar ? `yuvomi-${localCalendar.id}.ics` : 'yuvomi.ics'}"`);
     res.type('text/calendar; charset=utf-8').send(ics);
   } catch (err) {
     log.error('', err);
@@ -578,14 +624,17 @@ app.use('/api/v1', (req, res, next) => {
 // `authScopes === null` und steigen in derselben Zeile aus wie vorher.
 app.use('/api/v1', (req, res, next) => {
   if (req.authScopes == null) return next();
-  // Ein gekoppeltes Display darf zusaetzlich zu seinen Modulen drei Geruestpfade
-  // LESEN (services/display-accounts.js, `DISPLAY_READ_PATHS`): die eigene
-  // Zeile, die Darstellungseinstellungen und die Modulliste. Keiner davon ist
-  // ein scopebares Modul, also verwuerfe dieses Gate sie samt und sonders - und
-  // die App auf dem Tablett kaeme nie ueber ihren Start hinaus. Die Ausnahme
-  // gilt NUR fuer `authMethod === 'display'`; fuer ein gescoptes Token aendert
-  // sich nichts.
-  if (req.authMethod === 'display' && displayMayAct(req.method, req.path)) return next();
+  // Ein gekoppeltes Display darf zusaetzlich zu seinen Modulen eine Handvoll
+  // Geruestpfade LESEN (display-scopes.js, `DISPLAY_READ_PATHS`): die eigene
+  // Zeile, die Darstellungseinstellungen, die Modulliste, die Personen fuer
+  // seine Aktionen - und, nur wenn ein Administrator es fuer dieses Display
+  // eingeschaltet hat, die Fotos des Bildschirmschoners (`DISPLAY_READ_ROUTES`,
+  // #1766). Keiner davon ist ein scopebares Modul, also verwuerfe dieses Gate
+  // sie samt und sonders - und die App auf dem Tablett kaeme nie ueber ihren
+  // Start hinaus. Die Ausnahme gilt NUR fuer `authMethod === 'display'`; fuer
+  // ein gescoptes Token aendert sich nichts.
+  if (req.authMethod === 'display'
+    && displayMayAct(req.method, req.path, { screensaver: req.displayShowsScreensaver === true })) return next();
   // `tokenAccessRequirement()` statt `moduleForPath()` + `requiredAccess()`:
   // dieselbe Regel, plus die EINE Ausnahme, die fuer beide Achsen gilt
   // (Rezept -> Einkauf liest `meals`, #1290 - Begruendung in server/scopes.js).
@@ -632,7 +681,13 @@ app.use('/api/v1', (req, res, next) => {
   // Anlegen-, Bearbeiten- und Loeschen-Knoepfe, die der Server hinterher
   // abweist. Die Erlaubnis ist keine Modulstufe, sondern genau zwei Routen, und
   // beide Gates fragen dieselbe Liste.
-  if (req.authMethod === 'display' && displayMayAct(req.method, req.path)) return next();
+  // Die Bildschirmschoner-Wahl geht auch hier mit, damit beide Gates dieselbe
+  // Frage stellen - entscheidend ist sie an dieser Stelle nicht, und kein Test
+  // misst sie hier: das Scope-Gate davor hat ein ausgeschaltetes Display
+  // schon abgewiesen, und `/screensaver` ist kein Modul, das dieses Gate
+  // sperren koennte (#1766). Die Regel steht im Scope-Gate.
+  if (req.authMethod === 'display'
+    && displayMayAct(req.method, req.path, { screensaver: req.displayShowsScreensaver === true })) return next();
   const { moduleKey: scopedModuleKey, access: scopedAccess } =
     sessionModuleAccessRequirement(req.path, req.method);
   const verdict = moduleAccessVerdict(

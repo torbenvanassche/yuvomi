@@ -414,28 +414,34 @@ test('der Kaskadenloeser selbst: Zustands-Suffix und :not() zaehlen mit', () => 
     'der bedienbare Knopf reagiert weiter');
 });
 
+// R18: die Quittung haengt gar nicht mehr am Stylesheet. `acknowledgeCheck`
+// (utils/ux.js) startet sie im Klick-Handler des Knopfs; das Zeichen ist ein
+// `span` ohne `data-action` und erreicht den Handler nie. Damit gilt die
+// Zusicherung staerker als vorher: KEINE Kombination der Zustandsklassen traegt
+// eine Animation - weder das Zeichen noch der bedienbare Knopf, der sie frueher
+// bei jedem Neuzeichnen mitspielte. (Blattuebergreifend: test:motion.)
+const ANIMIERT_NICHT = [null, 'none'];
+const TASKS_JS = readFileSync(new URL('../public/pages/tasks.js', import.meta.url), 'utf8');
+
 test('eine erledigte Aufgabe im Zustandszeichen animiert nicht', () => {
-  assert.equal(
+  assert.ok(ANIMIERT_NICHT.includes(
     effektiverWert(TASKS_CSS, ['task-status-btn', 'task-status-btn--done', 'task-status-btn--static'], 'animation'),
-    'none',
-    'check-pop quittiert eine Beruehrung - hier hat niemand etwas beruehrt',
-  );
-  // Der bedienbare Knopf behaelt sie: die Quittung gehoert zum gedrueckten Haken.
-  assert.match(
-    effektiverWert(TASKS_CSS, ['task-status-btn', 'task-status-btn--done'], 'animation') ?? '',
-    /check-pop/,
-  );
+  ), 'die Quittung gehoert einer Beruehrung - hier hat niemand etwas beruehrt');
+  assert.ok(ANIMIERT_NICHT.includes(
+    effektiverWert(TASKS_CSS, ['task-status-btn', 'task-status-btn--done'], 'animation'),
+  ), 'auch der Knopf traegt sie nicht als Zustand: sie liefe bei jedem Neuzeichnen');
+  // Der bedienbare Knopf behaelt seine Quittung - im Handler.
+  assert.match(TASKS_JS, /const settled = acknowledgeCheck\(target, \{ checked: nextStatus === 'done' \}\);/);
 });
 
 test('dieselbe Zusicherung fuer die Teilaufgabe (#1209 und #467 teilen sich das Zeichen)', () => {
-  assert.equal(
+  assert.ok(ANIMIERT_NICHT.includes(
     effektiverWert(TASKS_CSS, ['subtask-item__checkbox', 'subtask-item__checkbox--done', 'subtask-item__checkbox--static'], 'animation'),
-    'none',
-  );
-  assert.match(
-    effektiverWert(TASKS_CSS, ['subtask-item__checkbox', 'subtask-item__checkbox--done'], 'animation') ?? '',
-    /check-pop/,
-  );
+  ));
+  assert.ok(ANIMIERT_NICHT.includes(
+    effektiverWert(TASKS_CSS, ['subtask-item__checkbox', 'subtask-item__checkbox--done'], 'animation'),
+  ));
+  assert.match(TASKS_JS, /const settled = acknowledgeCheck\(target, \{ checked: subtaskDone \}\);/);
 });
 
 // -------------------------------------------------------------------------
@@ -925,6 +931,30 @@ test('Taschengeld: ohne Antwort oder ohne Konto steht kein leerer Abschnitt da',
       assert.equal(rewards.renderMoneySection(), '', 'ein Kind ohne Konto sieht keine Ueberschrift ueber nichts');
     });
   });
+});
+
+test('Taschengeld ohne Konto: wer eines eroeffnen kann, liest im selben Traeger, wofuer der Abschnitt da ist (#1774)', () => {
+  mitTaschengeld(() => {
+    withAccess({ rewards: 'write' }, () => {
+      const kandidaten = [{ id: 4, display_name: 'Leo' }];
+      rewards.state.money = { currency: 'EUR', minor_unit: 2, accounts: [], candidates: kandidaten };
+      const leer = rewards.renderMoneySection();
+      assert.match(leer, /<ul class="row-carrier rw-standings"><li class="list-row rw-money-empty"><p class="list-row__meta">rewards\.money\.empty<\/p><\/li><\/ul>/,
+        'ein Satz im Zeilentraeger, kein nacktes Ende unter der Ueberschrift');
+      assert.match(leer, /rw-money-setup/, 'die Handlung steht weiter im Kopf');
+      // Mit einem Konto sieht der Abschnitt aus wie bisher: keine Erklaerung mehr.
+      rewards.state.money = { currency: 'EUR', minor_unit: 2, candidates: kandidaten,
+        accounts: [{ id: 3, display_name: 'Emma', balance_minor: 100, former: false, currency: 'EUR', minor_unit: 2, plan: null }] };
+      const voll = rewards.renderMoneySection();
+      assert.doesNotMatch(voll, /rw-money-empty|rewards\.money\.empty/);
+      assert.match(voll, /rw-standing/);
+    });
+    // nur-lesen: weder Handlung noch Satz - der Abschnitt entfaellt ganz
+    withAccess({ rewards: 'read' }, () => {
+      rewards.state.money = { currency: 'EUR', minor_unit: 2, accounts: [], candidates: [{ id: 4, display_name: 'Leo' }] };
+      assert.equal(rewards.renderMoneySection(), '');
+    });
+  }, { role: 'admin' });
 });
 
 test('eine Geld-Anfrage in der Liste: Betrag in Geld, nicht in Punkten - und nur-lesen ohne Entscheidung', () => {
@@ -1869,6 +1899,104 @@ function modalOptionen(fn) {
   }
   return letzte;
 }
+
+// #1821: die Suche und die Notizzeile der Uebersicht nennen `/notes?open=<id>`,
+// die Seite las den Parameter nie - der Treffer landete auf der Liste.
+test('#1821 Notizen: `?open=<id>` oeffnet die Notiz und verlaesst danach die Adresse', async () => {
+  const before = notes.state.notes;
+  const hadModal = '__openModal' in globalThis;
+  const prevModal = globalThis.__openModal;
+  let opened = [];
+  globalThis.__openModal = (opts) => { opened.push(opts); };
+  notes.state.notes = [
+    { id: 5, title: 'Notrufnummern', content: '112', color: '#EFE3BE', pinned: 1, categories: [] },
+    { id: 12, title: 'WLAN', content: 'geheim', color: '#EFE3BE', pinned: 0, categories: [] },
+  ];
+  const visit = (search, hash = '') => {
+    opened = [];
+    const written = [];
+    const hist = { state: { path: `/notes${search}`, mark: 1 }, replaceState: (state, _, url) => written.push([state, url]) };
+    const result = withAccess({ notes: 'write' }, () => notes.openNoteFromQuery({ pathname: '/notes', search, hash }, hist));
+    return { result, written, title: opened[0]?.title ?? null, count: opened.length };
+  };
+  try {
+    // Der Weg der Suche und der Notizzeile der Uebersicht.
+    const hit = visit('?open=12');
+    assert.equal(hit.result, true);
+    assert.equal(hit.count, 1, 'genau ein Dialog');
+    assert.equal(hit.title, 'WLAN', 'und zwar der der genannten Notiz, nicht der ersten');
+    assert.deepEqual(hit.written, [[{ path: '/notes', mark: 1 }, '/notes']],
+      'die Adresse verliert den Parameter, der uebrige History-Zustand bleibt');
+
+    // Andere Parameter bleiben stehen.
+    assert.equal(visit('?open=5&x=1').written[0][1], '/notes?x=1');
+    // Und der Anker auch.
+    assert.equal(visit('?open=5', '#abschnitt').written[0][1], '/notes#abschnitt');
+    assert.equal(visit('?open=5&x=1', '#abschnitt').written[0][1], '/notes?x=1#abschnitt');
+
+    // Ohne Parameter: nichts oeffnen, nichts schreiben.
+    const none = visit('');
+    assert.deepEqual([none.result, none.count, none.written.length], [false, 0, 0]);
+
+    // Geloescht, fremd oder Unsinn: die Liste bleibt, ohne Fehler - und der
+    // tote Parameter geht trotzdem aus der Adresse.
+    // `5e0` und `0x5` sind fuer Number() eine 5 - eine Notiz meinen sie nicht.
+    for (const search of ['?open=999', '?open=abc', '?open=', '?open=5.5', '?open=-5', '?open=5e0', '?open=0x5', '?open=%205']) {
+      const miss = visit(search);
+      assert.deepEqual([miss.result, miss.count], [false, 0], search);
+      assert.equal(miss.written[0][1], '/notes', search);
+    }
+  } finally {
+    notes.state.notes = before;
+    if (hadModal) globalThis.__openModal = prevModal; else delete globalThis.__openModal;
+  }
+
+  // Und die Seite ruft es auch: NACH dem Laden der Notizen, sonst suchte der
+  // Link in einer leeren Liste.
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../public/pages/notes.js', import.meta.url), 'utf8');
+  const render = src.slice(src.indexOf('export async function render('));
+  const loaded = render.indexOf('state.notes = notesRes.data');
+  // Der Aufruf steht als EIGENE Anweisung auf der Ebene von render() - ein
+  // `if (false) openNoteFromQuery();` oder ein auskommentierter Aufruf ist keiner.
+  const called = render.search(/^ {2}openNoteFromQuery\(\);$/m);
+  assert.ok(loaded > 0 && called > loaded, 'render() loest den Link nach dem Laden ein');
+});
+
+test('#1821 Geburtstage: `?open=` oeffnet unter der Spaltenschwelle das Leseblatt und verlaesst vorher die Adresse', async () => {
+  const people = [{ id: 4, name: 'Mike' }, { id: 9, name: 'Lena' }];
+  const find = (id) => people.find((p) => String(p.id) === String(id));
+  const run = (search, { split = false } = {}) => {
+    const steps = [];
+    const md = { isSplit: () => split, clear: (opts) => steps.push(['clear', opts]) };
+    const result = birthdays.openBirthdayFromQueryNarrow(md, find, {
+      loc: { search }, openSheet: (b) => steps.push(['sheet', b.name]),
+    });
+    return { result, steps };
+  };
+  // Der Weg der Uebersichtszeile und der Suche am Telefon. ERST die Adresse,
+  // dann das Blatt: es legt seinen Zurueck-Schritt auf die Adresse, die dann gilt.
+  assert.deepEqual(run('?open=9'), { result: true, steps: [['clear', { history: 'replace' }], ['sheet', 'Lena']] });
+  // In der Spalte ist die Auswahl die Adresse: der Baustein hat sie, die Seite laesst sie.
+  assert.deepEqual(run('?open=9', { split: true }), { result: false, steps: [] });
+  // Ohne Parameter nichts.
+  assert.deepEqual(run(''), { result: false, steps: [] });
+  // Geloescht oder Unsinn: kein Blatt, der tote Parameter geht trotzdem.
+  assert.deepEqual(run('?open=404'), { result: false, steps: [['clear', { history: 'replace' }]] });
+  assert.equal(birthdays.openBirthdayFromQueryNarrow(null, find, { loc: { search: '?open=9' }, openSheet() {} }), false);
+
+  // Die Seite ruft es nach dem Einhaengen, als eigene Anweisung, und laesst
+  // den Baustein unter der Schwelle NICHT selbst einloesen (sonst ginge das
+  // Blatt zweimal auf und der Parameter bliebe stehen).
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../public/pages/birthdays.js', import.meta.url), 'utf8');
+  const mount = src.slice(src.indexOf('function mountBirthdaysDetail(signal) {'));
+  const body = mount.slice(0, mount.indexOf('\n}\n'));
+  const mounted = body.indexOf('_md = mountMasterDetail({');
+  const called = body.search(/^ {2}openBirthdayFromQueryNarrow\(_md, find\);$/m);
+  assert.ok(mounted > 0 && called > mounted);
+  assert.doesNotMatch(body.replace(/^\s*\/\/.*$/gm, ''), /deepLinkNarrow/);
+});
 
 test('Notiz-Dialog mit `notes: read`: Leseansicht, kein Editor, keine Fusszeile', () => {
   const offen = mitEchtemMarkdown(() => withAccess({ notes: 'read' }, () => (
@@ -3111,6 +3239,51 @@ test('R8 H9: eine Messung oeffnet sich mit Bestand, Loeschen steht links im Dial
   assert.equal(neu.title, 'health.vitals.add');
   assert.doesNotMatch(neu.content, /vital-delete/, 'ohne Bestand gibt es nichts zu loeschen');
   assert.doesNotMatch(neu.content, /id="vital-type" disabled/);
+});
+
+test('R18: "Messwert erfassen" spricht in Formularzeilen - der Blutdruck ist EIN Feld mit Einheit', () => {
+  const neu = withAccess({ health: 'write' }, () => modalOptionen(() => health.openVitalModal())).content;
+  // Reihenfolge der Felder wie vorher: Art, Wert, Zeitpunkt, Sichtbarkeit, Notiz.
+  const order = ['id="vital-type"', 'id="vital-value-fields"', 'id="vital-measured-at"', 'id="vital-visibility"', 'id="vital-note"'].map((id) => neu.indexOf(id));
+  assert.ok(order.every((at) => at >= 0), 'alle fuenf Felder stehen im Dialog');
+  assert.deepEqual([...order].sort((a, b) => a - b), order, 'in der alten Reihenfolge');
+  assert.doesNotMatch(neu, /modal-grid/, 'kein Feldraster mehr: Zeilen');
+  // Jede Auswahl haengt an ihrem Etikett.
+  for (const id of ['vital-type', 'vital-visibility', 'vital-measured-at']) {
+    assert.match(neu, new RegExp(`<label class="form-row__label" for="${id}">`), `${id} hat ein verknuepftes Etikett`);
+  }
+  assert.match(neu, /<div class="form-rows" id="vital-value-fields">/, 'die Wertefelder sind ein eigener Traeger - der Typwechsel tauscht nur ihn');
+  // Die Notiz bleibt ein freies Feld ohne Zeilenraster.
+  assert.match(neu, /<div class="form-field">\s*<label class="form-label" for="vital-note">/);
+
+  const bp = health.valueFieldsMarkup('bp', { id: 1, type: 'bp', value_num: 128, value_num2: 84, value_num3: 66 });
+  assert.match(bp, /<span class="form-row__label" id="vital-pair-label">health\.vitals\.metric\.bp<\/span>/, 'die Zeile heisst "Blutdruck"');
+  assert.match(bp, /<span class="form-composite" role="group" aria-labelledby="vital-pair-label">/);
+  assert.match(bp, /id="vital-sys" aria-label="health\.vitals\.field\.systolic" placeholder="120" value="128">/);
+  assert.match(bp, /<span class="form-composite__sep" aria-hidden="true">\/<\/span>/);
+  assert.match(bp, /id="vital-dia" aria-label="health\.vitals\.field\.diastolic" aria-describedby="vital-dia-unit" placeholder="80" value="84">/);
+  assert.match(bp, /<span class="form-composite__unit" id="vital-dia-unit">mmHg<\/span>/, 'die Einheit steht als Suffix am Paar');
+  assert.match(bp, /<label class="form-row__label" for="vital-pulse">health\.vitals\.field\.pulse<\/label>/, 'der Puls ist eine eigene Zeile daneben');
+  assert.match(bp, /id="vital-pulse" aria-describedby="vital-pulse-suffix" placeholder="72" value="66">/);
+  assert.ok(bp.indexOf('id="vital-sys"') < bp.indexOf('id="vital-dia"') && bp.indexOf('id="vital-dia"') < bp.indexOf('id="vital-pulse"'),
+    'Tastaturfolge: systolisch, diastolisch, Puls');
+  // Ein leeres Paar traegt Beispielwerte als Platzhalter, keinen Bestand.
+  const leer = health.valueFieldsMarkup('bp');
+  assert.match(leer, /id="vital-sys"[^>]*placeholder="120">/);
+  assert.doesNotMatch(leer, /id="vital-sys"[^>]*value=/);
+
+  // Einfacher Wert: Zahl und Einheit sind ein Feld; die Einheit ist Auswahl oder Text.
+  const gewicht = health.valueFieldsMarkup('weight');
+  assert.match(gewicht, /<label class="form-row__label" for="vital-value">health\.vitals\.metric\.weight<\/label>/);
+  assert.match(gewicht, /<select class="form-input" id="vital-unit" aria-label="health\.vitals\.field\.unit">/, 'die Einheitenauswahl hat einen eigenen Namen');
+  // Dauer: die Worte hinter den Zahlen sind die Etiketten der Teilfelder.
+  const schlaf = health.valueFieldsMarkup('sleep');
+  assert.match(schlaf, /id="vital-hours"><label class="form-composite__unit" for="vital-hours">health\.vitals\.field\.hours<\/label>/);
+  assert.match(schlaf, /id="vital-minutes"[^>]*><label class="form-composite__unit" for="vital-minutes">health\.vitals\.field\.minutes<\/label>/);
+  // Stimmung: gestapelte Zeile, die Skala ist nach dem Zeilenetikett benannt.
+  const stimmung = health.valueFieldsMarkup('mood');
+  assert.match(stimmung, /class="form-row form-row--stacked form-field"/);
+  assert.match(stimmung, /data-group="mood" role="group"\s+aria-labelledby="vital-mood-label"/);
 });
 
 test('R8 H9: PATCH einer Messung leert, was der Dialog nicht mehr zeigt', () => {
@@ -4901,8 +5074,12 @@ test('Kanon R5: Geburtstagszeile nennt die Person an Bearbeiten und Loeschen', (
       id: 5, name: 'Oma Ingrid', birth_date: '1955-03-01', next_birthday: '2027-03-01',
       days_until: 156, age_next: 72,
     });
-    assert.match(html, /class="row-action" data-action="edit" aria-label="common\.editNamed\{&quot;name&quot;:&quot;Oma Ingrid&quot;\}"/);
-    assert.match(html, /class="row-action row-action--danger" data-action="delete" aria-label="common\.deleteNamed\{&quot;name&quot;:&quot;Oma Ingrid&quot;\}"/);
+    // Seit R18 (2026-10-07) traegt die Zeile EINEN Mehr-Knopf; er nennt die
+    // Person, Bearbeiten und Loeschen sind seine Eintraege mit Wort.
+    assert.match(html, /class="row-action row-action--more popover-menu__trigger"[^>]*aria-label="common\.moreActionsNamed\{&quot;name&quot;:&quot;Oma Ingrid&quot;\}"/);
+    assert.match(html, /role="menuitem"\s+class="popover-menu__item"\s+data-action="edit" data-id="5">/);
+    assert.match(html, /role="menuitem"\s+class="popover-menu__item popover-menu__item--danger"\s+data-action="delete" data-id="5">/);
+    assert.equal((html.match(/class="row-action[\s"]/g) ?? []).length, 1, 'kein Stift und kein Papierkorb daneben');
   });
 });
 
@@ -4934,9 +5111,13 @@ test('Kanon R5: Aufgabenkarte nennt die Aufgabe an Bearbeiten, Ablegen und Teila
   withAccess({ tasks: 'write' }, () => {
     const html = tasks.renderTaskCard(aufgabe({ title: 'Muell rausbringen' }));
     const titel = '\\{&quot;title&quot;:&quot;Muell rausbringen&quot;\\}';
-    assert.match(html, new RegExp(`class="row-action task-card__inline-action" data-action="edit-task"[^>]*aria-label="common\\.editNamed\\{&quot;name&quot;:&quot;Muell rausbringen&quot;\\}"`));
-    assert.match(html, new RegExp(`data-action="archive-task"[^>]*aria-label="tasks\\.archiveNamed${titel}"`));
-    assert.match(html, new RegExp(`data-action="add-subtask"[^>]*aria-label="tasks\\.subtaskAddNamed${titel}"`));
+    // Seit R18 (2026-10-07) traegt die Karte EINEN Mehr-Knopf; er nennt die
+    // Aufgabe, die drei Handlungen sind seine Eintraege mit Wort.
+    void titel;
+    assert.match(html, /class="row-action row-action--more task-card__inline-action popover-menu__trigger"[^>]*aria-label="common\.moreActionsNamed\{&quot;name&quot;:&quot;Muell rausbringen&quot;\}"/);
+    assert.match(html, /class="popover-menu__item"\s+data-action="edit-task" data-id="7">[\s\S]{0,160}common\.edit</);
+    assert.match(html, /class="popover-menu__item"\s+data-action="add-subtask" data-parent="7">[\s\S]{0,160}tasks\.subtaskAdd</);
+    assert.match(html, /class="popover-menu__item"\s+data-action="archive-task" data-id="7">[\s\S]{0,160}tasks\.archiveButton</);
   });
 });
 

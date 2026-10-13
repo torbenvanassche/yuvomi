@@ -34,12 +34,23 @@ export const MAX_DISTINCT_LABELS = 200;
 export const MAX_CANDIDATE_INSTANCES = 5000;
 
 export class WasteImportError extends Error {
-  constructor(message, code = 'import_error') {
+  /**
+   * @param {string} message English sentence for logs and API consumers
+   * @param {string} [code] which limit was hit; the store turns it into the
+   *   response's `reason` (`waste_import_<code>`, #1909)
+   * @param {object|null} [params] the limit itself as a number, so the client
+   *   can put it into its own sentence instead of showing this one
+   */
+  constructor(message, code = 'import_error', params = null) {
     super(message);
     this.name = 'WasteImportError';
     this.code = code;
+    this.params = params;
   }
 }
+
+/** The upload limit in whole megabytes, as every sentence and response names it. */
+export const MAX_ICS_MB = Math.round(MAX_ICS_BYTES / (1024 * 1024));
 
 /** sha256 of the raw ICS text - stored as the source's content_hash. NOT used for the commit
  * concurrency guard (see computeReviewDigest) - a URL source's preview and commit each fetch the
@@ -50,23 +61,32 @@ export function computeDigest(icsText) {
 }
 
 /**
- * sha256 of what a preview actually SHOWS a reviewer (candidates/labels/diagnostics), not of the
- * raw bytes behind it. Used as the commit concurrency guard: two fetches of the same underlying
- * feed that differ only in volatile bytes irrelevant to the parsed result (a request-time DTSTAMP,
- * incidental whitespace, ...) still produce the same review digest, so a URL source doesn't get
- * stuck refusing every commit with "content changed since you last previewed it" purely because it
- * was fetched twice. A genuine content change - a different candidate, label, or diagnostic - does
- * change the digest, so the guard still does its real job.
+ * sha256 of what a preview actually SHOWS a reviewer, not of the raw bytes behind it and not of the
+ * feed's own bookkeeping. Used as the commit concurrency guard.
+ *
+ * What a reviewer sees and decides on is: which label falls on which day and how often, how many
+ * pickups each label has, and the diagnostics. That is what goes in. What stays out:
+ *  - volatile bytes that never reach the parsed result (a request-time DTSTAMP, whitespace);
+ *  - the event UID, and with it `identity_key` and a diagnostic's `event_key` (#1795). A UID is
+ *    the feed's name for an event, not a fact about the pickup, and some providers mint a new one
+ *    for every event on every request (limburg.net: a PHP uniqid()). A URL source's preview and
+ *    commit each fetch the feed on their own, so a digest over UIDs never matched itself there
+ *    and every commit was refused as "content changed since you last previewed it".
+ *
+ * The lines are a sorted LIST, not a set: two events on the same day with the same label are two
+ * lines, so a file that gains or loses a duplicate still changes the digest. A genuine change - a
+ * different day, label, count or diagnostic - changes it for an uploaded file exactly as before;
+ * two inputs with the same digest lead to the same pickups on the same days.
  */
 export function computeReviewDigest({ candidates, labels, diagnostics }) {
   const candidateLines = candidates
-    .map((c) => `${c.identity_key}|${c.normalized_label}|${c.date_key}`)
+    .map((c) => `${c.normalized_label}|${c.date_key}`)
     .sort();
   const labelLines = labels
     .map((l) => `${l.normalized_label}|${l.original_label}|${l.count}`)
     .sort();
   const diagnosticLines = diagnostics
-    .map((d) => `${d.severity}|${d.code}|${d.event_key ?? ''}|${d.count ?? ''}|${d.message ?? ''}`)
+    .map((d) => `${d.severity}|${d.code}|${d.name ?? ''}|${d.count ?? ''}`)
     .sort();
   const canonical = JSON.stringify({ candidates: candidateLines, labels: labelLines, diagnostics: diagnosticLines });
   return crypto.createHash('sha256').update(canonical, 'utf8').digest('hex');
@@ -211,14 +231,29 @@ export function buildImportPreview(icsText, {
     throw new WasteImportError('An ICS file is required.', 'empty_file');
   }
   if (Buffer.byteLength(icsText, 'utf8') > MAX_ICS_BYTES) {
-    throw new WasteImportError(`The file exceeds the ${Math.round(MAX_ICS_BYTES / (1024 * 1024))} MB upload limit.`, 'file_too_large');
+    throw new WasteImportError(`The file exceeds the ${MAX_ICS_MB} MB upload limit.`, 'file_too_large', { limit_mb: MAX_ICS_MB });
   }
 
   const skipped = [];
   const rawEvents = parseICS(icsText, { allowMissingUid: true, onSkip: (info) => skipped.push(info) });
 
+  // Zero calendar entries is never a calendar (#1938). Text without a single
+  // VEVENT parses to an empty list without an error - a maintenance or login
+  // page answered with 200, an empty VCALENDAR - and an empty list used to read
+  // as "this source has no pickups any more": the commit removed every imported
+  // pickup of the source, and their reminders went with the next reminder sync.
+  //
+  // The rule asks what was SENT (the parsed entries), never what remains of it
+  // below: a real calendar whose entries all lie outside the import window, are
+  // cancelled or belong to ignored labels has entries, and imports as before.
+  // It stands here, before any caller, so the preview refuses already and no
+  // path - file, re-import, URL source - can reach a commit with it.
+  if (rawEvents.length === 0) {
+    throw new WasteImportError('The file contains no calendar entries.', 'no_events');
+  }
+
   if (rawEvents.length > MAX_VEVENTS) {
-    throw new WasteImportError(`The file contains more than ${MAX_VEVENTS} calendar entries; split it into smaller files.`, 'event_cap_exceeded');
+    throw new WasteImportError(`The file contains more than ${MAX_VEVENTS} calendar entries; split it into smaller files.`, 'event_cap_exceeded', { limit: MAX_VEVENTS });
   }
 
   // Correlate UID-based recurrence overrides (RECURRENCE-ID) the same way
@@ -304,7 +339,7 @@ export function buildImportPreview(icsText, {
 
   const candidates = [...candidatesByIdentity.values()];
   if (candidates.length > MAX_CANDIDATE_INSTANCES) {
-    throw new WasteImportError(`The file expands to more than ${MAX_CANDIDATE_INSTANCES} pickup dates; split it into smaller files.`, 'instance_cap_exceeded');
+    throw new WasteImportError(`The file expands to more than ${MAX_CANDIDATE_INSTANCES} pickup dates; split it into smaller files.`, 'instance_cap_exceeded', { limit: MAX_CANDIDATE_INSTANCES });
   }
 
   if (skipped.length) {
@@ -332,7 +367,7 @@ export function buildImportPreview(icsText, {
     labelGroups.get(c.normalized_label).count++;
   }
   if (labelGroups.size > MAX_DISTINCT_LABELS) {
-    throw new WasteImportError(`The file contains more than ${MAX_DISTINCT_LABELS} distinct labels; this is almost always a parsing mismatch rather than genuinely that many waste types.`, 'label_cap_exceeded');
+    throw new WasteImportError(`The file contains more than ${MAX_DISTINCT_LABELS} distinct labels; this is almost always a parsing mismatch rather than genuinely that many waste types.`, 'label_cap_exceeded', { limit: MAX_DISTINCT_LABELS });
   }
 
   const typesByLowerName = new Map(existingTypes.map((t) => [t.name.trim().toLowerCase(), t.id]));

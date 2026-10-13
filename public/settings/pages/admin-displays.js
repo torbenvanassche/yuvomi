@@ -12,9 +12,10 @@
  */
 
 import { api, auth } from '/api.js';
-import { formatDate, formatTime, t } from '/i18n.js';
+import { formatDate, formatTime, getLocale, t } from '/i18n.js';
 import { esc } from '/utils/html.js';
 import { confirmModal, refocusAfterRender } from '/components/modal.js';
+import { settingSwitchRowHtml } from '/settings/components.js';
 
 function formatSeen(value) {
   if (!value) return null;
@@ -73,7 +74,8 @@ function renderDevice(display, device) {
     </li>`;
 }
 
-function renderDisplay(display) {
+// Exported so test:display-screensaver-switch can read the real card.
+export function renderDisplay(display) {
   const active = (display.devices || []).filter((d) => !d.revoked_at);
   return `
     <li class="settings-card" data-display="${display.id}">
@@ -84,6 +86,29 @@ function renderDisplay(display) {
       <ul class="settings-members">
         ${(display.devices || []).map((device) => renderDevice(display, device)).join('')}
       </ul>
+      <!-- Ob dieses Tablett den Foto-Bildschirmschoner zeigt (#1766). Ein
+           Display aendert keine Einstellungen, also entscheidet es hier ein
+           Administrator, je Display und standardmaessig aus; der Server
+           sperrt die Fotos bei "aus" am Gate. row-divided, nicht
+           row-carrier: die Zeile liegt schon in der Karte, ein eigener
+           Traeger waere eine Karte in der Karte (DESIGN.md, "Folge
+           gleichartiger Zeilen"). settings-group gibt ihr nur das Raster
+           der Einstellungszeile, keine Flaeche. Keine Backticks in diesem
+           Kommentar - er steht im Template-Literal. -->
+      <div class="row-divided settings-group">
+      ${settingSwitchRowHtml({
+        label: t('settings.displayScreensaverLabel'),
+        checked: display.show_screensaver === true,
+        icon: 'image',
+        description: t('settings.displayScreensaverHint'),
+        descriptionId: `display-screensaver-hint-${display.id}`,
+        attrs: {
+          id: `display-screensaver-${display.id}`,
+          'data-display-screensaver': display.id,
+          'data-name': display.display_name,
+        },
+      })}
+      </div>
       <div class="settings-token-output" data-display-code="${display.id}" hidden>
         <p class="form-label">${esc(t('settings.displayPairingCodeLabel'))}</p>
         <p class="settings-token-output__row"><code data-display-code-value="${display.id}"></code></p>
@@ -122,7 +147,14 @@ function renderPage(container) {
            (test:typography haelt das fest). settings.displaysTitle traegt
            weiterhin den Namen in der Navigation. -->
       <div class="settings-card">
-        <p class="form-hint" style="margin-bottom:var(--space-3)">${esc(t('settings.displaysHint'))}</p>
+        <div style="margin-bottom:var(--space-3)">
+        <p class="form-hint">${esc(t('settings.displaysHint'))}</p>
+        <!-- Zweiter Absatz desselben Hinweises (#1808). Er kommt mit der Liste:
+             WELCHE Bereiche ein Tablett zeigt, weiss nur der Server
+             (DISPLAY_SCOPES), und eine zweite Handliste hier bliebe beim
+             naechsten Scope stehen. Bis dahin leer und versteckt. -->
+        <p class="form-hint" id="display-areas-hint" style="margin-top:var(--space-2)" hidden></p>
+        </div>
         <ul class="settings-cards" id="display-list"></ul>
         <form id="display-form" class="settings-form" autocomplete="off">
           <div class="form-group">
@@ -146,9 +178,35 @@ function renderPage(container) {
   `);
 }
 
+/**
+ * Die Bereiche eines Displays als Satz (#1808).
+ *
+ * Die Namen sind die der Scope-Module, wie sie der API-Zugriff nebenan nennt
+ * (`settings.apiTokenScopeModules.*`) - dieselben Schluessel, die der Server
+ * liefert, also keine zweite Zuordnung. Dass es zu jedem Bereich in jeder
+ * Sprache einen Namen gibt, haelt `test:display-account` fest. Ohne Liste (alte
+ * Antwort aus dem Cache) bleibt der Absatz aus, statt einen halben Satz zu zeigen.
+ */
+function displayAreasText(modules) {
+  const names = (Array.isArray(modules) ? modules : [])
+    .map((key) => t(`settings.apiTokenScopeModules.${key}`));
+  if (!names.length) return '';
+  const areas = new Intl.ListFormat(getLocale(), { style: 'long', type: 'conjunction' }).format(names);
+  return t('settings.displaysAreasHint', { areas });
+}
+
+function renderAreasHint(container, modules) {
+  const hint = container.querySelector('#display-areas-hint');
+  if (!hint) return;
+  const text = displayAreasText(modules);
+  hint.textContent = text;
+  hint.hidden = !text;
+}
+
 async function reload(container) {
   const res = await api.get('/displays');
   const displays = res.data ?? [];
+  renderAreasHint(container, res.area_modules);
   renderList(container, displays);
   window.lucide?.createIcons({ el: container });
   return displays;
@@ -159,6 +217,35 @@ async function reload(container) {
  * nicht mehr stimmt, wurde ueberholt und darf nichts mehr schreiben.
  */
 const pairTickets = new Map();
+
+/**
+ * Der Schalter "Foto-Bildschirmschoner zeigen" je Display (#1766). Er wirkt
+ * sofort wie jeder Schalter in den Einstellungen. Scheitert die Anfrage,
+ * springt er zurueck - sonst zeigte die Liste einen Zustand, den der Server
+ * nicht hat. Exported so test:display-screensaver-switch can drive the real
+ * handler.
+ */
+export function bindDisplayScreensaverSwitches(list, errorEl) {
+  list.addEventListener('change', async (event) => {
+    const toggle = event.target.closest?.('[data-display-screensaver]');
+    if (!toggle) return;
+    clearError(errorEl);
+    const on = toggle.checked;
+    toggle.disabled = true;
+    try {
+      await api.patch(`/displays/${toggle.dataset.displayScreensaver}`, { show_screensaver: on });
+      window.yuvomi?.showToast(
+        t(on ? 'settings.displayScreensaverOn' : 'settings.displayScreensaverOff', { name: toggle.dataset.name }),
+        'success',
+      );
+    } catch (err) {
+      toggle.checked = !on;
+      showError(errorEl, err.message);
+    } finally {
+      toggle.disabled = false;
+    }
+  });
+}
 
 function bindEvents(container) {
   const form = container.querySelector('#display-form');
@@ -193,6 +280,8 @@ function bindEvents(container) {
       btn.disabled = false;
     }
   });
+
+  bindDisplayScreensaverSwitches(list, errorEl);
 
   list.addEventListener('click', async (event) => {
     const pair = event.target.closest('[data-display-pair]');
@@ -319,3 +408,5 @@ export async function render(container) {
   bindEvents(container);
   window.lucide?.createIcons({ el: container });
 }
+
+export const __test = { displayAreasText };

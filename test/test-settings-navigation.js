@@ -132,7 +132,10 @@ test('die Blaetter verteilen sich wie beschlossen auf drei Bereiche, je Modul ei
   const perDomain = {};
   for (const leaf of SETTINGS_LEAVES) perDomain[leaf.domainId] = (perDomain[leaf.domainId] ?? 0) + 1;
   // R14 (A7 P2-3): Inventar und Entsorgung bekommen ein Blatt fuer ihren Feed.
-  assert.deepEqual(perDomain, { personal: 5, admin: 8, modules: 15 });
+  // Dazu "Eigenes Modul hinzufuegen" (modules-install): Drittmodule zu
+  // installieren ist eine Handlung im Modul-Bereich, kein Modul - deshalb ein
+  // Blatt ohne `module`, aber in derselben Domaene.
+  assert.deepEqual(perDomain, { personal: 5, admin: 8, modules: 16 });
   assert.deepEqual(SETTINGS_DOMAINS.map((domain) => domain.id), ['personal', 'admin', 'modules']);
   // Jedes Blatt haengt an einem existierenden Bereich, jeder Abschnitt an
   // einem existierenden Blatt, und kein Blatt ist leer.
@@ -188,6 +191,148 @@ test('sign out other devices names the rate limit instead of a generic failure (
   // eine Funktion, die niemand aufruft.
   const source = await readFile(new URL('../public/settings/pages/personal-account.js', import.meta.url), 'utf8');
   assert.match(source, /catch \(error\) \{\s*showError\(errorBox, logoutOthersErrorText\(error\)\);/);
+});
+
+test('Gravatar: der Knopf steht im Bild-Editor, gesperrt ohne gespeicherte Adresse, frei mit ihr', async () => {
+  // Der Server hasht die GESPEICHERTE Adresse; was im Feld steht, kennt er
+  // nicht. Darum entscheidet das geladene Profil, nicht die Eingabe - und die
+  // Sperre ist aria-disabled, damit der Knopf per Tastatur erreichbar bleibt
+  // und die Hinweiszeile sagt, warum er noch nichts tut.
+  const { __test, hasSavedEmail } = await import('/settings/pages/personal-account.js');
+  const { avatarEditorHtml, gravatarHintText } = __test;
+  assert.equal(typeof avatarEditorHtml, 'function');
+
+  assert.equal(hasSavedEmail({ email: 'a@b.de' }), true);
+  // Dieselbe Regel wie memberEmail() auf dem Server: eine Liste oder ein
+  // zweites @ ist keine Adresse - der Knopf bliebe sonst aktiv und liefe in 400.
+  for (const user of [{ email: null }, { email: '' }, { email: '   ' }, {}, null, undefined,
+    { email: 'a@x.de, b@y.de' }, { email: 'a@x.de b@y.de' }, { email: 'a@@b.de' }, { email: '@b.de' }]) {
+    assert.equal(hasSavedEmail(user), false, JSON.stringify(user));
+  }
+
+  const buttonOf = (html) => html.match(/<button[^>]*id="profile-avatar-gravatar"[^>]*>/)?.[0] ?? '';
+  // Ohne gravatarAvailable vom Server (Betreiber hat GRAVATAR_BASE_URL nicht
+  // gesetzt, Konto ist kein Mitglied, oder /auth/me schlug fehl) gibt es den
+  // Knopf nicht - auch nicht gesperrt.
+  assert.doesNotMatch(avatarEditorHtml({ display_name: 'Ada', email: 'ada@example.org' }), /profile-avatar-gravatar/);
+  assert.doesNotMatch(avatarEditorHtml({ email: 'ada@example.org' }, { gravatarAvailable: false }), /profile-avatar-gravatar/);
+  const on = { gravatarAvailable: true };
+  const locked = buttonOf(avatarEditorHtml({ display_name: 'Ada', email: null }, on));
+  assert.ok(locked, 'der Knopf existiert');
+  assert.match(locked, /aria-disabled="true"/);
+  assert.match(locked, /aria-label="settings\.gravatarUse"/);
+  assert.match(locked, /aria-describedby="profile-gravatar-hint"/);
+  assert.doesNotMatch(locked, /\sdisabled[\s>]/, 'aria-disabled statt disabled: erreichbar bleiben');
+  assert.equal(gravatarHintText({ email: null }), 'settings.gravatarNeedsEmail');
+
+  const free = buttonOf(avatarEditorHtml({ display_name: 'Ada', email: 'ada@example.org' }, on));
+  assert.ok(free);
+  assert.doesNotMatch(free, /aria-disabled/);
+  // Der Hinweis nennt die Adresse, die gehasht wird (der Stub von t() haengt
+  // die Parameter als JSON an).
+  // Und er nennt den Dienst, den der Betreiber eingetragen hat (#1791-Folge):
+  // der Host kommt vom Server, nie als fester Name aus dem Satz. Ohne Host
+  // (Basis-URL falsch gesetzt) nennt der Satz keinen Dienst.
+  assert.equal(gravatarHintText({ email: ' ada@example.org ' }, 'seccdn.libravatar.org'), 'settings.gravatarHint{"email":"ada@example.org","host":"seccdn.libravatar.org"}');
+  assert.equal(gravatarHintText({ email: ' ada@example.org ' }), 'settings.gravatarHintUnnamed{"email":"ada@example.org"}');
+  assert.equal(gravatarHintText({ email: null }, 'gravatar.com'), 'settings.gravatarNeedsEmail');
+
+  // Dieselbe Familie wie Hochladen und Entfernen daneben, mit Icon.
+  assert.match(free, /class="settings-avatar-action"/);
+  assert.match(avatarEditorHtml({ email: 'ada@example.org' }, on), /id="profile-avatar-gravatar"[^]*?data-lucide="cloud-download"/);
+});
+
+test('Gravatar: die Hinweiszeile kommt leer aus dem HTML und wird als Text gefuellt - die Adresse steht woertlich da', async () => {
+  const { __test } = await import('/settings/pages/personal-account.js');
+  const { gravatarHintHtml, fillGravatarHint } = __test;
+  assert.equal(gravatarHintHtml(false), '', 'ohne Freigabe keine Hinweiszeile');
+  assert.equal(gravatarHintHtml(true), '<p class="form-hint" id="profile-gravatar-hint"></p>', 'leer: gefuellt wird nur ueber textContent');
+
+  // Die Adresse kommt von einer Kontaktkarte, die andere Mitglieder bearbeiten
+  // koennen. Sie darf nie als HTML gelesen werden - und auch nicht doppelt
+  // escapet als "&amp;" im Satz stehen.
+  const element = { textContent: '' };
+  fillGravatarHint(element, { email: '<b>&x@y.de' });
+  assert.ok(element.textContent.includes('<b>&x@y.de'), element.textContent);
+  assert.doesNotMatch(element.textContent, /&amp;|&lt;/);
+  fillGravatarHint(element, { email: null });
+  assert.equal(element.textContent, 'settings.gravatarNeedsEmail');
+  fillGravatarHint(null, { email: 'a@b.de' }); // ohne Element kein Fehler
+
+  // Die Verdrahtung: render() liest gravatarAvailable aus auth.me() und nur
+  // bei true; die Seite schreibt den Hinweis nie per innerHTML, und nach dem
+  // Speichern des Profils zieht er mit (syncGravatarButton).
+  const source = await readFile(new URL('../public/settings/pages/personal-account.js', import.meta.url), 'utf8');
+  assert.match(source, /gravatarAvailable = response\?\.gravatarAvailable === true;/);
+  // Der Host reist denselben Weg: aus auth.me() in bindEvents() und von dort
+  // in Hinweis und Fehlersatz.
+  assert.match(source, /gravatarHost = gravatarAvailable && typeof response\?\.gravatarHost === 'string' \? response\.gravatarHost : '';/);
+  assert.match(source, /\}, \{ gravatarHost \}\);/);
+  assert.match(source, /\$\{gravatarHintHtml\(gravatarAvailable\)\}/);
+  assert.match(source, /\$\{avatarEditorHtml\(user, \{ gravatarAvailable \}\)\}/);
+  assert.doesNotMatch(source, /gravatarHint[A-Za-z]*\.innerHTML|esc\(gravatarHintText/);
+  const sync = source.slice(source.indexOf('const syncGravatarButton = () => {'), source.indexOf('const labelGravatarButton'));
+  assert.match(sync, /fillGravatarHint\(gravatarHint, user, gravatarHost\)/);
+  assert.match(sync, /\n  syncGravatarButton\(\);/, 'beim Binden einmal gefuellt');
+});
+
+test('Gravatar: jeder Grund, den die Route nennen kann, hat seinen Satz, 429 liest sich als zu oft', async () => {
+  const { GRAVATAR_REASON_KEYS, gravatarErrorText } = await import('/settings/pages/personal-account.js');
+  // Der Vertrag der Route (POST /auth/me/avatar/gravatar): keiner dieser
+  // Gruende darf auf den englischen Servertext zurueckfallen.
+  const reasons = [
+    'no_email', 'gravatar_disabled', 'gravatar_not_found', 'gravatar_unreachable',
+    'gravatar_too_large', 'gravatar_not_image', 'gravatar_rate_limited',
+    'gravatar_stale', 'not_a_household_member',
+  ];
+  assert.deepEqual(Object.keys(GRAVATAR_REASON_KEYS).sort(), [...reasons].sort());
+
+  const de = JSON.parse(await readFile(new URL('../public/locales/de.json', import.meta.url), 'utf8'));
+  const en = JSON.parse(await readFile(new URL('../public/locales/en.json', import.meta.url), 'utf8'));
+  for (const reason of reasons) {
+    const key = GRAVATAR_REASON_KEYS[reason];
+    assert.equal(gravatarErrorText({ status: 400, data: { reason }, message: 'Server text' }), key);
+    for (const [name, locale] of [['de', de], ['en', en]]) {
+      assert.equal(typeof getTranslation(locale, key), 'string', `${name}: ${key}`);
+    }
+  }
+  for (const key of ['settings.gravatarUse', 'settings.gravatarFetching', 'settings.gravatarHint', 'settings.gravatarDone']) {
+    assert.equal(typeof getTranslation(de, key), 'string', key);
+  }
+  assert.equal(gravatarErrorText({ status: 429, data: { error: 'Too many requests' } }), 'settings.gravatarErrorRateLimited');
+  assert.equal(gravatarErrorText({ status: 500, data: { reason: 'something_new' }, message: 'Server text' }), 'Server text');
+  assert.equal(gravatarErrorText(new Error('offline')), 'offline');
+  // Mit dem Host des gewaehlten Dienstes reist er als Parameter in den Satz.
+  assert.equal(
+    gravatarErrorText({ status: 502, data: { reason: 'gravatar_unreachable' } }, 'seccdn.libravatar.org'),
+    'settings.gravatarErrorUnreachable{"host":"seccdn.libravatar.org"}',
+  );
+
+  // Der Klick-Handler: ruft die Route, nimmt genau diese Funktion, uebernimmt
+  // das gespeicherte Bild in Vorschau und Seitenleiste - und speichert NICHT
+  // noch einmal: der Server hat es schon, ein zweites Save waere eine Luege
+  // an den Nutzer ("ungespeichert").
+  const source = await readFile(new URL('../public/settings/pages/personal-account.js', import.meta.url), 'utf8');
+  const start = source.indexOf("container.querySelector('#profile-avatar-gravatar')");
+  const end = source.indexOf("const profileForm = container.querySelector('#profile-form')");
+  assert.ok(start > 0 && end > start, 'der Handler steht vor dem Formular-Submit');
+  const handler = source.slice(start, end);
+  // Mitgeschickt wird die Adresse, die der Hinweis nennt (gravatarHintText:
+  // user.email.trim()) - die Route sagt 409, wenn der Server inzwischen eine
+  // andere fuehrt.
+  assert.match(handler, /api\.post\('\/auth\/me\/avatar\/gravatar', \{ email: user\.email\.trim\(\) \}\)/);
+  assert.match(source, /const email = user\.email\.trim\(\);\n  return host\n    \? t\('settings\.gravatarHint', \{ email, host \}\)/, 'Hinweis und Anfrage nennen dieselbe Adresse');
+  assert.match(handler, /showError\(profileError, gravatarErrorText\(error, gravatarHost\)\)/);
+  // EINE Ansage: die Fehlerzeile (role="alert") - kein Fehler-Toast daneben,
+  // sonst hoert die Vorlesehilfe den Satz zweimal.
+  assert.doesNotMatch(handler, /showToast\([^)]*'danger'\)/);
+  assert.equal((handler.match(/showToast\(/g) || []).length, 1, 'nur der Erfolgs-Toast');
+  assert.match(handler, /profileState\.avatarData = data\.avatar_data \?\? null/);
+  assert.match(handler, /new CustomEvent\('yuvomi:profile-changed'/);
+  assert.match(handler, /showToast\(t\('settings\.gravatarDone'\), 'success'\)/);
+  assert.match(handler, /t\('settings\.gravatarFetching'\)/);
+  assert.doesNotMatch(handler, /updateProfile|requestSubmit|\.submit\(/);
+  assert.doesNotMatch(handler, /innerHTML/);
 });
 
 test('sign out other devices: hint, status and buttons keep a token gap, an empty status none (#1423)', async () => {
@@ -2418,7 +2563,7 @@ test('Standard-Erinnerungsliste: eine gescheiterte Abfrage ist ein Fehler mit Au
 
 const PRE_R10_LEAVES = Object.freeze({
   '/settings/personal/account': { id: 'personal-account', adminOnly: false, labelKey: 'settings.pageAccount', options: ['settings.displayNameLabel', 'settings.colorLabel', 'settings.contactDetailsLegend', 'settings.changePassword', 'settings.twoFactorTitle', 'settings.otherSessionsTitle', 'settings.oidcLinkTitle'] },
-  '/settings/personal/appearance': { id: 'personal-appearance', adminOnly: false, labelKey: 'settings.pageAppearance', options: ['settings.sectionDesign', 'settings.wallModeLabel', 'settings.screensaverIdleLabel', 'settings.localeLabel', 'settings.dataLanguageLabel', 'settings.regionLabel', 'settings.currencyLabel', 'settings.timezoneLabel', 'settings.dateFormatLabel', 'settings.timeFormatLabel'] },
+  '/settings/personal/appearance': { id: 'personal-appearance', adminOnly: false, labelKey: 'settings.pageAppearance', options: ['settings.sectionDesign', 'settings.wallModeLabel', 'settings.screensaverIdleLabel', 'settings.screensaverClockLabel', 'settings.screensaverCoverLabel', 'settings.localeLabel', 'settings.dataLanguageLabel', 'settings.regionLabel', 'settings.currencyLabel', 'settings.timezoneLabel', 'settings.dateFormatLabel', 'settings.timeFormatLabel'] },
   '/settings/personal/device': { id: 'personal-device', adminOnly: false, labelKey: 'settings.pageDevice', options: ['settings.pwaInstallTitle'] },
   '/settings/personal/notifications': { id: 'personal-notifications', adminOnly: false, labelKey: 'settings.pageNotifications', options: ['settings.pushToggleTitle', 'settings.notificationChannelsTitle'] },
   '/settings/personal/calendar': { id: 'personal-calendar', adminOnly: false, labelKey: 'settings.pageCalendarDefaults', options: ['settings.calendarAssignMeLabel', 'settings.calendarDefaultTargetLabel', 'settings.calendarDefaultRemindersLabel'] },
@@ -2443,7 +2588,7 @@ const PRE_R10_LEAVES = Object.freeze({
   '/settings/admin/family': { id: 'admin-family', adminOnly: true, labelKey: 'settings.pageFamilyRoles', options: ['settings.sectionFamily', 'settings.invites.title', 'settings.twoFactorTitle'] },
   '/settings/admin/permissions': { id: 'admin-permissions', adminOnly: true, labelKey: 'settings.pagePermissions', options: ['settings.permCapabilitiesHeading'] },
   '/settings/admin/weather': { id: 'admin-weather', adminOnly: true, labelKey: 'settings.pageHouseholdWeather', options: ['settings.weatherTitle'] },
-  '/settings/admin/displays': { id: 'admin-displays', adminOnly: true, labelKey: 'settings.pageDisplays', options: ['settings.displayPairingCodeLabel'] },
+  '/settings/admin/displays': { id: 'admin-displays', adminOnly: true, labelKey: 'settings.pageDisplays', options: ['settings.displayPairingCodeLabel', 'settings.displayScreensaverLabel'] },
   '/settings/admin/api': { id: 'admin-api', adminOnly: true, labelKey: 'settings.pageApiAccess', options: ['settings.apiTokensTitle'] },
   '/settings/admin/backup': { id: 'admin-backup', adminOnly: true, labelKey: 'settings.pageBackupRestore', options: ['settings.backupDownloadTitle', 'settings.backupRestoreTitle', 'settings.backupSchedulerTitle', 'settings.backupWebdavEnabled'] },
   '/settings/admin/email': { id: 'admin-email', adminOnly: true, labelKey: 'settings.pageEmail', options: ['email.host'] },
@@ -2905,7 +3050,14 @@ test('R14: Modulblaetter stehen in der Reihenfolge der Seitenleiste', async () =
   const ids = (order) => settingsSheetsForDomain('modules', admin, { moduleOrder: order }).map((s) => s.module ?? s.id);
   const plain = ids([]);
   assert.deepEqual(plain.slice(0, 2), ['modules-active', 'modules-navigation'], 'die zwei allgemeinen Blaetter zuerst');
-  const mods = plain.slice(2);
+  // "Eigenes Modul hinzufuegen" (`placement: 'end'`) schliesst die Liste ab -
+  // hinter den sortierten Modulblaettern, egal welche Reihenfolge der Haushalt
+  // gewaehlt hat. Die Aussage dieses Tests (Modulblaetter folgen der
+  // Seitenleiste) bleibt: sie wird zwischen den allgemeinen Blaettern und dem
+  // Abschluss gemessen.
+  assert.equal(plain.at(-1), 'modules-install', 'Hinzufuegen steht am Ende');
+  assert.equal(ids(['budget', 'tasks']).at(-1), 'modules-install', 'auch bei eigener Anordnung');
+  const mods = plain.slice(2, -1);
   assert.deepEqual(mods, ['dashboard', 'calendar', 'schedule', 'tasks', 'kitchen', 'housekeeping', 'waste', 'documents',
     'inventory', 'rewards', 'contacts', 'health', 'budget'], 'ohne eigene Anordnung genau wie die Seitenleiste (gemessen 1440)');
   const pos = (id) => mods.indexOf(id);
@@ -2913,7 +3065,7 @@ test('R14: Modulblaetter stehen in der Reihenfolge der Seitenleiste', async () =
   assert.ok(pos('tasks') < pos('kitchen') && pos('kitchen') < pos('contacts') && pos('contacts') < pos('budget'),
     `Planen, Haushalt, Menschen, Finanzen: ${mods}`);
   assert.ok(pos('health') < pos('budget'), 'Gesundheit (Menschen) vor Budget (Finanzen)');
-  const custom = ids(['tasks', 'schedule', 'calendar', 'rewards', 'kitchen']).slice(2);
+  const custom = ids(['tasks', 'schedule', 'calendar', 'rewards', 'kitchen']).slice(2, -1);
   assert.ok(custom.indexOf('tasks') < custom.indexOf('calendar'), 'die eigene Reihenfolge des Haushalts zaehlt');
   assert.ok(custom.indexOf('rewards') < custom.indexOf('kitchen'));
   const router = await readFile(new URL('../public/router.js', import.meta.url), 'utf8');
@@ -3301,9 +3453,24 @@ function sheetProbeContainer(part) {
   };
 }
 
+/**
+ * Entfernt HTML-Kommentare, bis keiner mehr faellt. Ein einzelner Durchlauf
+ * genuegt nicht: aus `<!<!-- a -->-- b -->` macht er `<!-- b -->`, und der
+ * Scanner dahinter liest wieder Markup, das auskommentiert ist (CodeQL
+ * `js/incomplete-multi-character-sanitization`).
+ */
+function stripHtmlComments(markup) {
+  let text = String(markup);
+  for (let prev = null; prev !== text;) {
+    prev = text;
+    text = text.replace(/<!--[\s\S]*?-->/g, '');
+  }
+  return text;
+}
+
 /** Jede `.settings-card` des Markups samt Inhalt (Kommentare vorher entfernt). */
 function settingsCardsIn(markup) {
-  const html = markup.replace(/<!--[\s\S]*?-->/g, '');
+  const html = stripHtmlComments(markup);
   const cards = [];
   const open = /<div class="(?:[^"]*\s)?settings-card(?:\s[^"]*)?"[^>]*>/g;
   let m;
@@ -3337,6 +3504,18 @@ test('R17: der Karten-Scanner sieht eine Karte mit genau einem Bedienelement - u
   assert.deepEqual(cards.map(cardControls), [1, 2, 1]);
   assert.deepEqual(cards.map(cardHasAction), [false, true, true]);
   assert.match(cards[1], /btn--primary/, 'die Karte reicht bis zu IHREM schliessenden div, nicht bis zum ersten');
+});
+
+test('R17: der Karten-Scanner liest kein Markup, das erst nach dem Entfernen eines Kommentars zum Kommentar wird', () => {
+  // Ein Durchlauf laesst hier `<!-- <div class="settings-card">...</div> -->`
+  // stehen, und der Scanner zaehlte die auskommentierte Karte mit.
+  const nested = '<!<!-- a -->-- <div class="settings-card"><select></select></div> -->';
+  assert.equal(stripHtmlComments(nested), '');
+  assert.equal(settingsCardsIn(nested).length, 0, 'die Karte ist auskommentiert');
+  assert.equal(stripHtmlComments('<!<!<!-- a -->-- b -->-- c --><p>bleibt</p>'), '<p>bleibt</p>', 'auch drei Ebenen tief');
+  // Gegenproben: ohne Kommentar bleibt alles, und eine echte Karte daneben zaehlt weiter.
+  assert.equal(stripHtmlComments('<p>a</p>'), '<p>a</p>');
+  assert.equal(settingsCardsIn(nested + '<div class="settings-card"><select></select></div>').length, 1);
 });
 
 /** Jeder Abschnitt der Registry, als Programm gerendert: id -> Markup. Einmal je Lauf. */
@@ -3378,7 +3557,7 @@ function probeSheets() {
         } catch {
           // Nach dem Zeichnen an einer Attrappe gescheitert: das Markup steht.
         }
-        rendered.set(section.id, host.html.replace(/<!--[\s\S]*?-->/g, ''));
+        rendered.set(section.id, stripHtmlComments(host.html));
       }
     } finally {
       globalThis.window = prev.window;
@@ -3432,9 +3611,12 @@ test('R17: die gruppierte Zeile - Label links, Bedienelement rechts, der Hinweis
     label: 'Zeit <zone>', labelFor: 'tz', description: 'Gilt & wirkt', descriptionId: 'tz-hint',
     control: '<select id="tz"></select>', extra: '<div id="tz-error" hidden></div>',
   });
-  assert.match(row, /^<div class="settings-setting-row"><div class="settings-setting-row__copy"><label class="settings-setting-row__label" for="tz">Zeit &lt;zone&gt;<\/label>/);
-  assert.match(row, /<p class="settings-setting-row__description" id="tz-hint">Gilt &amp; wirkt<\/p><div id="tz-error" hidden><\/div><\/div><div class="settings-setting-row__control"><select id="tz"><\/select><\/div><\/div>$/);
-  assert.match(settingRowHtml({ label: 'x', labelId: 'l', stacked: true }), /^<div class="settings-setting-row settings-setting-row--stacked"><div class="settings-setting-row__copy"><span class="settings-setting-row__label" id="l">x<\/span>/,
+  // Seit R18 (2026-10-07) IST die Einstellungszeile eine Formularzeile
+  // (utils/form-row.js): jede Klasse `settings-setting-row*` traegt ihr
+  // `form-row*` daneben. Reihenfolge, Verknuepfung und Escaping sind die alten.
+  assert.match(row, /^<div class="settings-setting-row form-row"><div class="settings-setting-row__copy form-row__copy"><label class="settings-setting-row__label form-row__label" for="tz">Zeit &lt;zone&gt;<\/label>/);
+  assert.match(row, /<p class="settings-setting-row__description form-row__description" id="tz-hint">Gilt &amp; wirkt<\/p><div id="tz-error" hidden><\/div><\/div><div class="settings-setting-row__control form-row__control"><select id="tz"><\/select><\/div><\/div>$/);
+  assert.match(settingRowHtml({ label: 'x', labelId: 'l', stacked: true }), /^<div class="settings-setting-row settings-setting-row--stacked form-row form-row--stacked"><div class="settings-setting-row__copy form-row__copy"><span class="settings-setting-row__label form-row__label" id="l">x<\/span>/,
     'ohne `labelFor` kein <label>: eine Gruppe (Segment, Chips) wird ueber aria-labelledby benannt');
 
   const sw = settingSwitchRowHtml({ label: 'Push', checked: true, description: 'Nur hier', descriptionId: 'p-hint', attrs: { id: 'p' } });
@@ -3455,6 +3637,107 @@ test('R17: die gruppierte Zeile - Label links, Bedienelement rechts, der Hinweis
     'keine Breitenabfrage stapelt die Zeile wieder: gestapelt war ein Auswahlfeld mit "5 Minuten" mobil vollbreit');
   const control = rules.find((r) => r.selector.trim() === '.settings-group .settings-setting-row__control' && !r.at.length);
   assert.match(control?.body ?? '', /max-inline-size:\s*50cqi/, 'das Bedienelement nimmt hoechstens die halbe Zeile, das Label bricht um');
+});
+
+// --------------------------------------------------------
+// R18 (2026-10-07): die Formularzeile - EIN Baustein fuer Einstellungen und
+// Erfassungsdialoge (utils/form-row.js, layout.css "Formularzeile")
+// --------------------------------------------------------
+test('R18: formRowHtml baut Etikett links / Wert rechts mit verknuepftem Etikett, die Einstellungszeile baut darauf', async () => {
+  const { formRowHtml, formRowsHtml } = await import('../public/utils/form-row.js');
+  const row = formRowHtml({
+    label: 'Art <b>', labelFor: 'kind', description: 'Nur & hier', descriptionId: 'kind-hint',
+    control: '<select class="form-input" id="kind"></select>', field: true,
+  });
+  assert.match(row, /^<div class="form-row form-field"><div class="form-row__copy"><label class="form-row__label" for="kind">Art &lt;b&gt;<\/label>/,
+    'das Etikett ist ein <label for> - und die Zeile die Fehlergruppe ihres Feldes');
+  assert.match(row, /<p class="form-row__description" id="kind-hint">Nur &amp; hier<\/p><\/div><div class="form-row__control"><select class="form-input" id="kind"><\/select><\/div><\/div>$/);
+  assert.match(formRowHtml({ label: 'x', labelId: 'l', stacked: true, wide: true }),
+    /^<div class="form-row form-row--stacked form-row--wide"><div class="form-row__copy"><span class="form-row__label" id="l">x<\/span>/,
+    'ohne labelFor ein benennbares <span> fuer aria-labelledby');
+  assert.equal(formRowsHtml(['<i>a</i>', '', null, '<i>b</i>'], { attrs: { id: 'g' } }), '<div class="form-rows" id="g"><i>a</i><i>b</i></div>');
+  // Die Einstellungszeile ist dieselbe Funktion mit einer Variante - nicht ein zweiter Bau.
+  const components = await readFile(new URL('../public/settings/components.js', import.meta.url), 'utf8');
+  const fn = components.slice(components.indexOf('export function settingRowHtml('), components.indexOf('export function settingSwitchRowHtml('));
+  assert.match(fn, /return formRowHtml\(\{[\s\S]*variant: 'settings-setting-row'/, 'settingRowHtml delegiert an formRowHtml');
+  assert.doesNotMatch(fn, /<div class=/, 'settingRowHtml baut kein eigenes Markup mehr');
+  const dom = components.slice(components.indexOf('export function createSettingRow('), components.indexOf('export function createStatusSummary('));
+  for (const cls of ['settings-setting-row form-row', 'settings-setting-row__copy form-row__copy', 'settings-setting-row__label form-row__label',
+    'settings-setting-row__description form-row__description', 'settings-setting-row__control form-row__control']) {
+    assert.ok(dom.includes(`'${cls}'`), `createSettingRow traegt "${cls}"`);
+  }
+});
+
+test('R18: ein zusammengesetztes Feld ist eine benannte Gruppe, jedes Teilfeld hat einen eigenen Namen', async () => {
+  const { formCompositeHtml } = await import('../public/utils/form-row.js');
+  const pair = formCompositeHtml({
+    labelledBy: 'bp-label',
+    unit: 'mmHg',
+    parts: [
+      { id: 'sys', label: 'Systolisch', value: 120, placeholder: 120, attrs: { type: 'number', required: true } },
+      { separator: '/' },
+      { id: 'dia', label: 'Dia "stolisch"', attrs: { type: 'number' } },
+    ],
+  });
+  assert.match(pair, /^<span class="form-composite" role="group" aria-labelledby="bp-label">/);
+  assert.match(pair, /<input class="form-input form-composite__part" type="number" required id="sys" aria-label="Systolisch" placeholder="120" value="120">/);
+  assert.match(pair, /<span class="form-composite__sep" aria-hidden="true">\/<\/span>/, 'der Trenner ist Dekor');
+  assert.match(pair, /<input class="form-input form-composite__part" type="number" id="dia" aria-label="Dia &quot;stolisch&quot;" aria-describedby="dia-unit">/,
+    'die Einheit beschreibt das letzte Teilfeld');
+  assert.match(pair, /<span class="form-composite__unit" id="dia-unit">mmHg<\/span><\/span>$/);
+  // Ein Wort als Suffix IST das Etikett seines Teilfelds; ein einzelnes Feld ohne Gruppe bleibt ohne Rolle.
+  const dur = formCompositeHtml({ labelledBy: 'd', parts: [{ id: 'h', label: 'Stunden', suffix: 'Stunden', suffixIsLabel: true }] });
+  assert.match(dur, /<input class="form-input form-composite__part" type="text" id="h"><label class="form-composite__unit" for="h">Stunden<\/label>/);
+  const single = formCompositeHtml({ parts: [{ id: 'p', suffix: '/min' }] });
+  assert.match(single, /^<span class="form-composite"><input class="form-input form-composite__part" type="text" id="p" aria-describedby="p-suffix"><span class="form-composite__unit" id="p-suffix">\/min<\/span><\/span>$/);
+});
+
+test('R18: die Formularzeile steht im globalen Blatt - randlose Auswahl mit Zeichen, Etikett bricht, Wert bleibt, schmal stapelt sie', async () => {
+  const layout = await readFile(new URL('../public/styles/layout.css', import.meta.url), 'utf8');
+  const rules = [...eachRule(layout)];
+  const parts = (r) => r.selector.split(',').map((s) => s.trim().replace(/\s+/g, ' '));
+  const one = (sel, at = null) => rules.find((r) => parts(r).includes(sel) && (at ? r.at.some((a) => at.test(a)) : !r.at.length));
+  const rows = one('.form-rows');
+  assert.match(rows?.body ?? '', /container:\s*form-rows \/ inline-size/, 'die Zeile misst ihren Traeger');
+  assert.match(one('.form-rows > * + *')?.body ?? '', /border-top:\s*var\(--space-px\) solid var\(--color-border-subtle\)/, 'Haarlinie zwischen den Zeilen');
+  assert.doesNotMatch(rows.body, /background|border-radius|box-shadow/, 'im Dialog kein Kasten im Kasten: der Traeger hat keine eigene Flaeche');
+  const row = one('.form-rows > .form-row');
+  assert.match(row?.body ?? '', /grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(row.body, /min-height:\s*var\(--target-lg\)/);
+  const label = one('.form-rows .form-row__label');
+  assert.match(label?.body ?? '', /overflow-wrap:\s*anywhere/);
+  assert.match(label.body, /hyphens:\s*auto/, 'das Etikett bricht an der Silbe');
+  const control = one('.form-rows > .form-row > .form-row__control');
+  assert.match(control?.body ?? '', /white-space:\s*nowrap/, 'der Wert bleibt einzeilig');
+  assert.match(control.body, /max-inline-size:\s*62cqi/);
+  // Stapeln per Container Query: alle unter 20rem, breite Bedienelemente unter 26rem.
+  assert.match(one('.form-rows > .form-row:not(.form-row--stacked)', /@container form-rows \(max-width: 20rem\)/)?.body ?? '', /grid-template-columns:\s*minmax\(0, 1fr\)/);
+  assert.match(one('.form-rows > .form-row--wide:not(.form-row--stacked)', /@container form-rows \(max-width: 26rem\)/)?.body ?? '', /grid-template-columns:\s*minmax\(0, 1fr\)/);
+  // Die randlose Auswahl: EINE Regel fuer Dialog und Einstellungen.
+  const select = one('.form-row__control > select.form-input');
+  assert.ok(select, 'die Regel haengt an .form-row__control, nicht an einem Traeger');
+  assert.match(select.body, /border-color:\s*transparent/);
+  assert.match(select.body, /background-color:\s*transparent/);
+  assert.match(select.body, /color:\s*var\(--color-text-secondary\)/, 'der Wert in Sekundaerfarbe');
+  assert.doesNotMatch(select.body, /background-image:\s*none|appearance/, 'das Zeichen des Feldkanons bleibt - es traegt die 3:1 als Erkennungsmerkmal');
+  assert.match(one('.form-row__control > select.form-input:focus')?.body ?? '', /border-color:\s*var\(--color-accent\)/, 'der Fokus zeichnet die Akzentkante');
+  assert.match(one('.form-row__control > select.form-input:not([multiple]):not([size])')?.body ?? '', /background-position:\s*right 0 center/);
+  assert.match(one('[dir="rtl"] .form-row__control > select.form-input:not([multiple]):not([size])')?.body ?? '', /background-position:\s*left 0 center/);
+  assert.match(one('.form-row__control > select.form-input', /hover: none/)?.body ?? '', /min-height:\s*var\(--target-lg\)/,
+    'am Finger 48px - in Dialog UND Einstellungen');
+  // Das Zeichen haelt 3:1 auf den Flaechen, auf denen eine Zeile steht.
+  const tokens = await readFile(new URL('../public/styles/tokens.css', import.meta.url), 'utf8');
+  const strokes = [...tokens.matchAll(/--_field-chevron:[^;]*stroke='%23([0-9A-Fa-f]{6})'/g)].map((m) => `#${m[1]}`);
+  assert.deepEqual([...new Set(strokes)], ['#63615B', '#B4AEA5']);
+  const lum = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+  const ratio = (a, b) => { const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x); return (hi + 0.05) / (lo + 0.05); };
+  for (const [chevron, grounds] of [['#63615B', ['#FFFFFF', '#FBFAF7', '#F5F3ED']], ['#B4AEA5', ['#2B2825', '#37332E', '#191816']]]) {
+    for (const ground of grounds) assert.ok(ratio(chevron, ground) >= 3, `${chevron} auf ${ground}: ${ratio(chevron, ground).toFixed(2)}:1`);
+  }
+  // Und in den Einstellungen gibt es keine zweite Auswahl-Regel mehr daneben.
+  const settings = await readFile(new URL('../public/styles/settings.css', import.meta.url), 'utf8');
+  assert.equal([...eachRule(settings)].filter((r) => /settings-setting-row__control > select/.test(r.selector)).length, 0,
+    'die Auswahl der Einstellungszeile kommt aus der Formularzeile (layout.css)');
 });
 
 test('R17: keine Abschnittsueberschrift steht in einem Blatt zweimal ("Termine", "Zyklus")', async () => {
@@ -3503,4 +3786,263 @@ test('R17: die Standard-Erinnerungen sind Chips des Kanons mit aria-pressed, kei
   assert.match(src, /chip\.setAttribute\('aria-pressed', String\(on\)\);\s*chip\.classList\.toggle\('filter-chip--active', on\)/,
     'Zustand und Aktiv-Form wechseln zusammen');
   assert.match(src, /querySelectorAll\('\.js-default-reminder\[aria-pressed="true"\]'\)/, 'gelesen wird der Zustand, den der Chip ansagt');
+});
+
+// Eigenes Modul hinzufuegen (modules-install): ein adminOnly-Blatt am Ende des
+// Modul-Bereichs, die Fehler des Servers in der UI-Sprache, die Groessen-
+// pruefung vor dem Hochladen und die Herkunft eines Drittmoduls in Aktive Module.
+test('Eigenes Modul hinzufuegen: adminOnly, am Ende, Fehler je reason lokalisiert', async () => {
+  const leaf = SETTINGS_LEAVES.find((entry) => entry.id === 'modules-install');
+  assert.ok(leaf, 'das Blatt existiert');
+  assert.equal(leaf.domainId, 'modules');
+  assert.equal(leaf.placement, 'end');
+  assert.deepEqual(settingsSheetSections(leaf, admin).map((section) => section.adminOnly), [true]);
+  assert.equal(findSettingsLeaf('/settings/modules/install', member), null, 'Mitglieder sehen es nicht');
+
+  const { installErrorText, zipFileProblem, installQuery } = await import('/settings/pages/modules-install.js');
+  assert.equal(installErrorText({ status: 400, data: { reason: 'bad_url', error: 'x' } }), 'settings.installModuleErrorBadUrl');
+  assert.equal(installErrorText({ status: 503, data: { reason: 'not_writable' } }), 'settings.installModuleErrorNotWritable');
+  assert.equal(installErrorText({ status: 429, data: { reason: 'install_rate_limited', error: 'Too many' } }),
+    'settings.installModuleErrorTooManyAttempts', 'das eigene Ratenlimit hat seinen eigenen reason');
+  assert.equal(installErrorText({ status: 429, data: { error: 'Too many' } }), 'settings.installModuleErrorTooManyAttempts',
+    'ein 429 ohne reason (Proxy davor) liest sich trotzdem als "zu oft"');
+  // GitHubs Limit: ohne resetAt der allgemeine Satz, mit resetAt die Uhrzeit.
+  assert.equal(installErrorText({ status: 429, data: { reason: 'rate_limited' } }), 'settings.installModuleErrorRateLimited');
+  assert.match(installErrorText({ status: 429, data: { reason: 'rate_limited', resetAt: '2030-01-01T12:34:00.000Z' } }),
+    /^settings\.installModuleErrorRateLimitedUntil\{"time":/);
+  assert.equal(installErrorText({ status: 429, data: { reason: 'rate_limited', resetAt: 'kaputt' } }), 'settings.installModuleErrorRateLimited');
+  for (const [reason, key] of [
+    ['ref_not_found', 'installModuleErrorRefNotFound'],
+    ['not_a_module', 'installModuleErrorNotAModule'],
+    ['module_session_required', 'installModuleErrorSessionRequired'],
+    // Review Runde 3: der Schalter des Betreibers (403) hat seinen eigenen
+    // Satz. Runde 4: ein von Hand kopierter Ordner (409 not_web_installed)
+    // wird auch nicht mehr ERSETZT - beim Installieren sagt der Satz "Ordner
+    // entfernen, dann neu installieren", beim Loeschen nur "Ordner entfernen".
+    ['module_web_install_disabled', 'installModuleErrorWebInstallDisabled'],
+    ['not_web_installed', 'installModuleErrorNotWebInstalled'],
+    ['unsupported_encoding', 'installModuleErrorUnsupportedEncoding'],
+    ['not_found', 'moduleDeleteErrorNotFound'],
+    ['bad_id', 'moduleDeleteErrorBadId'],
+  ]) {
+    assert.equal(installErrorText({ status: 400, data: { reason, error: 'English' } }), `settings.${key}`, reason);
+  }
+  const { deleteErrorText } = await import('/settings/module-install-errors.js');
+  assert.equal(deleteErrorText({ status: 409, data: { reason: 'not_web_installed', error: 'English' } }),
+    'settings.moduleDeleteErrorNotWebInstalled', 'beim Loeschen der Satz ohne "dann neu installieren"');
+  for (const reason of ['not_found', 'bad_id', 'not_a_module', 'busy', 'module_web_install_disabled']) {
+    assert.equal(deleteErrorText({ status: 400, data: { reason, error: 'English' } }),
+      installErrorText({ status: 400, data: { reason, error: 'English' } }), `${reason}: sonst dieselbe Abbildung`);
+  }
+  assert.equal(deleteErrorText({ status: 400, data: { reason: 'new_thing', error: 'Server says' } }), 'Server says');
+  // Der Loeschen-Toast in Aktive Module nutzt die Loeschen-Abbildung, der
+  // Schalter-Toast die Install-Abbildung (PATCH enabled:true kann 409 busy und
+  // 503 not_writable nennen, Review Runde 4).
+  const activeSrc = await readFile(new URL('../public/settings/pages/modules-active.js', import.meta.url), 'utf8');
+  assert.match(activeSrc, /import \{ deleteErrorText, installErrorText \} from '\/settings\/module-install-errors\.js'/);
+  assert.match(activeSrc, /showToast\(error\?\.data\?\.reason \? deleteErrorText\(error\)/, 'Loeschen-Toast');
+  assert.match(activeSrc, /showToast\(error\?\.data\?\.reason \? installErrorText\(error\)/, 'Schalter-Toast');
+  assert.equal(installErrorText({ status: 400, data: { reason: 'new_thing', error: 'Server says' } }), 'Server says',
+    'ein unbekannter reason faellt auf den Servertext zurueck');
+  assert.equal(installErrorText({}), 'settings.installModuleErrorGeneric');
+
+  assert.equal(zipFileProblem({ name: 'm.ZIP', size: 1024 }, 20), null);
+  assert.equal(zipFileProblem({ name: 'm.tar.gz', size: 1024 }, 20), 'settings.installModuleFileNotZip');
+  assert.match(zipFileProblem({ name: 'm.zip', size: 21 * 1024 * 1024 }, 20), /^settings\.installModuleFileTooLarge/);
+
+  assert.equal(installQuery({}), '');
+  assert.equal(installQuery({ overwrite: true, path: 'plugins/a b' }), '?overwrite=1&path=plugins%2Fa+b');
+  // Die Wurzel als Kandidat ist path='' - und der muss ankommen, nicht wegfallen.
+  assert.equal(installQuery({ path: '' }), '?path=');
+  assert.equal(installQuery({ overwrite: true, path: '' }), '?overwrite=1&path=');
+
+  const { moduleSourceText } = await import('/settings/pages/modules-active.js');
+  assert.equal(moduleSourceText(null), 'settings.moduleSourceManual', 'ohne Metadaten: von Hand kopiert');
+  assert.equal(moduleSourceText({ source: 'zip' }), 'settings.moduleSourceZip');
+  assert.match(moduleSourceText({ source: 'github', url: 'https://github.com/o/r', ref: 'v1' }), /^settings\.moduleSourceGithub.*github\.com\/o\/r @ v1/);
+});
+
+// Review Runde 1: Fokus nach Loeschen und nach "Ausgewaehltes installieren",
+// Kandidaten veralten mit der Adresse, der Fehler steht einmal, und ein
+// nicht dauerhafter Modulordner wird angesagt.
+test('Eigenes Modul: Fokus, veraltete Kandidaten, ein Fehler, Persistenz-Hinweis', async () => {
+  const { focusAfterModuleDelete } = await import('/settings/pages/modules-active.js');
+  let focused = null;
+  const el = (attrs = {}) => ({
+    ...attrs,
+    attributes: {},
+    setAttribute(name, value) { this.attributes[name] = value; },
+    focus() { focused = this; },
+  });
+  // Loeschen ist ein Eintrag im Mehr-Knopf der Zeile (row-danger-visible); der
+  // Eintrag steht im geschlossenen Menue, also geht der Fokus auf den
+  // Mehr-Knopf des Nachbarn (popovertarget = Panel-ID des Zeilenmenues).
+  const rows = ['a-mod', 'c-mod'].map((id) => el({ popovertarget: `module-menu-${id}` }));
+  const heading = el({ tag: 'h3' });
+  const container = {
+    querySelector: (sel) => {
+      if (/data-module-section/.test(sel)) return heading;
+      const id = /^\[popovertarget="([^"]+)"\]$/.exec(sel)?.[1];
+      return rows.find((row) => row.popovertarget === id) ?? null;
+    },
+  };
+  // b-mod wurde geloescht; Nachbarn in Reihenfolge: naechster c-mod, dann a-mod.
+  assert.equal(focusAfterModuleDelete(container, ['c-mod', 'a-mod']), rows[1]);
+  assert.equal(focused, rows[1], 'der Mehr-Knopf der naechsten Zeile');
+  assert.equal(focusAfterModuleDelete(container, ['gone', 'a-mod']), rows[0], 'sonst der vorigen');
+  const empty = { querySelector: (sel) => (/data-module-section/.test(sel) ? heading : null) };
+  assert.equal(focusAfterModuleDelete(empty, ['x']), heading, 'das letzte Modul: die Gruppenueberschrift');
+  assert.equal(heading.attributes.tabindex, '-1', 'fokussierbar, ohne in die Tab-Folge zu geraten');
+
+  const installSrc = await readFile(new URL('../public/settings/pages/modules-install.js', import.meta.url), 'utf8');
+  const flat = installSrc.replace(/\s+/g, ' ');
+  assert.ok(flat.includes("addEventListener('input', () => { clearError(card); clearCandidates(card); });"),
+    'eine neue Adresse verwirft die Kandidaten der alten');
+  assert.ok(flat.includes("if (button !== card.button) { card.resultEl.querySelector('[data-install-open-active]')?.focus(); }"),
+    'nach "Ausgewaehltes installieren" landet der Fokus auf "Aktive Module oeffnen"');
+
+  // Verhalten statt Quelltext: die reinen Helfer der Seite (Review Runde 2).
+  const {
+    successStatus, replaceConfirmText, candidateInstallOptions, installPageStatus,
+  } = await import('/settings/pages/modules-install.js');
+
+  // Review Runde 3: drei Gruende, keine Knoepfe zu zeigen, in der Reihenfolge
+  // ihrer Haerte - schreibgeschuetzt vor Schalter aus vor nicht dauerhaft.
+  // Nur ein sicheres `false` zaehlt; `null`/fehlend heisst "unbekannt".
+  assert.equal(installPageStatus({ writable: true, persistent: true, webInstall: true }), null);
+  assert.equal(installPageStatus({ writable: true, persistent: null, webInstall: true }), null, 'unbekannt bleibt still');
+  assert.equal(installPageStatus({ writable: true, persistent: true }), null, 'ein aelterer Server ohne webInstall');
+  assert.equal(installPageStatus(undefined), null);
+  assert.equal(installPageStatus({ writable: false, persistent: true, webInstall: true }), 'not_writable');
+  assert.equal(installPageStatus({ writable: true, persistent: true, webInstall: false }), 'web_install_off',
+    'MODULES_ALLOW_WEB_INSTALL nicht gesetzt: der Weg von Hand, wie schreibgeschuetzt');
+  assert.equal(installPageStatus({ writable: true, persistent: false, webInstall: true }), 'not_persistent',
+    'Umbrel / Container ohne Volume: kein Hinweis mehr ueber den Knoepfen, sondern keine Knoepfe');
+  assert.equal(installPageStatus({ writable: false, persistent: false, webInstall: false }), 'not_writable',
+    'schreibgeschuetzt hilft auch der Schalter nicht');
+  assert.equal(installPageStatus({ writable: true, persistent: false, webInstall: false }), 'web_install_off',
+    'der Schalter erklaert mehr als das fehlende Volume');
+
+  // Erfolg: das Modul ist aus - neu installiert oder ersetzt, denn jedes
+  // Ersetzen nimmt die Freigabe zurueck (kein disabledForReview mehr).
+  assert.equal(successStatus({ replaced: false }), 'settings.installModuleSuccessDisabled');
+  assert.equal(successStatus({ replaced: true }), 'settings.installModuleSuccessReplaced');
+  assert.equal(successStatus({ replaced: true, disabledForReview: false, disabledReason: null }),
+    'settings.installModuleSuccessReplaced', 'ein aelterer Server mit den alten Feldern aendert nichts');
+  assert.equal(successStatus(undefined), 'settings.installModuleSuccessDisabled');
+
+  // Rueckfrage bei 409 exists: das Detail sagt vorher, was das Ersetzen tut -
+  // immer dasselbe, denn jedes Ersetzen schaltet aus.
+  const ask = replaceConfirmText({
+    existing: { id: 'demo', name: 'Demo', version: '1.0.0' },
+    incoming: { id: 'demo', version: '2.0.0' },
+  });
+  assert.match(ask.question, /^settings\.installModuleReplaceConfirm\{"name":"Demo","from":"1\.0\.0","to":"2\.0\.0"\}$/);
+  assert.equal(ask.detail, 'settings.installModuleReplaceDetail');
+  assert.equal(replaceConfirmText({ existing: { id: 'demo' }, sourceChanged: true, replaceDisabledReason: 'zip_replace' }).detail,
+    'settings.installModuleReplaceDetail', 'die alten Felder eines aelteren Servers aendern das Detail nicht');
+  assert.match(replaceConfirmText({ existing: { id: 'demo' } }).question, /"name":"demo".*"from":"settings\.installModuleVersionUnknown".*"to":"settings\.installModuleVersionNew"/);
+  // Die alten Varianten sind weg - samt Schluesseln, sonst stuende ein Satz in
+  // 26 Sprachen, den niemand mehr liest.
+  const installFlat = installSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  for (const gone of ['disabledForReview', 'disabledReason', 'replaceDisabledReason', 'sourceChanged',
+    'SuccessZipReplace', 'SuccessSourceChanged', 'ReplaceDetailZip', 'ReplaceDetailSourceChanged']) {
+    assert.equal(installFlat.includes(gone), false, `modules-install.js liest noch '${gone}'`);
+  }
+
+  // Kandidat waehlen: der Pfad kommt an, '' (Wurzel) eingeschlossen, die
+  // uebrigen Optionen (overwrite) bleiben.
+  assert.deepEqual(candidateInstallOptions({ overwrite: true }, { path: 'mods/a' }), { overwrite: true, path: 'mods/a' });
+  assert.deepEqual(candidateInstallOptions({}, { path: '' }), { path: '' });
+  assert.deepEqual(candidateInstallOptions({}, undefined), { path: '' });
+
+  const activeSrc = await readFile(new URL('../public/settings/pages/modules-active.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(activeSrc, /moduleDetailError/, 'der Fehler steht in der Zeile, nicht noch einmal in den Details');
+
+  // Loeschen nur fuer Kennungen, die DELETE auch annimmt (sonst 400 bad_id).
+  const { isDeletableModuleId, isDeletableModule, deleteOffered, installedByText } = await import('/settings/pages/modules-active.js');
+  assert.equal(isDeletableModuleId('solar-panel'), true);
+  for (const bad of ['Bad_ID', 'ab', '-lead', 'trail-', 'a'.repeat(65), '', null, undefined]) {
+    assert.equal(isDeletableModuleId(bad), false, String(bad));
+  }
+  assert.equal(isDeletableModuleId('a'.repeat(64)), true);
+
+  // Review Runde 3: ... UND nur fuer Module mit Installationsdatensatz. Einen
+  // von Hand kopierten Ordner lehnt DELETE mit 409 not_web_installed ab - also
+  // kein Knopf, die Details sagen "Auf den Server kopiert".
+  const record = { source: 'zip', installedAt: '2026-10-02T09:15:00.000Z' };
+  assert.equal(isDeletableModule({ id: 'solar-panel', install: record }), true);
+  assert.equal(isDeletableModule({ id: 'solar-panel' }), false, 'ohne Datensatz: von Hand kopiert');
+  assert.equal(isDeletableModule({ id: 'solar-panel', install: null }), false);
+  assert.equal(isDeletableModule({ id: 'solar-panel', install: 'yes' }), false, 'ein Datensatz ist ein Objekt');
+  assert.equal(isDeletableModule({ id: 'Bad_ID', install: record }), false, 'die Kennung zaehlt weiterhin');
+  assert.equal(isDeletableModule(null), false);
+
+  // Review Runde 4: ... UND nur, solange der Server das Loeschen annimmt. Mit
+  // nicht gesetztem MODULES_ALLOW_WEB_INSTALL (der Normalfall) endete jeder
+  // Klick in 403 module_web_install_disabled; das Blatt liest deshalb wie das
+  // Install-Blatt GET /modules/install/info. Nur ein sicheres webInstall:true
+  // zaehlt, writable:false sperrt, unbekannt (null, aelterer Server) heisst
+  // kein Knopf; persistent spielt keine Rolle.
+  assert.equal(deleteOffered({ webInstall: true, writable: true, persistent: true }), true);
+  assert.equal(deleteOffered({ webInstall: true, writable: null, persistent: false }), true, 'persistent und unbekanntes writable sperren nicht');
+  assert.equal(deleteOffered({ webInstall: true }), true);
+  assert.equal(deleteOffered({ webInstall: true, writable: false }), false, 'schreibgeschuetzt: 503');
+  assert.equal(deleteOffered({ webInstall: false, writable: true }), false, 'Schalter aus: 403');
+  assert.equal(deleteOffered({ writable: true }), false, 'ohne webInstall (aelterer Server): unbekannt');
+  assert.equal(deleteOffered({ webInstall: 'true' }), false, 'nur ein echtes true');
+  assert.equal(deleteOffered(null), false);
+  assert.equal(deleteOffered(undefined), false);
+  // Und die Zeile nimmt genau diese Entscheidung, nicht die Kennung allein.
+  const activeFlat = activeSrc.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.match(activeFlat, /api\.get\('\/modules\/install\/info'\)\.then\([^\n]*\)\.catch\(\(\) => null\)/,
+    'das Blatt liest /modules/install/info, und ein Fehler dort ist kein Ladefehler des Blatts');
+  assert.match(activeFlat, /const offerDelete = deleteOffered\(info\)/, 'buildRows fragt den Server-Stand einmal');
+  assert.match(activeFlat, /deletable: offerDelete && isDeletableModule\(module\)/, 'buildRows entscheidet je Modul');
+  assert.match(activeFlat, /row\.type === 'third-party' && row\.deletable === true/, 'rowHtml fragt nur die Entscheidung');
+  // Komponenten-Kanon (row-danger-visible): Loeschen steht als Eintrag mit
+  // Wort im Mehr-Knopf der Zeile, kein sichtbarer Papierkorb.
+  assert.match(activeFlat, /const rowMenu = deletable \? \x60[^\x60]*\$\{rowMenuHtml\(\{/, 'nur eine loeschbare Zeile bekommt den Mehr-Knopf');
+  assert.match(activeFlat, /label: t\('common\.moreActionsNamed', \{ name: row\.label \}\)/, 'der Mehr-Knopf nennt das Modul');
+  assert.match(activeFlat.replace(/\s+/g, ' '), /action: 'delete-module', icon: 'trash-2', label: t\('common\.delete'\), danger: true, attrs: \{ 'data-module-delete': row\.id, 'data-module-name': row\.label \}/,
+    'ein destruktiver Eintrag mit den Attributen, die der Handler liest');
+  assert.doesNotMatch(activeFlat, /rowActionHtml/, 'kein sichtbarer Loeschen-Knopf mehr');
+  assert.match(activeFlat, /installPopoverMenus\(container\)/, 'das Menue ist verdrahtet');
+
+  // Details "Installiert von": der Name aus der Admin-Liste; null ist ein
+  // geloeschtes Konto; fehlt das Feld (aelterer Server, kein Datensatz), keine Zeile.
+  assert.equal(installedByText({ ...record, installedByName: 'Anna' }), 'Anna');
+  assert.equal(installedByText({ ...record, installedByName: '  Anna  ' }), 'Anna');
+  assert.equal(installedByText({ ...record, installedByName: null }), 'settings.moduleDetailFormerMember');
+  assert.equal(installedByText({ ...record, installedByName: '' }), 'settings.moduleDetailFormerMember', 'ein leerer Name ist kein Name');
+  assert.equal(installedByText(record), null, 'ohne das Feld keine Zeile');
+  assert.equal(installedByText(null), null);
+  assert.match(activeFlat, /installedBy \? \{ label: t\('settings\.moduleDetailInstalledBy'\), value: installedBy \} : null/);
+});
+
+// Review Runde 3 (N4): die Dateigroesse kommt aus dem Locale-Formatter, nicht
+// aus toFixed(1) + " MB" - Ziffern aus der Region, das Wort aus der Sprache.
+test('Eigenes Modul: die Dateigroesse folgt der Locale', async () => {
+  const { formatSize } = await import('/settings/pages/modules-install.js');
+  const prev = { locale: globalThis.__locale, format: globalThis.__formatLocale };
+  try {
+    globalThis.__locale = 'en';
+    globalThis.__formatLocale = 'en-US';
+    assert.equal(formatSize(1.5 * 1024 * 1024), '1.5 MB');
+    assert.equal(formatSize(300 * 1024), '300 kB');
+    assert.equal(formatSize(10), '1 kB', 'nie "0 kB" fuer eine Datei, die da ist');
+    assert.equal(formatSize(1024 * 1024), '1 MB', 'keine erzwungene Nachkommastelle');
+    globalThis.__locale = 'de';
+    globalThis.__formatLocale = 'de-DE';
+    assert.equal(formatSize(1.5 * 1024 * 1024), '1,5 MB');
+    assert.equal(formatSize(2.5 * 1024 * 1024 * 1024), new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1 }).format(2560) + ' MB',
+      'Tausendertrenner der Region');
+    assert.equal(formatSize(300 * 1024), '300 kB');
+  } finally {
+    globalThis.__locale = prev.locale;
+    globalThis.__formatLocale = prev.format;
+  }
+  // Kein von Hand gebautes Kuerzel mehr.
+  const src = await readFile(new URL('../public/settings/pages/modules-install.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''), /toFixed\(|['`] ?MB['`]|['`] ?KB['`]/);
 });

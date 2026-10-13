@@ -16,7 +16,7 @@ import { openModal, closeModal, confirmModal, confirmOverModal, refocusAfterRend
 import { createPageFab, setPageFabAction } from '/utils/fab.js';
 import { wireTablist } from '/utils/tablist.js';
 import { attachSegmentIndicator } from '/utils/segment-indicator.js';
-import { wireScrollFade, vibrate, animationSettled, scheduleUndoableDelete } from '/utils/ux.js';
+import { wireScrollFade, vibrate, acknowledgeCheck, scheduleUndoableDelete } from '/utils/ux.js';
 import { swapContent } from '/utils/content-swap.js';
 import { redrawList, collapseRow } from '/utils/list-motion.js';
 import { wireSwipeRows, maybeShowSwipeHint } from '/utils/swipe-row.js';
@@ -911,17 +911,17 @@ async function completeTask(task, content, button = null) {
   if (button?.getAttribute('aria-busy') === 'true') return;
   const previous = task.last_completed ?? null;
   // DIESELBE RUECKMELDUNG WIE DAS ABHAKEN EINER AUFGABE (Critique 2026-09-26,
-  // A3 P1-4): Haptik und `check-pop` im Moment des Tipps, nicht erst nach dem
+  // A3 P1-4): Haptik und Quittung im Moment des Tipps, nicht erst nach dem
   // Roundtrip - vorher quittierte nur der Toast, ohne Bewegung und ohne
   // Haptik. Der Ring fuellt sich fuer diesen Moment (`--done`); das
   // Neuzeichnen danach setzt ihn zurueck, denn der Kreis ist kein Zustand
   // (taskRowHtml()). Wie in tasks.js laeuft die Quittung NEBEN dem Roundtrip,
   // und erst danach wird neu gezeichnet - sonst ersetzte das Neuzeichnen den
-  // Knopf, bevor sie einen Frame bekam (animationSettled()).
+  // Knopf, bevor sie einen Frame bekam (acknowledgeCheck()).
   vibrate(15);
   button?.classList.add('housekeeping-task__check--done');
   button?.setAttribute('aria-busy', 'true');
-  const settled = animationSettled(button);
+  const settled = acknowledgeCheck(button, { checked: true });
   try {
     await api.post(`/housekeeping/decay-tasks/${task.id}/complete`, {});
     window.yuvomi?.showToast(t('housekeeping.taskDoneToast'), 'success', 5000, () => undoCompleteTask(task.id, previous, content));
@@ -2451,9 +2451,9 @@ function openStaffModal(worker, content, options = {}) {
 // `ApiError` - ein Retry kann hier durchaus gelingen. Neben 429 duerfen es
 // also ein Serverfehler und ein Netzwerkproblem (kein Status) erneut
 // versuchen. `friendlyError()` kennt nur 403/404/5xx explizit und faellt
-// sonst auf den rohen, unlokalisierten Servertext zurueck (`err.data.error`)
-// - fuer jeden anderen 4xx (auch 429) wird deshalb bewusst die generische,
-// lokalisierte Meldung erzwungen statt dieser Fallback-String. Es gilt keine
+// sonst auf den rohen, unlokalisierten Servertext zurueck (`err.data.error`,
+// Uebergang bis #1909 durch ist) - fuer jeden anderen 4xx (auch 429) wird
+// deshalb bewusst die generische, lokalisierte Meldung erzwungen. Es gilt keine
 // visit-eigene Zugriffssperre - `GET /visits/:id` prueft nur die ID, der
 // einzige 403 kommt vom Modul-Gate, und der Router leitet vor dieser Stelle
 // schon weg (siehe render()) - 403 wird trotzdem defensiv behandelt, etwa fuer

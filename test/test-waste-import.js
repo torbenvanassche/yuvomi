@@ -290,6 +290,53 @@ test('events outside the import window are silently excluded from candidates', (
 
 test('rejects an empty file', () => {
   assert.throws(() => buildImportPreview('', { today: TODAY }), WasteImportError);
+  assert.throws(() => buildImportPreview('', { today: TODAY }), (err) => err.code === 'empty_file' && err.params === null);
+});
+
+// #1938: zero calendar entries is never a calendar. The rule asks what the text
+// HOLDS (parsed entries), not what remains of it as pickups.
+test('#1938 text without a single calendar entry is refused as no_events - an HTML page, an empty VCALENDAR, plain words', () => {
+  const html = '<html><head><title>Wartung</title></head><body><h1>Wartung</h1><p>Wir sind gleich wieder da.</p></body></html>';
+  for (const [name, text] of [
+    ['an HTML page', html],
+    ['an empty VCALENDAR', vcalendar([])],
+    ['plain words', 'not a calendar at all'],
+  ]) {
+    let thrown = null;
+    try { buildImportPreview(text, { today: TODAY }); } catch (err) { thrown = err; }
+    assert.ok(thrown instanceof WasteImportError, `${name}: refused, not previewed as "0 pickups"`);
+    assert.equal(thrown.code, 'no_events', name);
+    assert.equal(thrown.params, null, name);
+  }
+});
+
+test('#1938 a calendar WITH entries of which none becomes a pickup still previews: outside the window, cancelled', () => {
+  const outside = buildImportPreview(vcalendar(['BEGIN:VEVENT\r\nUID:far@x\r\nSUMMARY:Restmüll\r\nDTSTART;VALUE=DATE:20300701\r\nEND:VEVENT']), { today: TODAY });
+  assert.deepEqual(outside.counts, { events: 1, candidates: 0, distinct_labels: 0 });
+  const cancelled = buildImportPreview(vcalendar(['BEGIN:VEVENT\r\nUID:c@x\r\nSUMMARY:Restmüll\r\nSTATUS:CANCELLED\r\nDTSTART;VALUE=DATE:20260701\r\nEND:VEVENT']), { today: TODAY });
+  assert.deepEqual(cancelled.counts, { events: 1, candidates: 0, distinct_labels: 0 });
+});
+
+// #1909: a limit carries itself as a number, so the client can put it into its
+// own sentence. The number is the constant the check compares against.
+test('every limit names itself as a number next to its code', () => {
+  const thrown = (ics) => {
+    try { buildImportPreview(ics, { today: TODAY }); } catch (err) { return err; }
+    return null;
+  };
+  const events = (n, line) => vcalendar(Array.from({ length: n }, (_, i) => line(i)));
+  const anchor = shiftDateKey(TODAY, -IMPORT_WINDOW_PAST_DAYS).replace(/-/g, '');
+  for (const [ics, code, params] of [
+    ['X'.repeat(MAX_ICS_BYTES + 1), 'file_too_large', { limit_mb: Math.round(MAX_ICS_BYTES / (1024 * 1024)) }],
+    [events(MAX_VEVENTS + 1, (i) => `BEGIN:VEVENT\r\nUID:p-${i}@x\r\nSUMMARY:R\r\nDTSTART;VALUE=DATE:20260701\r\nEND:VEVENT`), 'event_cap_exceeded', { limit: MAX_VEVENTS }],
+    [events(MAX_DISTINCT_LABELS + 1, (i) => `BEGIN:VEVENT\r\nUID:p-${i}@x\r\nSUMMARY:L${i}\r\nCATEGORIES:L${i}\r\nDTSTART;VALUE=DATE:20260701\r\nEND:VEVENT`), 'label_cap_exceeded', { limit: MAX_DISTINCT_LABELS }],
+    [events(6, (i) => `BEGIN:VEVENT\r\nUID:p-${i}@x\r\nSUMMARY:R\r\nDTSTART;VALUE=DATE:${anchor}\r\nRRULE:FREQ=DAILY;COUNT=1500\r\nEND:VEVENT`), 'instance_cap_exceeded', { limit: MAX_CANDIDATE_INSTANCES }],
+  ]) {
+    const err = thrown(ics);
+    assert.ok(err instanceof WasteImportError, code);
+    assert.equal(err.code, code);
+    assert.deepEqual(err.params, params, code);
+  }
 });
 
 test('rejects a file over the upload byte limit', () => {
@@ -342,4 +389,41 @@ test('a VEVENT with more than one CATEGORIES tag uses only the first as the labe
   const preview = buildImportPreview(ics, { today: TODAY });
   assert.equal(preview.labels.length, 1);
   assert.equal(preview.labels[0].original_label, 'Restmüll');
+});
+
+// -------------------------------------------------------------------------
+// The review digest (#1795): what the reviewer saw, nothing the feed merely
+// calls it.
+// -------------------------------------------------------------------------
+
+function digestOf(events) {
+  return buildImportPreview(vcalendar(events), { today: TODAY }).digest;
+}
+
+const pickup = (uid, label, date, extra = '') => `BEGIN:VEVENT\r\nUID:${uid}\r\nSUMMARY:${label}\r\nDTSTART;VALUE=DATE:${date}${extra}\r\nEND:VEVENT`;
+
+test('review digest: the same pickups under other UIDs and another DTSTAMP are the same review', () => {
+  const first = digestOf([pickup('6ac76c366edf8', 'Huisvuil', '20260701', '\r\nDTSTAMP:20261008T121102Z'), pickup('6ac76c366ee0c', 'Pmd', '20260701', '\r\nDTSTAMP:20261008T121102Z')]);
+  const second = digestOf([pickup('6ac76c3931190', 'Huisvuil', '20260701', '\r\nDTSTAMP:20261008T121105Z'), pickup('6ac76c393119e', 'Pmd', '20260701', '\r\nDTSTAMP:20261008T121105Z')]);
+  assert.equal(first, second);
+});
+
+test('review digest: every change a reviewer would see still changes it - a day, a label, one pickup more, a duplicate, a diagnostic', () => {
+  const base = [pickup('a', 'Huisvuil', '20260701'), pickup('b', 'Pmd', '20260701')];
+  const baseDigest = digestOf(base);
+  const variants = {
+    'another day': [pickup('a', 'Huisvuil', '20260702'), pickup('b', 'Pmd', '20260701')],
+    'another label': [pickup('a', 'Huisvuil', '20260701'), pickup('b', 'Glas', '20260701')],
+    'the labels swapped between two days': [pickup('a', 'Pmd', '20260701'), pickup('b', 'Huisvuil', '20260701'), pickup('c', 'Pmd', '20260708')],
+    'one pickup more': [...base, pickup('c', 'Pmd', '20260715')],
+    'a second pickup of the same label on the same day': [...base, pickup('c', 'Pmd', '20260701')],
+    'a cancelled entry': [...base, pickup('c', 'Pmd', '20260715', '\r\nSTATUS:CANCELLED')],
+    'an event that blocks': [...base, pickup('c', 'Pmd', '20260715', '\r\nRRULE:FREQ=WEEKLY')],
+  };
+  const seen = new Map([[baseDigest, 'the base']]);
+  for (const [name, events] of Object.entries(variants)) {
+    const digest = digestOf(events);
+    assert.ok(!seen.has(digest), `"${name}" has the same digest as "${seen.get(digest)}"`);
+    seen.set(digest, name);
+  }
 });

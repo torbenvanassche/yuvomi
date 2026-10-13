@@ -162,6 +162,7 @@ export async function initI18n() {
     translations = fallbackTranslations;
   }
   applyDocumentLocale(currentLocale);
+  keepLocaleOffline(currentLocale);
   i18nReady = true;
   resolveI18nReady();
   window.dispatchEvent(new CustomEvent('i18n-ready', { detail: { locale: currentLocale } }));
@@ -172,19 +173,58 @@ export function whenI18nReady() {
   return i18nReady ? Promise.resolve() : i18nReadyPromise;
 }
 
-/** Sprache wechseln - löst 'locale-changed' Event aus */
+/**
+ * Nennt dem Service Worker die Sprache dieses Geraets, damit sie offline da ist.
+ *
+ * Vorab cacht er nur die Rueckfallsprache (sw.js, PRECACHED_LOCALES); die
+ * eigene legt jeder gewoehnliche Abruf ab. Zwei Abrufe gehen aber am Worker
+ * vorbei: der des Erstbesuchs (noch kein Controller) und der im Bypass-Fenster
+ * nach einem Update. Deshalb beim Start, beim Wechsel und wenn ein neuer
+ * Worker uebernimmt. Ohne Service Worker (Node-Tests, alter Browser) ein No-Op.
+ */
+function keepLocaleOffline(locale) {
+  if (locale === DEFAULT_LOCALE) return;
+  try {
+    if (typeof navigator === 'undefined') return;
+    navigator.serviceWorker?.controller?.postMessage({ type: 'CACHE_LOCALE', locale });
+  } catch { /* nur eine Vorsorge: der naechste Abruf legt die Datei ohnehin ab */ }
+}
+
+try {
+  if (typeof navigator !== 'undefined') {
+    navigator.serviceWorker?.addEventListener?.('controllerchange', () => {
+      if (i18nReady) keepLocaleOffline(currentLocale);
+    });
+  }
+} catch { /* siehe keepLocaleOffline */ }
+
+/** Die zuletzt gewuenschte Sprache - ein ueberholter Wechsel setzt nichts mehr. */
+let requestedLocale = null;
+
+/**
+ * Sprache wechseln - löst 'locale-changed' Event aus.
+ *
+ * ERST LADEN, DANN UMSTELLEN (Critique R18). Vorher standen Speicher und
+ * `currentLocale` schon auf der neuen Sprache, bevor ihre Datei da war. Schlug
+ * das Laden fehl - offline eine Sprache, die dieses Geraet nie geladen hat -,
+ * blieb ein Mischzustand: Texte in der alten Sprache, Zahlen und Daten in der
+ * neuen, und der naechste Start fiel still auf die Rueckfallsprache. Jetzt
+ * aendert ein gescheiterter Wechsel NICHTS und wirft; der Aufrufer sagt es.
+ */
 export async function setLocale(locale) {
   if (!SUPPORTED_LOCALES.includes(locale)) return;
+  requestedLocale = locale;
+  const loaded = locale === DEFAULT_LOCALE
+    ? fallbackTranslations
+    : await loadLocale(locale);
+  if (requestedLocale !== locale) return;
   localStorage.setItem(STORAGE_KEY, locale);
   currentLocale = locale;
   _numberFormatCache.clear();
   _unitFormatCache.clear();
-  const loaded = locale === DEFAULT_LOCALE
-    ? fallbackTranslations
-    : await loadLocale(locale);
-  if (currentLocale !== locale) return;
   translations = loaded;
   applyDocumentLocale(locale);
+  keepLocaleOffline(locale);
   window.dispatchEvent(new CustomEvent('locale-changed', { detail: { locale } }));
 }
 
@@ -268,7 +308,7 @@ export function t(key, params = {}) {
   return currentLocale === 'ko' ? resolveKoreanParticles(str, fill) : fill(str);
 }
 
-const VALID_DATE_FORMATS = ['mdy', 'dmy', 'ymd', 'mdy_dot', 'dmy_dot', 'dmy_slash', 'ymd_dot', 'ymd_slash'];
+const VALID_DATE_FORMATS = ['mdy', 'dmy', 'ymd', 'mdy_dot', 'dmy_dot', 'dmy_slash', 'dmy_dash', 'ymd_dot', 'ymd_slash'];
 
 function getDateFormatPreference() {
   const stored = localStorage.getItem(DATE_FORMAT_KEY);
@@ -318,6 +358,7 @@ function formatDateParts(date) {
     case 'mdy_dot': return `${month}.${day}.${year}`;
     case 'dmy_dot': return `${day}.${month}.${year}`;
     case 'dmy_slash': return `${day}/${month}/${year}`;
+    case 'dmy_dash': return `${day}-${month}-${year}`;
     case 'ymd': return `${year}-${month}-${day}`;
     case 'ymd_dot': return `${year}.${month}.${day}`;
     case 'ymd_slash': return `${year}/${month}/${day}`;
@@ -541,6 +582,7 @@ export function formatDayMonth(date) {
     case 'mdy_dot': return `${month}.${day}.`;
     case 'dmy_dot': return `${day}.${month}.`;
     case 'dmy_slash': return `${day}/${month}`;
+    case 'dmy_dash': return `${day}-${month}`;
     case 'ymd': return `${month}-${day}`;
     case 'ymd_dot': return `${month}.${day}.`;
     case 'ymd_slash': return `${month}/${day}`;
@@ -603,6 +645,7 @@ export function dateInputPlaceholder() {
     case 'mdy_dot': return `${m}.${d}.${y}`;
     case 'dmy_dot': return `${d}.${m}.${y}`;
     case 'dmy_slash': return `${d}/${m}/${y}`;
+    case 'dmy_dash': return `${d}-${m}-${y}`;
     case 'ymd': return `${y}-${m}-${d}`;
     case 'ymd_dot': return `${y}.${m}.${d}`;
     case 'ymd_slash': return `${y}/${m}/${d}`;

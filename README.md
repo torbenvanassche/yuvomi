@@ -155,7 +155,7 @@ without a terminal.
 
 - **Browsers** - everything as designed from Chrome and Edge 117, Firefox 129 and Safari 17.5. Down to Chrome 87, Firefox 79 and Safari 14.1 (iOS 14.5) it still starts and scrolls, with a plainer look and some features missing ([measured 21 September 2026](docs/installation.md#browser-support)).
 - **Writes** - four volumes you own: data, backups, modules, documents.
-- **Outbound** - out of the box, one update check against the GitHub releases API. Block it and nothing breaks, only the hint about a newer version stays away. Everything else reaches out only when you use or switch on a feature that needs it: opening the calendar settings loads the list of holiday countries from openholidaysapi.org, finding a logo for a subscription looks up the service's website, and weather, public holidays, exchange rates, calendar and contact sync, recipe mirrors, Immich, Paperless or Papra, push and notification channels, cloud storage and backup connect once you switch them on.
+- **Outbound** - out of the box, one update check against the GitHub releases API. Block it and nothing breaks, only the hint about a newer version stays away. Everything else reaches out only when you use or switch on a feature that needs it: opening the calendar settings loads the list of holiday countries from openholidaysapi.org, finding a logo for a subscription looks up the service's website, fetching your profile picture from Gravatar sends a hash of your email address to gravatar.com or the mirror the operator chose, if the operator turned it on, and weather, public holidays, exchange rates, calendar and contact sync, recipe mirrors, Immich, Paperless or Papra, push and notification channels, cloud storage and backup connect once you switch them on.
 - **Your LAN** - calendar subscriptions, notification channels (webhook, Gotify, ntfy), WebDAV document storage, recipe mirrors and waste-collection feeds on private or internal addresses stay blocked until you opt in ([how](docs/installation.md#environment-variables)). Paperless and Papra are the exception: they may reach the LAN out of the box.
 - **Your data** - one SQLite file at `/data/yuvomi.db`, plus the folder, WebDAV or Drive if you moved documents there.
 
@@ -255,7 +255,7 @@ Yuvomi was renamed from **Oikos** to avoid a trademark conflict with an unrelate
   <img src="https://img.shields.io/badge/SQLite%20%2F%20SQLCipher-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite / SQLCipher">
   <img src="https://img.shields.io/badge/Vanilla_JS_(ES_Modules)-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="Vanilla JS">
   <img src="https://img.shields.io/badge/Plain_CSS-1572B6?style=flat-square&logo=css3&logoColor=white" alt="Plain CSS">
-  <img src="https://img.shields.io/badge/Node.js-%E2%89%A522-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 22 or newer">
+  <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.14-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 22.14 or newer">
   <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/Podman-892CA0?style=flat-square&logo=podman&logoColor=white" alt="Podman">
   <img src="https://img.shields.io/badge/PWA-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA">

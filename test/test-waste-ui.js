@@ -974,6 +974,14 @@ test('Onboarding-CSS: Abholungen, Quellen, Abschnittstitel und Kopfknopf treten 
     '.waste-page--onboarding .waste-types-section .waste-section-title',
     '.waste-page--onboarding #waste-add-type-btn',
   ]) assert.ok(hidden.includes(sel), `${sel} fehlt`);
+  // #1771: ab der Schwelle des Spaltenrasters ueberspannt der Leerzustand beide
+  // Spuren, sonst steht er links der Mitte neben einer leeren Spalte. Die
+  // Schwelle ist wortgleich die des Rasters (PAGE-019, test-frontend-audit.js).
+  assert.match(
+    css,
+    /@container module-surface \(min-width: 65rem\)\s*\{\s*\.waste-page--onboarding \.page-columns__rail\s*\{\s*grid-column:\s*1 \/ -1;\s*\}\s*\}/,
+    'Onboarding: die Seitenspalte ueberspannt das Raster ab 65rem',
+  );
   // Seit #1775 kommen die Zustandsklassen aus pageModeClasses() - gemessen
   // wird, was die Funktion fuer das Onboarding sagt, nicht ihre Schreibweise.
   assert.equal(__test.pageModeClasses({ loading: false, error: null, types: [] })['waste-page--onboarding'], true);
@@ -1004,4 +1012,20 @@ test('R17 E6: Wochentage sind Chips mit Zustand, "Aktiv" ist ein Schalter', () =
     '"Aktiv" traegt die Schalter-Bahn');
   assert.match(modal, /body\.weekdays = weekdayPickerValue\(panel\)/, 'der Speicherweg liest die Chips');
   assert.match(modal, /wireWeekdayPicker\(panel\)/, 'und die Chips sind verdrahtet');
+});
+
+// #1795, #1909: a refusal the server names by reason is said in the household
+// language; everything else gets the general sentence, never the server's.
+test('importErrorText: a named refusal gets its own sentence, anything else the generic one - never the server sentence', () => {
+  const { importErrorText } = __test;
+  assert.equal(importErrorText({ status: 409, data: { error: 'English sentence', reason: 'preview_changed' } }), 'waste.importPreviewChangedError');
+  assert.equal(importErrorText({ status: 409, data: { error: 'English sentence', reason: 'source_changed' } }), 'waste.importSourceChangedError');
+  assert.equal(importErrorText({ status: 400, data: { error: 'No mapping decision was given.' } }), 'common.unknownError');
+  assert.equal(importErrorText({ status: 409, data: { error: 'Other', reason: 'toString' } }), 'common.unknownError', 'an inherited property name is not a refusal');
+  assert.equal(importErrorText({ status: 400, data: { error: 'English', reason: 'waste_import_file_too_large', params: { limit_mb: 5 } } }),
+    'waste.errorImportTooLarge{"limit_mb":5}', 'a limit carries its number into the sentence');
+  assert.equal(importErrorText(new Error('offline')), 'common.unknownError');
+
+  const wizard = WASTE_SRC.slice(WASTE_SRC.indexOf('function openImportWizard('), WASTE_SRC.indexOf('function sourceMappingRowHtml('));
+  assert.match(wizard, /api\.post\(endpoint, body\);[\s\S]*?catch \(err\) \{[\s\S]*?showError\(importErrorText\(err\)\);/, 'the commit step of the wizard uses it');
 });

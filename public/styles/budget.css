@@ -455,6 +455,20 @@
     grid-auto-rows: auto;
   }
 
+  /* DER SALDO FUEHRT DIE SPALTE (Critique R18, 2026-10-07): er steht oben auf
+   * einer Display-Stufe, Einnahmen und Ausgaben darunter als seine Herleitung
+   * in Title 2 (panel.css `.metric-card--lead`). Nur die Sicht-Reihenfolge
+   * wechselt - im Markup bleibt die Rechnung (Einnahmen, Ausgaben, Saldo),
+   * mobil steht er schon seit 2026-09-25 vorn. */
+  .budget-overview__aside .metric-grid--led {
+    --metric-rail: ;
+    --metric-quiet-size: var(--text-2xl);
+  }
+
+  .budget-overview__aside .metric-grid > .metric-card--lead {
+    order: -1;
+  }
+
   .budget-overview__aside .metric-grid > .metric-card:has(> .metric-card__trend) {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -695,8 +709,14 @@
   text-overflow: ellipsis;
   overflow-wrap: anywhere;
   /* Ein Wort, das allein breiter ist als die Spalte ("Wertpapierdepot"),
-   * trennt an der Silbe statt vor dem letzten Buchstaben. */
+   * trennt an der Silbe statt vor dem letzten Buchstaben. Mindestens vier
+   * Zeichen vor und nach der Trennung (wie die uebrigen Textbloecke,
+   * layout.css `hyphenate-limit-chars`): ohne Grenze steht "Wertpapierde-pot"
+   * oder "Gemeinsa-mes" in der schmalen Spalte (#1774). */
   hyphens: auto;
+  hyphenate-limit-chars: 6 4 4;
+  -webkit-hyphenate-limit-before: 4;
+  -webkit-hyphenate-limit-after: 4;
   min-width: 0;
 }
 
@@ -726,16 +746,21 @@
   min-width: 0;
 }
 
-/* Die Saldo-Spalte schrumpft NIE (Re-Critique 2026-09-28 P1-2): mit
- * `flex: 0 1 auto; min-width: 0` lief sie bei 390px unter den `nowrap`-Betrag,
- * und der lief nach links in den Namen ("Gemeinsames Gi.8.544,47 €"). Gekuerzt
- * wird der Name (`.budget-account__name-text` ellipsiert). */
+/* Die Saldo-Spalte gibt nach, aber nie unter ihren Betrag (Re-Critique
+ * 2026-09-28 P1-2, #1774). Mit `flex: 0 1 auto; min-width: 0` lief sie bei
+ * 390px unter den `nowrap`-Betrag, und der lief nach links in den Namen
+ * ("Gemeinsames Gi.8.544,47 €"). Ohne `min-width: 0` bleibt der automatische
+ * Mindestwert der Spalte die Breite des Betrags: sie schrumpft nur um die
+ * umbrechbare Startzeile (`.budget-account__starting`), nie in den Saldo
+ * hinein. Der Name bekommt so die Breite, die er braucht, bevor er mitten im
+ * Wort umbricht ("Housekeepin" und "g cash"); gekuerzt wird erst danach, und zwar
+ * der Name (`.budget-account__name-text` ellipsiert). */
 .budget-account__figures {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
   gap: var(--space-0h);
-  flex: 0 0 auto;
+  flex: 0 1 auto;
 }
 
 /* DIE BETRAGSREGEL (Critique 2026-10-05, R16): ein Betrag in einer Zeile oder
@@ -749,13 +774,22 @@
   white-space: nowrap;
 }
 
-.budget-account__balance--positive { color: var(--color-success); }
+/* EIN STAND IST KEINE NACHRICHT (Critique R18, 2026-10-07). Jeder Kontostand
+ * ueber null stand in Erfolgsgruen - auf dem Reiter Konten also fast jede Zahl,
+ * dazu das Nettovermoegen darueber. Gruen sagt im Budget "es ist mehr geworden"
+ * (Einnahme, Veraenderung gegenueber dem Vormonat, Monatssaldo); ein Stand ist
+ * weder gut noch schlecht, er IST. Er steht deshalb in Textfarbe, und nur das
+ * Minus traegt Rot - dort meldet die Farbe etwas, das Handeln verlangt
+ * (ueberzogenes Konto). Die Klasse `--positive` bleibt am Markup, ohne Farbe.
+ * Dasselbe gilt fuer das Nettovermoegen (budget.js `renderAccountsPage`). */
 .budget-account__balance--negative { color: var(--color-danger); }
 
 .budget-account__starting {
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
-  white-space: nowrap;
+  /* Umbrechbar: die Startzeile ist das, was die Saldo-Spalte hergibt. */
+  white-space: normal;
+  text-align: end;
 }
 
 /* Der Chevron ist entfallen (Redesign Runde 6, Phase 1) - dieselbe Bauart wie
@@ -1235,6 +1269,46 @@
   padding: var(--space-2) var(--space-4);
 }
 
+button.budget-bar-row {
+  min-block-size: var(--target-base);
+  background: transparent;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+/* Der Balken ist ein Knopf und antwortet dem Zeiger wie die Planzeile
+ * darunter (`.budget-plan-row`). Nicht am gedrueckten: dessen Toenung ist der
+ * Zustand, und die neutrale Hover-Flaeche wuerde ihn beim Ueberfahren loeschen.
+ * Unter (hover: hover): auf Touch klebt :hover nach dem Tipp - der eben
+ * abgewaehlte Balken saehe dort weiter getoent aus. */
+@media (hover: hover) {
+  button.budget-bar-row:not(.is-category-selected):hover {
+    background: var(--color-surface-hover);
+  }
+}
+
+/* Die Zeilen liegen in einer Karte mit `overflow: hidden` (die runden Ecken):
+ * ein Ring mit dem ueblichen Abstand nach aussen wird dort an allen vier
+ * Seiten abgeschnitten - der Balken hatte den Fokus, und man sah ihn nicht.
+ * Deshalb der Innen-Abstand, den tokens.css fuer geclippte Kanten fuehrt. */
+button.budget-bar-row:focus-visible {
+  outline-offset: var(--focus-ring-offset-inset);
+}
+
+.budget-bar-row.is-category-selected {
+  background: color-mix(in srgb, var(--module-accent, var(--color-accent)) var(--tint-state), var(--color-surface));
+  color: var(--color-text-primary);
+}
+
+.budget-subcategory-breakdown {
+  width: 100%;
+  margin-block-end: var(--space-2);
+}
+
+.budget-subcategory-breakdown-row {
+  width: 100%;
+  margin-block-start: var(--space-3);
+}
+
 .budget-bar-row__label  { grid-area: 1 / 1; }
 .budget-bar-row__amount { grid-area: 1 / 2; }
 .budget-bar-row__track  { grid-area: 2 / 1 / 3 / 3; }
@@ -1256,6 +1330,7 @@
   color: var(--color-text-secondary);
   overflow-wrap: anywhere;
   hyphens: auto;
+  text-align: start;
 }
 
 /* Ab hier ist Platz fuer alle drei nebeneinander: 168px fassen jeden der neun
@@ -1283,6 +1358,7 @@
 }
 
 .budget-bar-row__fill {
+  display: block;
   width: 100%;
   height: 100%;
   border-radius: var(--radius-full);
@@ -1403,6 +1479,12 @@
     grid-auto-rows: auto;
     padding-block: 0;
   }
+
+  /* Die Restschuld fuehrt die Spalte (panel.css `.metric-card--lead`). */
+  .budget-loans > .metric-grid--led {
+    --metric-rail: ;
+    --metric-quiet-size: var(--text-2xl);
+  }
 }
 
 /* .budget-loans__header trägt jetzt .panel-head (geteilte Panel-
@@ -1435,7 +1517,7 @@
 
 .budget-loan-card__amounts span,
 .budget-loan-card__meta,
-.budget-loan-card__footer > span {
+.budget-loan-card__dates > span {
   display: block;
   font-size: var(--text-xs);
   color: var(--color-text-secondary);
@@ -1819,6 +1901,42 @@
 
 .budget-list-header__title {
   color: var(--color-text-primary);
+}
+
+/* Die Statuszeile der Darlehens-Sortierung ist dieselbe leise Zeile, nur als
+ * Knopf: ein Tipp oeffnet das Sortiermenue. Zielflaeche wie
+ * .section-title-link - volle Hoehe, ohne die Zeile hoeher zu machen. */
+.budget-loans__sort-note {
+  display: flex;
+  align-items: center;
+  min-height: var(--target-base);
+  margin-block: calc((var(--target-base) - 1lh) / -2);
+  margin-inline: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+
+.budget-list-header__filter + .budget-loans__sort-note {
+  margin-top: calc((var(--target-base) - 1lh) / -2 + var(--space-0h));
+}
+
+.budget-loans__sort-note:hover {
+  color: var(--color-text-primary);
+}
+
+.budget-loans__sort-note:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Gruppentitel zwischen den Karten (Geld-Sortierung mit beiden Richtungen):
+ * etwas Luft nach oben, ausser am Anfang der Liste. */
+.budget-loans__group:not(:first-child) {
+  margin-top: var(--space-3);
 }
 
 /* SUCHE IM HAUPTBUCH (Re-Critique 2026-09-27, C6). Das geteilte Feld
@@ -2299,7 +2417,65 @@ button.budget-entry__title {
 .budget-stats__controls { display:flex; flex-wrap:wrap; gap:var(--space-3); align-items:center; margin-bottom:var(--space-4); }
 .budget-stats__trend { width:100%; height:auto; display:block; }
 
-.budget-stats__trend-wrap { position:relative; width:100%; }
+/* Oben haelt der Traeger eine Zeile frei: dort steht "Heute" ueber der
+ * obersten Gitterlinie (budget-stats.js `todayMarkerMarkup`), als Ueberlauf des
+ * SVG - die Geometrie skaliert, die Achsenschrift nicht, und PAD_T ist bei
+ * 324px Breite nur 8px hoch. */
+.budget-stats__trend-wrap { position:relative; width:100%; padding-block-start:var(--space-3); }
+
+/* DAS DIAGRAMM STEHT AUF EINEM TRAEGER WIE DIE LISTEN DANEBEN (Critique R18,
+ * 2026-10-07). Verlauf und Ring lagen nackt auf dem Grouped-Grund, die
+ * Kategoriezeilen darunter auf einer Karte: zwei Materialien fuer dieselbe
+ * Auswertung. Flaeche, Radius und Schatten sind die von
+ * `.budget-chart-block__rows`. Alle Kontraste unten rechnen gegen diese
+ * Flaeche (--color-surface). */
+.budget-stats__card {
+  margin-block-start: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+/* EINE DIAGRAMMSPRACHE (R18). Runde Stoesse und Kappen, die Serie traegt ihre
+ * Farbe ueber die Klasse statt im Markup. Grafikkontrast gegen den Traeger
+ * (WCAG 1.4.11, 3:1): Einnahmen --color-success hell 5,33:1 / dunkel 7,25:1,
+ * Ausgaben --color-text-secondary hell 6,19:1 / dunkel 6,66:1. Die Flaeche
+ * unter den Einnahmen laeuft vom Ton auf 0 - ein Hauch (18 %), der die Serie
+ * als die fuehrende kennzeichnet, ohne dass ein Wert an ihr abgelesen wird. */
+.budget-stats__line {
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.budget-stats__line--income { stroke: var(--color-success); }
+.budget-stats__line--expense { stroke: var(--color-text-secondary); }
+
+.budget-stats__area-from { stop-color: var(--color-success); stop-opacity: 0.18; }
+.budget-stats__area-to { stop-color: var(--color-success); stop-opacity: 0; }
+
+/* Die Punkte am markierten Tag: 8px, mit 2px Ring in Flaechenfarbe. */
+.budget-stats__mark,
+.budget-stats__mark-ring {
+  stroke-linecap: round;
+}
+
+.budget-stats__mark { stroke-width: 8; }
+.budget-stats__mark-ring { stroke: var(--color-surface); stroke-width: 12; }
+.budget-stats__mark--income { stroke: var(--color-success); }
+.budget-stats__mark--expenses { stroke: var(--color-text-secondary); }
+
+/* Der Wert am Punkt: Textfarbe, tabellarisch, mit einem Hof in Flaechenfarbe,
+ * damit weder Gitter noch Kurve durch eine Ziffer laufen. */
+.budget-stats__mark-value {
+  fill: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+  paint-order: stroke;
+  stroke: var(--color-surface);
+  stroke-width: 4px;
+  stroke-linejoin: round;
+}
 
 /* HIER STANDEN DREI ACHSEN-REGELN UND EIN GITTER, alle ausserhalb des SVG:
  * `__axis-max` als Zeile darueber, `__axis-mid` absolut auf halber Hoehe,
@@ -2364,11 +2540,12 @@ button.budget-entry__title {
 }
 .budget-stats__legend { display:flex; gap:var(--space-4); margin-top:var(--space-2); font-size:var(--text-sm); color:var(--color-text-secondary); }
 .budget-stats__legend--wrap { flex-wrap:wrap; gap:var(--space-2) var(--space-4); }
-/* Legenden-Swatches spiegeln den Zweitkanal des Trend-Charts (Critique P2):
- * Einnahmen solide, Ausgaben gestrichelte Mini-Linie - nicht nur Farbe. */
+/* Legenden-Swatches zeigen die Linie ihrer Serie. Seit R18 beide durchgezogen
+ * (EIN Strichprinzip: gestrichelt heisst im Diagramm "kommt noch"); den
+ * Zweitkanal traegt das Wort daneben. */
 .budget-stats__swatch { display:inline-block; width:16px; height:0; border-top:2px solid transparent; margin-right:var(--space-1); vertical-align:middle; }
 .budget-stats__swatch--income { border-top-color:var(--color-success); }
-.budget-stats__swatch--expense { border-top-style:dashed; border-top-color:var(--color-text-secondary); }
+.budget-stats__swatch--expense { border-top-color:var(--color-text-secondary); }
 /* Die Veraenderung gegenueber dem Vorzeitraum steht in der Zeile ihres
  * Betrags - die geteilte Trend-Zeile ist sonst ein Block. */
 .budget-stats__legend .metric-card__trend { display:inline-flex; margin-inline-start:var(--space-1); }
@@ -2403,16 +2580,24 @@ button.budget-entry__title {
   }
 }
 
-/* Ring und sein Satz. Einspaltig nebeneinander (Ring klein, der Satz fuellt die
- * Zeile - vorher 160px Ring neben 198px Leere), in der Seitenspalte
- * untereinander (Regel in der Container-Query unten). */
-.budget-stats__donut-wrap { display:flex; gap:var(--space-4); align-items:center; }
-.budget-stats__donut { width:96px; height:96px; flex:0 0 auto; }
-.budget-stats__donut-note {
-  margin:0;
-  min-width:0;
-  font-size:var(--text-sm);
-  color:var(--color-text-secondary);
+/* Der Ring sitzt mittig auf seinem Traeger und traegt seine Summe in der Mitte
+ * (R18; vorher 96px Ring neben einem Satz, davor 160px Ring neben 198px
+ * Leere). 160px in jeder Lage: der viewBox ist 160, eine Einheit also 1px -
+ * die Schrift der Mitte steht damit in ihren Token-Groessen. Innen bleiben
+ * 104px (Radius 60, Strich 16): "175.445 €" laeuft in 17px semibold 84px. */
+.budget-stats__donut-wrap { display:flex; justify-content:center; }
+.budget-stats__donut { width:160px; height:160px; flex:0 0 auto; }
+
+.budget-stats__donut-total {
+  fill: var(--color-text-primary);
+  font-size: var(--type-card-title);
+  font-weight: var(--font-weight-semibold);
+  font-variant-numeric: tabular-nums;
+}
+
+.budget-stats__donut-label {
+  fill: var(--color-text-secondary);
+  font-size: var(--text-xs);
 }
 .budget-stats__export { margin-top:var(--space-4); }
 
@@ -2460,15 +2645,6 @@ button.budget-entry__title {
     max-width: none;
   }
 
-  .budget-stats__aside .budget-stats__donut-wrap {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .budget-stats__aside .budget-stats__donut {
-    width: 160px;
-    height: 160px;
-  }
 }
 
 /* --------------------------------------------------------
@@ -2509,17 +2685,18 @@ button.budget-entry__title {
 
 /* Der Verlauf ab heute (budget-stats.js, renderTrendChart): punktiert, also
  * leiser als die Linie davor - was noch kommt, steht dort nur, soweit es schon eingetragen ist.
- * Die Serien bleiben an ihrer Farbe erkennbar; der zweite Kanal (solide gegen
- * gestrichelt) gilt fuer den Teil, der gebucht ist. */
+ * Die Serien bleiben an ihrer Farbe erkennbar. Das ist das EINE Strichmuster
+ * des Diagramms (R18): durchgezogen ist gebucht, punktiert kommt noch. */
 .budget-stats__future {
   stroke-dasharray: 1 5;
   stroke-linecap: round;
 }
 
+/* Durchgezogen und leise: eine gestrichelte Marke waere ein zweites
+ * Strichmuster neben der punktierten Zukunft. */
 .budget-stats__today {
-  stroke: var(--color-text-tertiary);
+  stroke: var(--color-border-strong);
   stroke-width: 1;
-  stroke-dasharray: 3 3;
 }
 
 .budget-stats__today-label {

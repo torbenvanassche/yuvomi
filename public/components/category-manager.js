@@ -6,11 +6,29 @@
  *
  * Verhalten:
  *   - configure({ basePath, groups, groupField, supportsSubcategories, labelResolver, titleKey, hintKey,
- *                 addMaxLength,
- *                 deleteConfirmKey, deleteDetailKey, subDeleteDetailKey })
+ *                 addMaxLength, localizedLabels,
+ *                 deleteConfirmKey, deleteDetailKey, subDeleteDetailKey, errorFallbackKey,
+ *                 alreadyDeletedReason,
+ *                 addedKey, renamedKey, deletedKey, deleteNamedKey })
  *   - Lädt via api.get(basePath); mutiert über post/put/patch/delete relativ zu basePath
+ *   - `localizedLabels: true` haengt der Listenanfrage `?lang=<Oberflaechensprache>` an -
+ *     fuer Routen, die ihre Labels auf dem Server uebersetzen (heute nur Budget, #1859)
  *   - Dispatcht nach jeder Mutation `category-manager-changed`
  *   - Zeigt Server-Guard-Fehler (in-use/last) als Toast
+ *   - `errorFallbackKey`: der allgemeine Satz fuer einen Fehler ohne bekannten Grund.
+ *     Wer ihn setzt, zeigt nie den Text des Servers (#1909, heute der Einkauf); ohne
+ *     ihn bleibt der alte Rueckfall auf `err.message`, bis das Modul seine Gruende hat
+ *   - `alreadyDeletedReason`: der `reason`, mit dem die Route des Aufrufers beim
+ *     Loeschen sagt "diese Zeile gibt es nicht mehr" (jemand anderes war schneller).
+ *     Wer ihn setzt, bekommt dafuer den Erfolgsweg statt eines Fehlers (#1909, heute
+ *     der Einkauf); ohne ihn bleibt jedes gescheiterte Loeschen ein Fehler. Die
+ *     Komponente kennt selbst keinen Grund eines Moduls
+ *   - `addedKey`, `renamedKey`, `deletedKey`: die drei Erfolgs-Toasts einer Zeile,
+ *     `deleteNamedKey` (mit `{{name}}`): der zugaengliche Name ihres Loeschknopfs.
+ *     Das sind die Texte, die das DING beim Namen nennen ("Kategorie geloescht");
+ *     wer etwas anderes verwaltet, nennt sie selbst (#1929, heute die Laeden des
+ *     Einkaufs). Ohne sie bleibt der bisherige `category.*`-Text. Unterzeilen
+ *     behalten ihre eigenen Texte
  *   - Räumt Listener in disconnectedCallback() auf
  *
  * VERTRAG FUER AUFRUFER: die Auffrischung gehoert in den Ereignis-Handler, nicht
@@ -31,11 +49,12 @@
  * dort muesste der Aufrufer `mayWritePath()` aus /utils/module-access.js fragen.
  */
 import { api } from '/api.js';
-import { t } from '/i18n.js';
+import { t, getLocale } from '/i18n.js';
 import { esc } from '/utils/html.js';
 import { makeSortable, isDragActive } from '/utils/sortable.js';
 import { wireTablist } from '/utils/tablist.js';
 import { rowActionHtml } from '/utils/row-action.js';
+import { errorSentence, isGone, isAlreadyDeleted } from '/utils/friendly-error.js';
 
 /** Platzhalter-Id fuer den Eintrag ohne Ton: eine leere `data-tab-id` waere kein Knopf. */
 const NO_COLOR_ID = '__none__';
@@ -115,6 +134,22 @@ class CategoryManagerElement extends HTMLElement {
     this._deleteConfirmKey = 'category.deleteConfirm';
     this._deleteDetailKey = 'category.deleteConfirmDetail';
     this._subDeleteDetailKey = 'category.deleteSubConfirmDetail';
+    // Dieselbe Falle ein drittes Mal (#1929): die Rueckfrage sprach schon vom
+    // Laden, der Toast danach sagte "Kategorie geloescht" und der Loeschknopf
+    // hiess fuer einen Screenreader "Kategorie Rewe loeschen". Jeder Text, der
+    // das Ding beim Namen nennt, gehoert dem Aufrufer; die uebrigen
+    // (`renameNamed`, `moveUpNamed`, `dragHandle` ...) nennen es in keiner
+    // Sprache und bleiben geteilt.
+    this._addedKey = 'category.added';
+    this._renamedKey = 'category.renamed';
+    this._deletedKey = 'category.deleted';
+    this._deleteNamedKey = 'category.deleteNamed';
+    // Siehe `_errMsg`: gesetzt heisst, der Text des Servers erreicht den Toast nie.
+    this._errorFallbackKey = null;
+    // Siehe `_delete`: der Grund, mit dem die Route des Aufrufers sagt "diese
+    // Zeile gibt es nicht mehr". Ohne ihn bleibt jedes gescheiterte Loeschen
+    // ein Fehler.
+    this._alreadyDeletedReason = null;
     // OPT-IN: nur wer eine Palette mitgibt, bekommt die Farbwahl. Fuenf der
     // sechs Aufrufer zeigen ihre Kategorien nirgends als farbige Marke - dort
     // waere ein Farbknopf eine Einstellung ohne Wirkung.
@@ -137,6 +172,7 @@ class CategoryManagerElement extends HTMLElement {
     if (Array.isArray(opts.groups) && opts.groups.length) this._groups = opts.groups;
     if (typeof opts.groupField === 'string' && opts.groupField) this._groupField = opts.groupField;
     this._supportsSub = !!opts.supportsSubcategories;
+    this._localizedLabels = !!opts.localizedLabels;
     if (typeof opts.labelResolver === 'function') this._labelResolver = opts.labelResolver;
     if (opts.titleKey) this._titleKey = opts.titleKey;
     if (opts.hintKey) this._hintKey = opts.hintKey;
@@ -152,6 +188,14 @@ class CategoryManagerElement extends HTMLElement {
     if (opts.deleteConfirmKey) this._deleteConfirmKey = opts.deleteConfirmKey;
     if (opts.deleteDetailKey) this._deleteDetailKey = opts.deleteDetailKey;
     if (opts.subDeleteDetailKey) this._subDeleteDetailKey = opts.subDeleteDetailKey;
+    if (opts.errorFallbackKey) this._errorFallbackKey = opts.errorFallbackKey;
+    if (opts.addedKey) this._addedKey = opts.addedKey;
+    if (opts.renamedKey) this._renamedKey = opts.renamedKey;
+    if (opts.deletedKey) this._deletedKey = opts.deletedKey;
+    if (opts.deleteNamedKey) this._deleteNamedKey = opts.deleteNamedKey;
+    if (typeof opts.alreadyDeletedReason === 'string' && opts.alreadyDeletedReason) {
+      this._alreadyDeletedReason = opts.alreadyDeletedReason;
+    }
     this._renderShell();
     this._load();
   }
@@ -182,11 +226,23 @@ class CategoryManagerElement extends HTMLElement {
     this._root.addEventListener('submit', this._onSubmit);
   }
 
+  // Der Pfad der Listenanfrage. Uebersetzt die Route ihre Labels selbst
+  // (`localizedLabels`), nennt die Komponente ihr die Sprache der Oberflaeche:
+  // die ist je Browser gewaehlt, und ohne `lang` antwortet die Route in der
+  // Sprache des Haushalts - richtig fuer die meisten, falsch fuer das Mitglied,
+  // dessen Browser eine andere spricht (#1859). Gelesen je Abruf, nicht in
+  // configure(): die Sprache kann zwischen zwei Abrufen wechseln. Nur am GET -
+  // die Schreibwege bauen ihre Pfade weiter aus dem nackten basePath.
+  _listPath() {
+    if (!this._localizedLabels) return this._basePath;
+    return `${this._basePath}?lang=${encodeURIComponent(getLocale())}`;
+  }
+
   // GET ohne Render: setzt this._cats aus der Server-Antwort. Wirft weiter,
   // damit der aufrufende Mutations-Handler (mit eigenem try/catch) selbst
   // entscheidet, welchen Ausschnitt er danach neu zeichnet.
   async _fetch() {
-    const res = await api.get(this._basePath);
+    const res = await api.get(this._listPath());
     this._cats = res.data ?? [];
   }
 
@@ -197,6 +253,8 @@ class CategoryManagerElement extends HTMLElement {
       await this._fetch();
       this._render();
     } catch (err) {
+      // BEWUSST NICHT `_fail`: das Laden darf sich nicht selbst wieder
+      // anstossen, wenn es scheitert.
       window.yuvomi?.showToast(this._errMsg(err), 'danger');
     }
   }
@@ -506,7 +564,7 @@ class CategoryManagerElement extends HTMLElement {
         icon: 'trash-2',
         tone: 'danger',
         action: `${prefix}delete`,
-        label: t(sub ? 'category.deleteSubNamed' : 'category.deleteNamed', { name }),
+        label: t(sub ? 'category.deleteSubNamed' : this._deleteNamedKey, { name }),
       }),
     ].join('');
   }
@@ -615,8 +673,14 @@ class CategoryManagerElement extends HTMLElement {
   }
 
   // Server-Guard-Fehler in die UI-Sprache übersetzen: die Route liefert einen
-  // stabilen `reason`-Code (+ optional `count`) in err.data; unbekannte Fehler
-  // fallen auf die (englische) Server-Meldung zurück.
+  // stabilen `reason`-Code (+ optional `count`) in err.data.
+  //
+  // Unbekannte Fehler (#1909): hat der Aufrufer `errorFallbackKey` gesetzt,
+  // sagt `errorSentence` den Satz - den eines anderen bekannten Grundes (der
+  // Laden heisst schon so, die Kategorie wurde inzwischen geloescht) oder den
+  // allgemeinen, nie den des Servers. Ohne den Schluessel bleibt der alte
+  // Rueckfall auf die Server-Meldung: die Routen jener Module nennen ihre
+  // Faelle noch nicht, und der allgemeine Satz sagte dort weniger als heute.
   _errMsg(err) {
     const reason = err?.data?.reason;
     const count = err?.data?.count;
@@ -627,8 +691,29 @@ class CategoryManagerElement extends HTMLElement {
       case 'subcategory_in_use': return t('category.errorSubInUse', { count });
       case 'subcategory_last':   return t('category.errorSubLast');
       case 'subcategory_exists': return t('category.errorSubExists');
-      default:                   return err?.message ?? '';
+      default:
+        return this._errorFallbackKey
+          ? errorSentence(err, this._errorFallbackKey)
+          : (err?.message ?? '');
     }
+  }
+
+  /**
+   * Der eine Weg, auf dem eine gescheiterte Aenderung gemeldet wird.
+   *
+   * Sagt der Server, dass es die Zeile nicht mehr gibt (`isGone`, #1909) -
+   * jemand anderes hat sie geloescht, waehrend dieser Dialog offen war -,
+   * holt die Komponente ihre Liste selbst neu und meldet dem Aufrufer eine
+   * Aenderung, damit auch die Seite darunter nachzieht. Der Satz raet nicht
+   * mehr zum Neuladen.
+   */
+  _fail(err) {
+    window.yuvomi?.showToast(this._errMsg(err), 'danger');
+    if (!isGone(err)) return;
+    // Beim Loeschen ist das Element schon aus dem Dokument (siehe
+    // `_notifyChanged`): dann gibt es hier nichts mehr zu zeichnen.
+    if (this.isConnected) this._load();
+    this._notifyChanged();
   }
 
   async _onSubmit(e) {
@@ -654,10 +739,10 @@ class CategoryManagerElement extends HTMLElement {
       this._cats.push(res.data);
       this._renderGroup(group ?? '');
       if (this._unifiedAdd) input.value = '';
-      window.yuvomi?.showToast(t('category.added'), 'success');
+      window.yuvomi?.showToast(t(this._addedKey), 'success');
       this._notifyChanged();
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
     }
   }
 
@@ -731,7 +816,7 @@ class CategoryManagerElement extends HTMLElement {
       this._paintMark(key, res.data.color);
       this._notifyChanged();
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
     }
   }
 
@@ -759,11 +844,11 @@ class CategoryManagerElement extends HTMLElement {
         const idx = this._cats.findIndex((c) => this._keyOf(c) === key);
         if (idx >= 0) this._cats[idx] = res.data;
         this._renderGroup(this._groupOf(cat));
-        window.yuvomi?.showToast(t('category.renamed'), 'success');
+        window.yuvomi?.showToast(t(this._renamedKey), 'success');
         this._notifyChanged();
         return;
       } catch (err) {
-        window.yuvomi?.showToast(this._errMsg(err), 'danger');
+        this._fail(err);
         if (err?.status !== 409) return;
         // Der 409 darf nur den Prompt wiederholen, aus dem diese Anfrage kam.
         // Ein inzwischen geoeffnetes (selbst schon wieder geschlossenes)
@@ -820,7 +905,7 @@ class CategoryManagerElement extends HTMLElement {
       if (movedKey) this._announceMove(movedKey, { groupKey });
       this._notifyChanged();
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
       if (rollbackRender) {
         const inputs = this._snapshotAddInputs();
         this._renderGroup(groupKey);
@@ -864,13 +949,22 @@ class CategoryManagerElement extends HTMLElement {
     );
     if (!confirmed) return;
     try {
-      await api.delete(`${this._basePath}/${encodeURIComponent(key)}`);
+      try {
+        await api.delete(`${this._basePath}/${encodeURIComponent(key)}`);
+      } catch (err) {
+        // JEMAND ANDERES HAT DIE ZEILE SCHON GELOESCHT: das Ziel ist erreicht,
+        // also laeuft der Erfolgsweg darunter - Zeile raus, "Geloescht", und
+        // die Seite erfaehrt es wie jedes Loeschen. Nur mit dem Grund, den der
+        // Aufrufer genannt hat (`alreadyDeletedReason`); alles andere ist ein
+        // Fehler und geht an `_fail`.
+        if (!this._alreadyDeletedReason || !isAlreadyDeleted(err, this._alreadyDeletedReason)) throw err;
+      }
       this._cats = this._cats.filter((c) => this._keyOf(c) !== key);
       this._renderGroup(this._groupOf(cat));
-      window.yuvomi?.showToast(t('category.deleted'), 'default');
+      window.yuvomi?.showToast(t(this._deletedKey), 'default');
       this._notifyChanged({ action: 'delete', key, item: cat });
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
     }
   }
 
@@ -893,7 +987,7 @@ class CategoryManagerElement extends HTMLElement {
       this._notifyChanged();
       return res;
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
     }
   }
 
@@ -914,7 +1008,7 @@ class CategoryManagerElement extends HTMLElement {
       window.yuvomi?.showToast(t('category.renamed'), 'success');
       this._notifyChanged();
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
     }
   }
 
@@ -948,7 +1042,7 @@ class CategoryManagerElement extends HTMLElement {
       if (movedSubKey) this._announceMove(movedSubKey, { parentKey: parent });
       this._notifyChanged();
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
       if (rollbackRender) {
         const inputs = this._snapshotAddInputs();
         this._renderSublist(parent);
@@ -975,7 +1069,7 @@ class CategoryManagerElement extends HTMLElement {
       window.yuvomi?.showToast(t('category.deleted'), 'default');
       this._notifyChanged();
     } catch (err) {
-      window.yuvomi?.showToast(this._errMsg(err), 'danger');
+      this._fail(err);
     }
   }
 }

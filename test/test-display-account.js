@@ -243,6 +243,126 @@ test('das Display darf genau die drei Geruestpfade LESEN, und nur lesend', async
   assert.equal((await display('PATCH', '/preferences', { week_start: 1 })).status, 403);
 });
 
+test('die Fotos des Bildschirmschoners nur, wenn ein Administrator sie fuer dieses Display einschaltet (#1766)', async () => {
+  // Ohne die Ausnahme lief der Schoner auf genau dem Geraet nie, fuer das er
+  // gebaut wurde: `/screensaver` ist kein Modul, das Scope-Gate sperrte, und
+  // `start()` schluckt das 403. Ohne den Schalter dagegen faenge jedes
+  // gekoppelte Tablett an, Fotos ueber den Kalender zu legen - ein Display
+  // aendert keine Einstellungen, also entscheidet der Administrator, je Display.
+  // In dieser Suite ist Immich nicht verbunden: die Liste antwortet deshalb
+  // 200 mit `enabled: false`, ein Foto 404 aus der Route. Beides heisst: das
+  // Gate hat durchgelassen.
+  const display = asDisplay(displayToken);
+  const photoPath = '/screensaver/photos/3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+  const refusedAtGate = async (path, why) => {
+    const res = await display('GET', path);
+    assert.equal(res.status, 403, `${path} ${why}, war ${res.status}`);
+    assert.match(String(res.body?.error), /scope/i, `${path} muss am Scope-Gate scheitern`);
+  };
+
+  const listed = (await admin('GET', '/displays')).body.data.find((d) => d.id === displayId);
+  assert.equal(listed.show_screensaver, false, 'aus, solange niemand es einschaltet');
+  await refusedAtGate('/screensaver/photos', 'ist ohne Schalter gesperrt');
+  await refusedAtGate(photoPath, 'ist ohne Schalter gesperrt');
+
+  // Das Tablett schaltet sich nicht selbst ein - das haelt schon das
+  // Scope-Gate. Die eigentliche Regel dieser Route ist aber "nur ein
+  // Administrator": ein angemeldetes Mitglied kommt am Scope-Gate vorbei und
+  // muss an `requireAdmin` scheitern, ohne dass sich etwas aendert.
+  const self = await display('PATCH', `/displays/${displayId}`, { show_screensaver: true });
+  assert.equal(self.status, 403, `das Display darf sich nicht selbst einschalten, war ${self.status}`);
+  const neu = await admin('POST', '/auth/users', {
+    username: 'nora', display_name: 'Nora', password: 'norapass12345', role: 'member',
+  });
+  assert.equal(neu.status, 201, `Mitglied anlegen: ${JSON.stringify(neu.body)}`);
+  const nora = as(await login('nora', 'norapass12345'));
+  const byMember = await nora('PATCH', `/displays/${displayId}`, { show_screensaver: true });
+  assert.equal(byMember.status, 403, `ein Mitglied darf das Display nicht einschalten, war ${byMember.status}`);
+  assert.equal((await admin('GET', '/displays')).body.data.find((d) => d.id === displayId).show_screensaver, false,
+    'nach dem Versuch des Mitglieds weiter aus');
+  await refusedAtGate('/screensaver/photos', 'bleibt nach dem Versuch des Mitglieds gesperrt');
+
+  // Nur ein echter Boolean, nur ein echtes Display.
+  assert.equal((await admin('PATCH', `/displays/${displayId}`, { show_screensaver: 'true' })).status, 400);
+  assert.equal((await admin('PATCH', `/displays/${displayId}`, {})).status, 400);
+  assert.equal((await admin('PATCH', '/displays/999999', { show_screensaver: true })).status, 404);
+
+  const on = await admin('PATCH', `/displays/${displayId}`, { show_screensaver: true });
+  assert.equal(on.status, 200);
+  assert.deepEqual(on.body, { data: { id: displayId, show_screensaver: true } });
+  assert.equal((await admin('GET', '/displays')).body.data.find((d) => d.id === displayId).show_screensaver, true);
+
+  // Ab dem naechsten Request des Tabletts, ohne neue Kopplung.
+  const list = await display('GET', '/screensaver/photos');
+  assert.equal(list.status, 200, `die Fotoliste muss lesbar sein, war ${list.status}`);
+  assert.deepEqual(list.body, { data: { enabled: false, photos: [] } });
+  const photo = await display('GET', photoPath);
+  assert.equal(photo.status, 404, `ein Foto muss die Route erreichen, war ${photo.status}`);
+
+  // Auch eingeschaltet eng, nicht bequem: keine UUID (auch keine, die nur die
+  // Form hat - die Route verlangt Version und Variante, das Gate dieselbe),
+  // ein Praefix, eine andere Methode, und die Verwaltung des Haushalts
+  // scheitern am Gate.
+  for (const [method, path] of [
+    ['GET', '/screensaver/photos/keine-uuid'],
+    ['GET', '/screensaver/photos/3f2504e0-4f89-41d3-9a0c-0305e82c3301/x'],
+    ['GET', '/screensaver/photos/3f2504e0-4f89-01d3-9a0c-0305e82c3301'],
+    ['GET', '/screensaver/photos-irgendwas'],
+    ['POST', '/screensaver/photos'],
+    ['GET', '/screensaver/config'],
+    ['PUT', '/screensaver/config'],
+    ['POST', '/screensaver/test'],
+  ]) {
+    const res = await display(method, path);
+    assert.equal(res.status, 403, `${method} ${path} muss gesperrt sein, war ${res.status}`);
+    assert.match(String(res.body?.error), /scope/i, `${method} ${path} muss am Scope-Gate scheitern`);
+  }
+
+  // Wieder aus: gesperrt beim naechsten Request.
+  assert.equal((await admin('PATCH', `/displays/${displayId}`, { show_screensaver: false })).status, 200);
+  await refusedAtGate('/screensaver/photos', 'ist nach dem Ausschalten wieder gesperrt');
+  await refusedAtGate(photoPath, 'ist nach dem Ausschalten wieder gesperrt');
+});
+
+test('screensaver_enabled in /preferences: false ohne Immich, true fuer Mitglieder und Displays mit Schalter (#1766)', async () => {
+  // Ohne Immich: beide bekommen false.
+  delete process.env.IMMICH_URL;
+  delete process.env.IMMICH_API_KEY;
+
+  const created = await admin('POST', '/displays', { display_name: 'ScreensaverFlagProbe' });
+  const issued = await admin('POST', `/displays/${created.body.data.id}/pairing-code`, {});
+  const display = asDisplay((await pair(issued.body.data.code)).token);
+  const displayId = created.body.data.id;
+
+  const ohneImmichMember  = (await admin('GET', '/preferences')).body.data.screensaver_enabled;
+  const ohneImmichDisplay = (await display('GET', '/preferences')).body.data.screensaver_enabled;
+  assert.equal(ohneImmichMember,  false, 'Mitglied: false ohne Immich');
+  assert.equal(ohneImmichDisplay, false, 'Display: false ohne Immich');
+
+  // Mit Immich, Schalter aus: Mitglied true, Display weiterhin false.
+  process.env.IMMICH_URL = 'https://photos.example';
+  process.env.IMMICH_API_KEY = 'test-key';
+  try {
+    const schalterAusMember  = (await admin('GET', '/preferences')).body.data.screensaver_enabled;
+    const schalterAusDisplay = (await display('GET', '/preferences')).body.data.screensaver_enabled;
+    assert.equal(schalterAusMember,  true,  'Mitglied: true mit Immich');
+    assert.equal(schalterAusDisplay, false, 'Display: false solange Schalter aus');
+
+    // Schalter ein: Display bekommt jetzt auch true.
+    assert.equal((await admin('PATCH', `/displays/${displayId}`, { show_screensaver: true })).status, 200);
+    const schalterAnDisplay = (await display('GET', '/preferences')).body.data.screensaver_enabled;
+    assert.equal(schalterAnDisplay, true, 'Display: true sobald Schalter an');
+
+    // Schalter aus: Display wieder false.
+    assert.equal((await admin('PATCH', `/displays/${displayId}`, { show_screensaver: false })).status, 200);
+    const schalterWiederAus = (await display('GET', '/preferences')).body.data.screensaver_enabled;
+    assert.equal(schalterWiederAus, false, 'Display: false nach Ausschalten');
+  } finally {
+    delete process.env.IMMICH_URL;
+    delete process.env.IMMICH_API_KEY;
+  }
+});
+
 test('die Rechte-Nutzlast traegt die Scope-Liste als Modulrechte', async () => {
   // DIE OBERFLAECHE HAENGT DARAN, NICHT AN EINER ZWEITEN LISTE IM FRONTEND. Die
   // Uebersicht bot dem Tablett Kacheln fuer Geburtstage, Budget und Notizen an,
@@ -411,6 +531,30 @@ test('das Display sieht nur haushaltssichtbare Zeilen, nie private', async () =>
   const titles = (seen.body.data ?? []).map((t) => t.title);
   assert.ok(titles.includes('Fuer alle'));
   assert.ok(!titles.includes('Geheim'), 'die Sichtbarkeitsregel gilt fuer ein Display wie fuer jeden');
+});
+
+test('das Display liest die Aufgaben je Person fuer die Wand - nur die haushaltssichtbaren (#1817)', async () => {
+  // `wallTasks` reist in der Antwort von /dashboard mit, also ueber die Scopes,
+  // die das Display ohnehin hat (dashboard:read, tasks:read) - kein neuer Weg.
+  const adminId = (await admin('GET', '/auth/me')).body.user.id;
+  // Ueberfaellig zaehlt zu heute; so haengt der Test an keinem Kalendertag.
+  const shared = { due_date: '2020-01-01', assigned_to: [adminId] };
+  assert.equal((await admin('POST', '/tasks', { title: 'Wand: fuer alle', visibility: 'all', ...shared })).status, 201);
+  assert.equal((await admin('POST', '/tasks', { title: 'Wand: nur Zugewiesene', visibility: 'assignees', ...shared })).status, 201);
+
+  const titlesFor = async (request) => {
+    const res = await request('GET', '/dashboard');
+    assert.equal(res.status, 200);
+    assert.ok(Array.isArray(res.body.wallTasks), 'Reichweite: die Antwort traegt wallTasks');
+    return (res.body.wallTasks.find((entry) => entry.user_id === adminId)?.open ?? []).map((task) => task.title);
+  };
+  const onDisplay = await titlesFor(asDisplay(displayToken));
+  assert.ok(onDisplay.includes('Wand: fuer alle'));
+  assert.ok(!onDisplay.includes('Wand: nur Zugewiesene'));
+  // Und dieselbe Liste aus der Sitzung der zugewiesenen Person selbst. Das
+  // gilt fuer dieselbe Anfrage: eine Kategorie-Auswahl (`tasks_category`)
+  // schraenkt die Liste fuer den ein, der sie mitschickt.
+  assert.deepEqual(await titlesFor(admin), onDisplay, 'ohne Filter liefert dieselbe Anfrage jedem dieselbe Liste');
 });
 
 // --------------------------------------------------------
@@ -955,8 +1099,161 @@ test('ein Display sieht von /preferences nur den Darstellungsteil', async () => 
   // Filter waere derselbe Fehler in die andere Richtung (im Browser gemessen:
   // ohne diese Felder faellt der Auth-Guard in seinen catch).
   for (const key of ['language_effective', 'date_format', 'time_format', 'week_start',
-    'timezone_effective', 'app_name', 'disabled_modules', 'dashboard_widgets']) {
+    'timezone_effective', 'app_name', 'disabled_modules', 'dashboard_widgets', 'screensaver_enabled']) {
     assert.ok(key in res.body.data, `${key} fehlt dem Tablett`);
+  }
+});
+
+test('ein Display speichert keine Anordnung und folgt der Vorgabe des Haushalts (#1808)', async () => {
+  // Der gemeldete Weg: am Tablett die Uebersicht umordnen und "Fertig" tippen
+  // ist `PUT /preferences` mit `dashboard_widgets`. Die Absage ist die Regel
+  // (ein Display aendert keine Einstellungen, DISPLAY_WRITE_ROUTES), der Fehler
+  // lag an der Oberflaeche, die den Weg anbot (test:dashboard-a11y).
+  const created = await admin('POST', '/displays', { display_name: 'Anordnungsprobe' });
+  const issued = await admin('POST', `/displays/${created.body.data.id}/pairing-code`, {});
+  const display = asDisplay((await pair(issued.body.data.code)).token);
+
+  const vorher = (await display('GET', '/preferences')).body.data.dashboard_widgets;
+  assert.ok(Array.isArray(vorher), 'Vorbedingung: das Tablett bekommt eine Anordnung');
+  // Eine Anordnung, die es so vorher nicht gab - damit "folgt der Vorgabe"
+  // unten nicht dasselbe ist wie "hat sich nicht bewegt".
+  const umgeordnet = [
+    { id: 'calendar', visible: true, order: 0, size: '2x1' },
+    { id: 'tasks', visible: true, order: 1, size: '1x1' },
+  ];
+  assert.notDeepEqual(vorher.map((w) => w.id), umgeordnet.map((w) => w.id));
+
+  const eigene = await display('PUT', '/preferences', { dashboard_widgets: umgeordnet, dashboard_today_glance: false });
+  assert.equal(eigene.status, 403, 'das Tablett schreibt keine Einstellungen');
+  assert.deepEqual((await display('GET', '/preferences')).body.data.dashboard_widgets, vorher,
+    'und es ist auch nichts geschrieben worden');
+  // Die Suche im selben Kopf ist derselbe Fall.
+  assert.equal((await display('GET', '/search?q=milch')).status, 403);
+
+  // DER WEG, DER GEHT: ein Administrator setzt die Vorgabe des Haushalts, und
+  // das Tablett folgt ihr, weil es nie etwas Eigenes gespeichert hat.
+  const gesetzt = await admin('PUT', '/preferences', { dashboard_widgets_default: umgeordnet });
+  assert.equal(gesetzt.status, 200);
+  try {
+    const danach = (await display('GET', '/preferences')).body.data.dashboard_widgets;
+    assert.deepEqual(danach.map((w) => w.id), umgeordnet.map((w) => w.id),
+      'das Tablett zeigt die Vorgabe des Haushalts');
+    assert.notDeepEqual(danach.map((w) => w.id), vorher.map((w) => w.id), 'und nicht mehr den alten Stand');
+  } finally {
+    // Die Vorgabe gilt fuer jedes Konto ohne eigene Anordnung, also auch fuer
+    // die Faelle nach diesem.
+    await admin('PUT', '/preferences', { dashboard_widgets_default: null });
+  }
+});
+
+test('"Mir zugewiesen" in der Vorgabe des Haushalts leert das Tablett nicht (#1808)', async () => {
+  // Ein Display folgt der Vorgabe des Haushalts, und sein Browser schickt deren
+  // Kachel-Optionen als Query mit (dashboardQuery). `events_scope=mine` hiess
+  // am Server "dem AUFRUFER zugewiesen" - auf einem Tablett also dem
+  // Display-Konto, dem nie jemand einen Termin zuweist (#1207). Die Auswahl
+  // wirkt auf die ganze Uebersicht, also war nicht nur die Kachel leer.
+  const created = await admin('POST', '/displays', { display_name: 'Terminprobe' });
+  const issued = await admin('POST', `/displays/${created.body.data.id}/pairing-code`, {});
+  const display = asDisplay((await pair(issued.body.data.code)).token);
+
+  const neu = await admin('POST', '/auth/users', {
+    username: 'mila', display_name: 'Mila', password: 'milapass12345', role: 'member',
+  });
+  assert.equal(neu.status, 201, `Mitglied anlegen: ${JSON.stringify(neu.body)}`);
+  const milaId = neu.body.user?.id ?? neu.body.data?.id;
+  const mila = as(await login('mila', 'milapass12345'));
+
+  // Zwei Tage voraus: sicher Zukunft, sicher im Wochenfenster, in jeder Zone.
+  const start = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString().slice(0, 19);
+  const fuerMila = await admin('POST', '/calendar', { title: 'Scope Mila', start_datetime: start, assigned_to: [milaId] });
+  assert.equal(fuerMila.status, 201, JSON.stringify(fuerMila.body));
+  const fuerAlle = await admin('POST', '/calendar', { title: 'Scope Alle', start_datetime: start });
+  assert.equal(fuerAlle.status, 201, JSON.stringify(fuerAlle.body));
+
+  const probe = (body, key) => body[key].map((e) => e.title).filter((title) => title.startsWith('Scope ')).sort();
+
+  // Vorbedingung: ohne die Option sieht das Tablett beide - sonst waere "leer"
+  // unten eine Sperre oder ein Fenster, nicht der Filter.
+  const offen = await display('GET', '/dashboard');
+  assert.deepEqual(probe(offen.body, 'upcomingEvents'), ['Scope Alle', 'Scope Mila']);
+
+  // GEGENFALL: fuer ein Mitglied bleibt `mine` die Auslegung des Kalenders.
+  const eigene = await mila('GET', '/dashboard?events_scope=mine');
+  assert.deepEqual(probe(eigene.body, 'upcomingEvents'), ['Scope Mila'], 'ein Mitglied sieht mit "mine" nur die eigenen');
+  assert.deepEqual(probe(eigene.body, 'weekEvents'), ['Scope Mila']);
+
+  // UND EIN API-TOKEN BLEIBT PERSOENLICH. Die Ausnahme gilt dem Display, nicht
+  // "allem, was keine Sitzung ist": ein Token handelt fuer eine Person, der
+  // sehr wohl Termine zugewiesen sind. Ohne diesen Fall ueberlebte die
+  // Verwechslung `authMethod === 'session'` die ganze Suite.
+  const tokenRes = await admin('POST', '/auth/api-tokens', {
+    name: 'Milas Uebersicht', subject_user_id: milaId, scopes: ['dashboard:read', 'calendar:read'],
+  });
+  assert.equal(tokenRes.status, 201, JSON.stringify(tokenRes.body));
+  const perToken = await fetch(`${BASE}/api/v1/dashboard?events_scope=mine`, {
+    headers: { Authorization: `Bearer ${tokenRes.body.token}` },
+  });
+  assert.equal(perToken.status, 200);
+  const tokenBody = await perToken.json();
+  assert.deepEqual(probe(tokenBody, 'upcomingEvents'), ['Scope Mila'], 'ein Token sieht mit "mine" nur die Termine seiner Person');
+  assert.deepEqual(probe(tokenBody, 'weekEvents'), ['Scope Mila']);
+
+  // Der Fall selbst, so wie ihn das Tablett stellt.
+  const wand = await display('GET', '/dashboard?events_scope=mine');
+  assert.equal(wand.status, 200);
+  assert.deepEqual(probe(wand.body, 'upcomingEvents'), ['Scope Alle', 'Scope Mila'],
+    'ein Display hat kein "mir": die Option gilt dort als "alle"');
+  assert.deepEqual(probe(wand.body, 'weekEvents'), ['Scope Alle', 'Scope Mila'], 'und der Wochenstreifen ebenso');
+});
+
+test('der Hinweis in den Einstellungen nennt genau die Bereiche, die ein Display liest (#1808)', async () => {
+  // EINE QUELLE: der Browser bekommt die Liste mit `GET /displays` und setzt
+  // die Namen daraus zusammen. Diese Liste hier ist die ZWEITE Fassung, und sie
+  // steht absichtlich als Literal da: kommt ein Scope dazu oder faellt einer
+  // weg, wird dieser Fall rot und fragt, ob docs/SPEC.md (Display Accounts) und
+  // der CHANGELOG die neue Menge nennen. Der Hinweis selbst zieht von allein nach.
+  const BEREICHE = ['calendar', 'tasks', 'rewards', 'weather'];
+  const { DISPLAY_AREA_MODULES } = await import('../server/display-scopes.js');
+
+  const liste = await admin('GET', '/displays');
+  assert.equal(liste.status, 200);
+  assert.deepEqual(liste.body.area_modules, BEREICHE, 'die Route liefert die Bereiche neben der Liste');
+  assert.deepEqual([...DISPLAY_AREA_MODULES], BEREICHE);
+  // Aus den Scopes abgeleitet, nicht daneben gepflegt: jedes Lesemodul ausser
+  // der Uebersicht selbst, und nichts sonst.
+  assert.deepEqual(
+    DISPLAY_SCOPES.filter((s) => s.endsWith(':read')).map((s) => s.split(':')[0]).filter((k) => k !== 'dashboard'),
+    BEREICHE,
+  );
+  assert.ok(DISPLAY_SCOPES.includes('dashboard:read'), 'Vorbedingung: die Uebersicht ist ein Scope - und wird trotzdem nicht aufgezaehlt');
+
+  // UND GEGEN DIE RECHTEAUFLOESUNG (server/permissions.js, Display-Zweig): was
+  // ein gekoppeltes Geraet dort als lesbares Modul bekommt, steht im Hinweis.
+  const created = await admin('POST', '/displays', { display_name: 'Bereichsprobe' });
+  const issued = await admin('POST', `/displays/${created.body.data.id}/pairing-code`, {});
+  const display = asDisplay((await pair(issued.body.data.code)).token);
+  const me = await display('GET', '/auth/me');
+  const module = me.body?.permissions?.modules;
+  assert.ok(module, `Vorbedingung: das Display bekommt seine Modulrechte - ${JSON.stringify(me.body).slice(0, 200)}`);
+  const lesbar = Object.keys(module).filter((key) => module[key] !== 'none');
+  assert.ok(lesbar.length > 0, 'Vorbedingung: mindestens ein Modul ist lesbar');
+  for (const key of lesbar) assert.ok(BEREICHE.includes(key), `${key} ist am Display lesbar, fehlt aber im Hinweis`);
+  for (const key of BEREICHE) {
+    assert.ok(!(key in module) || module[key] !== 'none', `${key} steht im Hinweis, ist am Display aber gesperrt`);
+  }
+
+  // Jeder Bereich hat in JEDER Sprache einen Namen, und der Satz traegt den
+  // Platzhalter - sonst stuende ein Schluessel oder ein Satz ohne Inhalt da.
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const dir = new URL('../public/locales/', import.meta.url);
+  const dateien = readdirSync(dir).filter((f) => f.endsWith('.json'));
+  assert.ok(dateien.length >= 26);
+  for (const datei of dateien) {
+    const settings = JSON.parse(readFileSync(new URL(datei, dir), 'utf8')).settings;
+    assert.match(settings.displaysAreasHint ?? '', /\{\{areas\}\}/, `${datei}: displaysAreasHint ohne {{areas}}`);
+    for (const key of BEREICHE) {
+      assert.ok(settings.apiTokenScopeModules?.[key], `${datei}: kein Name fuer ${key}`);
+    }
   }
 });
 

@@ -156,7 +156,7 @@ Sucht euch euren Weg aus: [Docker oder Podman](#docker-oder-podman) für volle K
 
 - **Browser** - alles wie vorgesehen ab Chrome und Edge 117, Firefox 129 und Safari 17.5. Bis hinunter zu Chrome 87, Firefox 79 und Safari 14.1 (iOS 14.5) startet und scrollt es noch, schlichter und mit einzelnen fehlenden Funktionen ([gemessen am 21. September 2026](docs/installation.md#browser-support)).
 - **Schreibt** - vier Volumes, die euch gehören: Daten, Backups, Module, Dokumente.
-- **Nach außen** - ab Werk eine Update-Abfrage an die GitHub-Releases-API. Blockiert sie, und nichts geht kaputt, nur der Hinweis auf eine neuere Version bleibt aus. Alles andere geht erst nach außen, wenn ihr eine Funktion nutzt oder einschaltet, die es braucht: das Öffnen der Kalender-Einstellungen lädt die Liste der Feiertagsländer von openholidaysapi.org, die Logo-Suche für ein Abo ruft die Website des Dienstes auf, und Wetter, Feiertage, Wechselkurse, Kalender- und Kontakte-Sync, Rezept-Spiegel, Immich, Paperless oder Papra, Push- und Benachrichtigungskanäle, Cloud-Speicher und Backup verbinden sich erst, wenn ihr sie einschaltet.
+- **Nach außen** - ab Werk eine Update-Abfrage an die GitHub-Releases-API. Blockiert sie, und nichts geht kaputt, nur der Hinweis auf eine neuere Version bleibt aus. Alles andere geht erst nach außen, wenn ihr eine Funktion nutzt oder einschaltet, die es braucht: das Öffnen der Kalender-Einstellungen lädt die Liste der Feiertagsländer von openholidaysapi.org, die Logo-Suche für ein Abo ruft die Website des Dienstes auf, das Holen des Profilbilds von Gravatar schickt einen Hash eurer E-Mail-Adresse an gravatar.com oder den vom Betreiber gewählten Spiegel, wenn der Betreiber es eingeschaltet hat, und Wetter, Feiertage, Wechselkurse, Kalender- und Kontakte-Sync, Rezept-Spiegel, Immich, Paperless oder Papra, Push- und Benachrichtigungskanäle, Cloud-Speicher und Backup verbinden sich erst, wenn ihr sie einschaltet.
 - **Euer LAN** - Kalender-Abos, Benachrichtigungskanäle (Webhook, Gotify, ntfy), WebDAV-Dokumentenspeicher, Rezept-Spiegel und Abfuhr-Feeds unter privaten oder internen Adressen bleiben blockiert, bis ihr sie freigebt ([wie](docs/installation.md#environment-variables)). Paperless und Papra sind die Ausnahme: sie dürfen ab Werk ins LAN.
 - **Eure Daten** - eine SQLite-Datei unter `/data/yuvomi.db`, dazu Ordner, WebDAV oder Drive, falls die Dokumente dort liegen.
 
@@ -258,7 +258,7 @@ Yuvomi wurde von **Oikos** umbenannt, um einen Markenkonflikt mit einem unabhän
   <img src="https://img.shields.io/badge/SQLite%20%2F%20SQLCipher-003B57?style=flat-square&logo=sqlite&logoColor=white" alt="SQLite / SQLCipher">
   <img src="https://img.shields.io/badge/Vanilla_JS_(ES_Modules)-F7DF1E?style=flat-square&logo=javascript&logoColor=black" alt="Vanilla JS">
   <img src="https://img.shields.io/badge/Plain_CSS-1572B6?style=flat-square&logo=css3&logoColor=white" alt="Plain CSS">
-  <img src="https://img.shields.io/badge/Node.js-%E2%89%A522-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 22 oder neuer">
+  <img src="https://img.shields.io/badge/Node.js-%E2%89%A522.14-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node.js 22.14 oder neuer">
   <img src="https://img.shields.io/badge/Docker-2496ED?style=flat-square&logo=docker&logoColor=white" alt="Docker">
   <img src="https://img.shields.io/badge/Podman-892CA0?style=flat-square&logo=podman&logoColor=white" alt="Podman">
   <img src="https://img.shields.io/badge/PWA-5A0FC8?style=flat-square&logo=pwa&logoColor=white" alt="PWA">

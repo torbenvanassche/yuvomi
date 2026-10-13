@@ -16,6 +16,10 @@ import { isWallModeEnabled, setWallModeEnabled } from '/utils/wall-mode.js';
 import {
   SCREENSAVER_IDLE_STEPS,
   getScreensaverIdleSeconds,
+  isScreensaverClockOn,
+  isScreensaverCoverOn,
+  setScreensaverClockOn,
+  setScreensaverCoverOn,
   setScreensaverIdleSeconds,
 } from '/utils/screensaver-idle.js';
 import { setDisplayTimeZone } from '/utils/timezone.js';
@@ -43,6 +47,7 @@ const DATE_FORMATS = [
   ['mdy', 'MM/DD/YYYY'],
   ['dmy', 'DD.MM.YYYY'],
   ['dmy_slash', 'DD/MM/YYYY'],
+  ['dmy_dash', 'DD-MM-YYYY'],
   ['ymd', 'YYYY-MM-DD'],
   ['mdy_dot', 'MM.DD.YYYY'],
   ['ymd_dot', 'YYYY.MM.DD'],
@@ -209,10 +214,25 @@ function screensaverIdleText(seconds) {
   return formatUnit(seconds / 60, 'minute', { unitDisplay: 'long' });
 }
 
-function screensaverIdleOptions() {
+// Exported so test:screensaver-idle can check the select opens on the stored
+// value.
+export function screensaverIdleOptions() {
   const current = getScreensaverIdleSeconds();
   return SCREENSAVER_IDLE_STEPS.map((seconds) => `
     <option value="${seconds}"${seconds === current ? ' selected' : ''}>${esc(screensaverIdleText(seconds))}</option>`).join('');
+}
+
+/**
+ * The clock and full-bleed switches (#1766). Device-local like the select
+ * above; the screensaver reads both when it next starts, which is what the
+ * toast says, since nothing on this page changes visibly. Exported so
+ * test:screensaver-device can drive the real handler.
+ */
+export function bindScreensaverSwitch(toggle, store) {
+  toggle?.addEventListener('change', () => {
+    store(toggle.checked);
+    window.yuvomi?.showToast(t('settings.screensaverDeviceSaved'), 'success');
+  });
 }
 
 /**
@@ -313,6 +333,23 @@ function renderPage(container, preferences, isAdmin) {
           control: `<select class="form-input" id="screensaver-idle-select" aria-describedby="screensaver-idle-hint">
             ${screensaverIdleOptions()}
           </select>`,
+        })}
+        <!-- What the screensaver shows, on this device too (#1766). -->
+        ${settingSwitchRowHtml({
+          label: t('settings.screensaverClockLabel'),
+          checked: isScreensaverClockOn(),
+          icon: 'clock',
+          description: t('settings.screensaverClockHint'),
+          descriptionId: 'screensaver-clock-hint',
+          attrs: { id: 'screensaver-clock-toggle', 'aria-describedby': 'screensaver-clock-hint' },
+        })}
+        ${settingSwitchRowHtml({
+          label: t('settings.screensaverCoverLabel'),
+          checked: isScreensaverCoverOn(),
+          icon: 'maximize',
+          description: t('settings.screensaverCoverHint'),
+          descriptionId: 'screensaver-cover-hint',
+          attrs: { id: 'screensaver-cover-toggle', 'aria-describedby': 'screensaver-cover-hint' },
         })}
       </div>
     </section>
@@ -601,8 +638,13 @@ function bindEvents(container, user) {
   });
 
   bindScreensaverIdleSelect(container.querySelector('#screensaver-idle-select'));
+  bindScreensaverSwitch(container.querySelector('#screensaver-clock-toggle'), setScreensaverClockOn);
+  bindScreensaverSwitch(container.querySelector('#screensaver-cover-toggle'), setScreensaverCoverOn);
 
   const localeSelect = container.querySelector('#locale-select');
+  // Die Auswahl, die wirklich gilt (auch "System") - dorthin geht ein
+  // gescheiterter Wechsel zurueck.
+  const appliedLocaleChoice = localeSelect?.value;
   localeSelect?.addEventListener('change', async () => {
     const errorElement = container.querySelector('#locale-error');
     clearError(errorElement);
@@ -616,8 +658,13 @@ function bindEvents(container, user) {
       const locale = localeSelect.value;
       await setLocale(locale);
       await render(container, { user });
-    } catch (error) {
-      showError(errorElement, error.message);
+    } catch {
+      // Die Sprachdatei kam nicht (offline, und dieses Geraet hat die Sprache
+      // nie geladen). setLocale() hat dann nichts umgestellt - die Auswahl geht
+      // zurueck auf die Sprache, die wirklich gilt, und die Zeile sagt warum.
+      // Vorher stand hier der Parserfehler der Offline-Seite im Wortlaut.
+      localeSelect.value = appliedLocaleChoice;
+      showError(errorElement, t('common.errorOffline'));
     } finally {
       if (localeSelect.isConnected) localeSelect.disabled = false;
     }

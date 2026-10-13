@@ -7,7 +7,7 @@
 import { api } from '/api.js';
 import { openModal as openSharedModal, closeModal, btnError, advancedSection, reportFieldError } from '/components/modal.js';
 import { wireCategoryScopeHelp } from '/components/category-manager.js';
-import { stagger, vibrate, scheduleUndoableDelete, wireScrollFade } from '/utils/ux.js';
+import { stagger, vibrate, scheduleUndoableDelete, wireScrollFade, acknowledgeCheck } from '/utils/ux.js';
 import { redrawList } from '/utils/list-motion.js';
 import { t } from '/i18n.js';
 import { esc, renderMarkdownLight } from '/utils/html.js';
@@ -200,6 +200,7 @@ async function toggleCheck(noteId, box) {
   }
 
   paintCheck(noteId, line, checked);
+  acknowledgeCheck(box, { checked });
   vibrate(10);
 
   try {
@@ -232,7 +233,7 @@ export async function render(container, { user, signal }) {
 
   container.replaceChildren();
   // Modus `full`, nicht `reading`: das Masonry-Raster reflowt nach seinem
-  // EIGENEN Platz (bis fuenf Spalten ab 1200px Container, notes.css) und ist
+  // EIGENEN Platz (bis vier Spalten ab 1200px Container, notes.css) und ist
   // die Seite. Ein Lesemass wuerde entweder den Kopf bei 720px enden lassen,
   // waehrend das Raster daneben weiterlaeuft, oder das Raster auf zwei bis drei
   // Spalten stutzen. Kopf und Koerper enden deshalb beide an der Nutzbreite.
@@ -341,6 +342,7 @@ export async function render(container, { user, signal }) {
   });
 
   renderNotesAndFilters();
+  openNoteFromQuery();
 
   const filterFade = wireScrollFade(container.querySelector('#notes-filters'));
   signal?.addEventListener('abort', () => filterFade.destroy(), { once: true });
@@ -822,6 +824,40 @@ function renderCategoryEditor(selectedIds = []) {
 }
 
 /**
+ * Loest `?open=<id>` ein (#1821): die Suche und die Notizzeile der Uebersicht
+ * nennen EINE Notiz, also geht sie auf - derselbe Weg wie der Tipp auf ihre
+ * Karte (Leseansicht zuerst, bei Nur-lesen nur sie). Bis hierher las diese
+ * Seite den Parameter nie: der Treffer landete auf der Liste.
+ *
+ * Gesucht wird in ALLEN geladenen Notizen, nicht in der gefilterten Ansicht -
+ * ein gemerkter Filter darf den Link nicht verschlucken. Eine Notiz, die es
+ * nicht (mehr) gibt oder die diese Person nicht sieht, steht nicht in der
+ * Antwort: dann bleibt die Liste, ohne Fehler.
+ *
+ * Der Parameter verlaesst danach die Adresse. Die Notiz wohnt in einem Dialog,
+ * nicht in einer Spalte - bliebe er stehen, schluege sie bei jedem Zurueck auf
+ * diese Seite und bei jedem Neuladen wieder auf. Die uebrigen Parameter und
+ * der Anker bleiben, wie sie sind.
+ *
+ * Nur Ziffern gelten als Id: `5e0` und `0x5` sind fuer `Number()` auch 5,
+ * gemeint ist damit keine Notiz.
+ */
+function openNoteFromQuery(loc = window.location, hist = window.history) {
+  const params = new URLSearchParams(loc.search ?? '');
+  const raw = params.get('open');
+  if (raw === null) return false;
+  params.delete('open');
+  const rest = params.toString();
+  const path = `${loc.pathname}${rest ? `?${rest}` : ''}${loc.hash ?? ''}`;
+  if (typeof hist?.replaceState === 'function') hist.replaceState({ ...(hist.state ?? {}), path }, '', path);
+  if (!/^\d+$/.test(raw)) return false;
+  const note = state.notes.find((n) => n.id === Number(raw));
+  if (!note) return false;
+  openNoteModal({ mode: 'edit', note });
+  return true;
+}
+
+/**
  * Der Zettel bei `notes: read`: Leseansicht, sonst nichts.
  *
  * Warum ein eigener Dialog und nicht der bestehende mit abgeschalteten Teilen:
@@ -1013,7 +1049,13 @@ function openNoteModal({ mode, note = null }) {
         // Im Lese-Modus steht rechts "Bearbeiten" als Primaerknopf: sonst war
         // "Loeschen" die einzige und damit lauteste Fussaktion (Critique
         // 2026-09-26) - die zerstoerende Handlung als Hauptweg.
+        // Der Umschalter verschwindet in der Leseansicht (notes.css, EIN Weg
+        // zum Bearbeiten). Stand der Fokus auf seinem Reiter "Lesen", fiele
+        // er mit dem Reiter auf <body> - er geht auf den Knopf, der jetzt
+        // der Weg zurueck ist.
+        const focusWasOnSwitch = view === 'read' && modeSwitch?.contains(document.activeElement);
         syncFooter(view);
+        if (focusWasOnSwitch) (panel.querySelector('#note-modal-edit') ?? readPane).focus();
         modeTabs.forEach((b) => {
           const on = b.dataset.view === view;
           b.classList.toggle('sub-tab--active', on);
@@ -1552,4 +1594,6 @@ export const __test = {
   // welchen Inhalt der Zettel bekommt, sieht nur der, der `openModal` die
   // Optionen abnimmt.
   openNoteModal,
+  // #1821: der Tiefenlink `?open=<id>` wird am Programm gemessen.
+  openNoteFromQuery,
 };
