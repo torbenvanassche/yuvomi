@@ -15,7 +15,7 @@
  *        Regel "ein Ehemaliger kommt auf keinem Weg mehr hinein" ist eine
  *        Aussage ueber jeden Weg, und jeder Weg ist deshalb ein eigener Test -
  *        Passwort, SSO (per `sub` und per Adresse), API-Token, bestehende
- *        Sitzung, die fuenf Abo-Adressen, die Stellvertretung am Wandtablett,
+ *        Sitzung, die sechs Abo-Adressen, die Stellvertretung am Wandtablett,
  *        der Passwort-Reset. Dazu die Zustellung: Push, Mail, Kanaele.
  *
  *        Wie der Anbieter hineinkommt: `openid-client` wird per `mock.module`
@@ -421,7 +421,7 @@ test('bestehende Sitzung, auch wenn ihre Zeile noch dasteht: 401', async () => {
   assert.equal((await u.call('POST', '/tasks', { title: 'von einem Ehemaligen' })).status, 401);
   // Und keine der Routen, die ein Abo-Token ausstellen, laesst sich damit
   // erreichen: die geloeschten Adressen entstehen nicht neu.
-  for (const path of ['/calendar/feed', '/schedule/feed', '/inventory/deadlines-feed', '/health/cycle/feed', '/waste/feed']) {
+  for (const path of ['/calendar/feed', '/birthdays/feed', '/schedule/feed', '/inventory/deadlines-feed', '/health/cycle/feed', '/waste/feed']) {
     assert.equal((await u.call('GET', path)).status, 401, path);
     assert.equal((await u.call('POST', `${path}/regenerate`)).status, 401, `${path}/regenerate`);
   }

@@ -10,7 +10,7 @@
  * an der eigenen users-Zeile (calendar_feed_token, Migration 61;
  * inventory_deadlines_feed_token, Migration 144; cycle_feed_token,
  * Migration 180; schedule_feed_token, Migration 183; waste_feed_token;
- * birthday_feed_token, Migration 247), und alle sechs Routen
+ * birthday_feed_token, Migration 249), und alle sechs Routen
  * tragen serverseitig bewusst keinen
  * Admin-Check. Die ersten beiden lagen trotzdem auf `sync-calendar`, das
  * adminOnly ist - in einem Haushalt mit fuenf Mitgliedern konnte also genau
@@ -42,22 +42,11 @@
 import { api } from '/api.js';
 import { t } from '/i18n.js';
 import { esc } from '/utils/html.js';
-import { confirmModal, promptModal } from '/components/modal.js';
+import { confirmModal } from '/components/modal.js';
 import { createInlineError, settingSwitchRowHtml, toggleRowHtml } from '/settings/components.js';
 
 function showToast(message, tone = 'default') {
   window.yuvomi?.showToast(message, tone);
-}
-
-export async function copyFeedUrl(url, label) {
-  try {
-    if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(url);
-      return true;
-    }
-  } catch { /* Keep the URL available on HTTP and when clipboard access is denied. */ }
-  await promptModal(label, url);
-  return false;
 }
 
 /**
@@ -74,7 +63,7 @@ export const FEEDS = Object.freeze({
       title: () => t('settings.birthdayFeedTitle'),
       description: () => t('settings.birthdayFeedDescription'),
       urlLabel: () => t('settings.feedExportUrlLabel'),
-      hint: () => t('settings.birthdayFeedDescription') + ' ' + t('settings.feedExportHint'),
+      hint: () => t('settings.birthdayFeedHint'),
       copy: () => t('settings.feedExportCopy'),
       copied: () => t('settings.feedExportCopied'),
       subscribe: () => t('settings.feedExportSubscribe'),
@@ -300,7 +289,8 @@ async function loadFeed(host, part) {
 
   host.querySelector('[data-feed-copy]')?.addEventListener('click', async () => {
     try {
-      if (await copyFeedUrl(data.url, feed.text.urlLabel())) showToast(feed.text.copied(), 'success');
+      await navigator.clipboard?.writeText(data.url);
+      showToast(feed.text.copied(), 'success');
     } catch (err) {
       showToast(err.message || t('common.errorGeneric'), 'danger');
     }

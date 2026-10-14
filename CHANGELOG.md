@@ -9,14 +9,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Birthday calendar export.** Settings → Calendar includes an independent ICS subscription for all
-  saved birthdays and name days, including records with reminders disabled. Subscribe using any calendar app
+- **Birthdays and name days have their own calendar feed.** Settings → Calendar includes an
+  independent ICS subscription for all saved birthdays and name days, including records with reminders disabled. Subscribe using any calendar app
   or service that supports ICS. The feed uses yearly all-day events and can be rotated or disabled
   without changing other calendar subscriptions. A personal "Include birthdays" switch on the
   existing calendar feed is on by default; turn it off when using both feeds to avoid duplicates.
 
 ### Fixed
 
+- **A synced "last day of the month" series keeps the date you entered after the next sync**
+  (#1956). A series created in Yuvomi from a date in the middle of the month is sent to Google,
+  CalDAV or Apple Calendar with a start its rule accepts: entered on 15 January, it starts on 31
+  January over there. The next sync read that start back and wrote it into Yuvomi: the event then
+  showed 31 January as its start, and its reminders moved with it by 16 days, although nobody had
+  changed anything in the other calendar. Yuvomi now remembers what it sent. When the other
+  calendar returns exactly that and the event was not changed in Yuvomi since, the entered start,
+  end, repeat rule and time zone stay, and so do the reminders; a title changed over there still
+  comes in. Any other change in the other calendar is taken over as before. A series whose
+  start already came back before this update keeps that start: the date entered back then is not
+  known any more. A repeat rule sent back by an API client with its values in another order
+  (`BYDAY=TU,MO` for `BYDAY=MO,TU`) no longer counts as a rule written in Yuvomi.
+- **A timed series that ends on a date ends on the same occurrence in Google as in Yuvomi** (#1974).
+  When a series with a time of day ends on a date - for example after "this and all following"
+  cut it off - Yuvomi shows it up to and including that day in your time zone. Google got the end
+  of that day in UTC instead. East of UTC Google could show one occurrence more (a daily 00:30 in
+  Berlin also on the morning after the last day), west of UTC one fewer (a daily 23:30 in Los
+  Angeles was missing on the last day). The end now goes to Google as the end of that day in the
+  time zone the series is sent with. This applies to what is sent from now on: once Google's
+  answer has come back into Yuvomi, a series keeps the end both sides already agree on.
+- **Waste collection: the source dialog says why the last refresh failed in your language**
+  (#1909). The dialog of a calendar address showed the server's own English text of the last
+  failed refresh, for example "No calendar entries in the response". It now shows the same
+  sentence the manual refresh shows, in the language of the app: no calendar with entries came
+  from the address, the address answered with an error status, the calendar is too large, the
+  address is blocked or could not be reached. A source whose last failure happened before this
+  update shows the general sentence until its next refresh. For API clients: a source carries
+  `last_error_reason` and `last_error_params` next to `last_error` (the same `reason` and `params`
+  the refresh answer has), omitted for a caller without write access like `last_error` itself.
 - **A "last day of the month" series keeps its start date in Google, CalDAV and Apple Calendar after
   an edit** (#1935). A series you create in Yuvomi from a date in the middle of the month is sent
   with a start date its own rule accepts: entered on 15 January, it starts on 31 January over there.
@@ -36,6 +65,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   leaves start and end out of the save when you did not change them, and the stored time stays as
   it was. Setting a household time zone in Settings is still the way to make device and server
   agree on times you type in.
+- **Health: an error message is in your language and names the cause** (#1909). The health
+  pages showed the server's own sentence when something could not be saved or deleted, in German
+  or English whatever the app language, for example "Medikament nicht gefunden." when somebody
+  else in the household had deleted the medication in the meantime. Measurements, medications,
+  time slots, dose entries, lab reports and analytes, activities, preventive care, nutrition
+  entries, periods and day entries now say in the language of the app that the entry no longer
+  exists; an open dialog closes and the area fetches the current state by itself, also when a
+  deletion meets an entry that is gone. If the preventive care type chosen in an
+  open dialog was deleted in Settings, the dialog stays open with your input and offers the
+  current types. Importing period history names the cause when the text is too large, has only
+  a header row or holds too many periods. Any other failure shows the general message of the
+  place instead of the server's text. The same holds for preventive care types in Settings, where
+  deleting a type another admin already deleted simply succeeds. Not
+  covered: the list of invalid rows of a period import still shows the server's row messages.
+  For API clients: those answers of `/api/v1/health` carry a `reason` next to `error`
+  (`health_*_not_found`, `health_prevention_selected_type_not_found`,
+  `health_cycle_import_too_large`, `health_cycle_import_no_rows`,
+  `health_cycle_import_too_many_rows`, the import limits in `params`); status codes are unchanged,
+  and the `error` texts that were German are now English.
+- **A contact or shopping item that is already gone from a CalDAV or CardDAV server no longer
+  blocks its sync.** On servers where Yuvomi lists the contacts of an address book before
+  downloading them (#529, for example mailbox.org), one contact deleted in between made the whole
+  address book fail. A shopping item moved to another list kept waiting for the move when its
+  original had already been deleted on the server. Both came from servers that report a single
+  entry as "not found", as standard CalDAV and CardDAV servers do. Such an entry now counts as gone.
+  Any other refusal still stops the sync with its HTTP status, and an entry the server sends
+  without its content is an error, not an empty contact or event.
+
+### Security
+
+- **Reminder and task sync with CalDAV checks every request against the account's address**, as
+  event sync does since #1860. This applies to the sync run, the immediate update after an edit and
+  moving a shopping item between synced lists.
 
 ## [2.77.0] - 2026-10-14
 

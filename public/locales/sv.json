@@ -3175,7 +3175,8 @@
         "displayRemoveDeviceDetail": "Posten försvinner från listan för gott. Det går inte att ångra.",
         "displayRemoveDeviceActive": "Den här enheten är fortfarande parkopplad. Återkalla den först.",
         "feedExportIncludeBirthdays": "Inkludera födelsedagar",
-        "feedExportIncludeBirthdaysHint": "Stäng av när du prenumererar på det separata födelsedagsflödet för att undvika dubbla födelsedagar och namnsdagar."
+        "feedExportIncludeBirthdaysHint": "Stäng av när du prenumererar på det separata födelsedagsflödet för att undvika dubbla födelsedagar och namnsdagar.",
+        "birthdayFeedHint": "Alla med länken kan se alla sparade födelsedagar och namnsdagar i hushållet, även utan påminnelser. Använd den bara på dina egna enheter."
     },
     "login": {
         "tagline": "Välkommen tillbaka till din familjeplanerare.",
@@ -5433,7 +5434,23 @@
                 "kcal": "kcal",
                 "g": "g"
             }
-        }
+        },
+        "errorVitalGone": "Det här mätvärdet finns inte längre.",
+        "errorMedicationGone": "Den här medicinen finns inte längre.",
+        "errorScheduleGone": "Den här tidpunkten finns inte längre.",
+        "errorDoseGone": "Den här dosposten finns inte längre.",
+        "errorLabReportGone": "Det här provsvaret finns inte längre.",
+        "errorLabResultGone": "Den här analyten finns inte längre.",
+        "errorActivityGone": "Den här aktiviteten finns inte längre.",
+        "errorPreventionTypeGone": "Den här typen av förebyggande vård finns inte längre.",
+        "errorSelectedPreventionTypeGone": "Den valda typen finns inte längre.",
+        "errorPreventionRecordGone": "Den här posten för förebyggande vård finns inte längre.",
+        "errorNutritionEntryGone": "Den här posten finns inte längre.",
+        "errorPeriodGone": "Den här mensen finns inte längre.",
+        "errorCycleDayGone": "Den här dagsposten finns inte längre.",
+        "errorCycleImportTooLarge": "Texten är större än {{limit_kb}} KB. Importera menscyklerna i mindre delar.",
+        "errorCycleImportNoRows": "Filen har bara en rubrikrad och ingen mens.",
+        "errorCycleImportTooManyRows": "En import får innehålla högst {{limit}} menscykler. Dela upp filen."
     },
     "waste": {
         "title": "Avfallshämtning",

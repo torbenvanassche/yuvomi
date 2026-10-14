@@ -7,6 +7,7 @@ process.env.DB_PATH = ':memory:';
 process.env.SESSION_SECRET = 'birthday-feed-test';
 const { get } = await import('../server/db.js');
 const feed = await import('../server/services/birthday-ics.js');
+const { nextOccurrenceAfter } = await import('../server/services/recurrence.js');
 const calendarFeed = await import('../server/services/ics-export.js');
 const { default: calendarFeedRouter } = await import('../server/routes/calendar/feed.js');
 const { MIGRATIONS, migrate } = await import('../server/db.js');
@@ -173,4 +174,41 @@ test('birthday feed migration leaves existing calendar subscriptions enabled and
       { calendar_feed_token: 'existing-token', birthday_feed_token: null, calendar_feed_include_birthdays: 1 });
     assert.throws(() => database.prepare('UPDATE users SET calendar_feed_include_birthdays=2').run(), /CHECK constraint/);
   } finally { database.close(); }
+});
+
+
+test('February 29 birthday and name-day feeds recur on the last day of February every year', async () => {
+  actor = ids[0];
+  const created = await call('POST', '/birthdays', { name: 'Leap-day pair', birth_date: '1984-02-29', name_day: '02-29', reminder_offset: '' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const id = created.body.data.id;
+  const events = feed.buildBirthdayFeed(db).split('BEGIN:VEVENT\r\n');
+  for (const kind of ['birthday', 'name-day']) {
+    const event = events.find(block => block.startsWith('UID:' + kind + '-' + id + '@yuvomi\r\n'));
+    assert.ok(event, kind + ' is exported');
+    assert.match(event, /DTSTART;VALUE=DATE:20000229\r\nDTEND;VALUE=DATE:20000301/);
+    const rule = event.match(/RRULE:([^\r\n]+)/)[1];
+    assert.equal(rule, 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1');
+    for (const [year, day] of [[2023, '28'], [2024, '29'], [2100, '28'], [2400, '29']]) {
+      assert.equal(nextOccurrenceAfter('2000-02-29', rule, year + '-01-01', { seriesStart: '2000-02-29' }), year + '-02-' + day);
+    }
+  }
+});
+
+
+test('birthday token lookup rejects mismatches and unequal byte lengths and excludes deactivated owners', () => {
+  const first = feed.regenerateFeedToken(db, ids[0]);
+  const second = feed.regenerateFeedToken(db, ids[1]);
+  assert.equal(feed.findUserIdByFeedToken(db, first), ids[0]);
+  assert.equal(feed.findUserIdByFeedToken(db, second), ids[1]);
+  const changedFirst = (first[0] === 'A' ? 'B' : 'A') + first.slice(1);
+  const changedLast = first.slice(0, -1) + (first.at(-1) === 'A' ? 'B' : 'A');
+  for (const candidate of [null, '', first.slice(1), first + 'x', changedFirst, changedLast, 'é'.repeat(first.length)]) {
+    assert.equal(feed.findUserIdByFeedToken(db, candidate), null);
+  }
+  db.prepare("UPDATE users SET deactivated_at = '2035-01-01T00:00:00Z' WHERE id = ?").run(ids[1]);
+  try {
+    assert.equal(feed.findUserIdByFeedToken(db, second), null);
+    assert.equal(feed.findUserIdByFeedToken(db, first), ids[0]);
+  } finally { db.prepare('UPDATE users SET deactivated_at = NULL WHERE id = ?').run(ids[1]); }
 });

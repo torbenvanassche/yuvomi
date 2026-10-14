@@ -1,5 +1,5 @@
 /** Independent birthday subscriptions; reminders do not control this export. */
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import { escapeICSText, foldLine } from './ics-export.js';
 import { eventTitle, nameDayEventTitle } from './birthdays.js';
 import { activeAccountSql } from './account-state.js';
@@ -26,7 +26,8 @@ export function buildBirthdayFeed(database, now = new Date()) {
       lines.push('BEGIN:VEVENT', `UID:${entry.kind}-${birthday.id}@yuvomi`, `DTSTAMP:${stamp}`,
         `DTSTART;VALUE=DATE:${date.replace(/-/g, '')}`,
         `DTEND;VALUE=DATE:${parsed.toISOString().slice(0, 10).replace(/-/g, '')}`,
-        'RRULE:FREQ=YEARLY;INTERVAL=1', 'TRANSP:TRANSPARENT',
+        entry.day === '02-29' ? 'RRULE:FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=-1'
+          : 'RRULE:FREQ=YEARLY;INTERVAL=1', 'TRANSP:TRANSPARENT',
         `SUMMARY:${escapeICSText(entry.title)}`, 'END:VEVENT');
     }
   }
@@ -50,6 +51,11 @@ export function clearFeedToken(database, userId) {
 
 export function findUserIdByFeedToken(database, token) {
   if (!token) return null;
-  return database.prepare(`SELECT id FROM users WHERE birthday_feed_token = ? AND ${activeAccountSql('users')}`)
-    .get(token)?.id ?? null;
+  // Match the calendar and waste feeds: compare equal-length buffers, not SQL strings.
+  const candidate = Buffer.from(token, 'utf8');
+  for (const row of database.prepare(`SELECT id, birthday_feed_token AS t FROM users WHERE birthday_feed_token IS NOT NULL AND ${activeAccountSql('users')}`).all()) {
+    const stored = Buffer.from(row.t, 'utf8');
+    if (stored.length === candidate.length && timingSafeEqual(stored, candidate)) return row.id;
+  }
+  return null;
 }

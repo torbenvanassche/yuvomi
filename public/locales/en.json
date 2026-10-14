@@ -3175,7 +3175,8 @@
         "displayRemoveDeviceDetail": "The entry disappears from the list for good. This cannot be undone.",
         "displayRemoveDeviceActive": "This device is still paired. Revoke it first.",
         "feedExportIncludeBirthdays": "Include birthdays",
-        "feedExportIncludeBirthdaysHint": "Turn this off when you subscribe to the separate birthday feed to avoid duplicate birthdays and name days."
+        "feedExportIncludeBirthdaysHint": "Turn this off when you subscribe to the separate birthday feed to avoid duplicate birthdays and name days.",
+        "birthdayFeedHint": "Anyone with this link can see every birthday and name day saved in the household, including those with reminders off. Only use it on your own devices."
     },
     "login": {
         "tagline": "Welcome back to your family planner.",
@@ -5433,7 +5434,23 @@
                 "kcal": "kcal",
                 "g": "g"
             }
-        }
+        },
+        "errorVitalGone": "This measurement no longer exists.",
+        "errorMedicationGone": "This medication no longer exists.",
+        "errorScheduleGone": "This time slot no longer exists.",
+        "errorDoseGone": "This dose entry no longer exists.",
+        "errorLabReportGone": "This report no longer exists.",
+        "errorLabResultGone": "This analyte no longer exists.",
+        "errorActivityGone": "This activity no longer exists.",
+        "errorPreventionTypeGone": "This preventive care type no longer exists.",
+        "errorSelectedPreventionTypeGone": "The chosen type no longer exists.",
+        "errorPreventionRecordGone": "This preventive care entry no longer exists.",
+        "errorNutritionEntryGone": "This entry no longer exists.",
+        "errorPeriodGone": "This period no longer exists.",
+        "errorCycleDayGone": "This day entry no longer exists.",
+        "errorCycleImportTooLarge": "The text is larger than {{limit_kb}} KB. Import the periods in smaller parts.",
+        "errorCycleImportNoRows": "The file only has a header row and no periods.",
+        "errorCycleImportTooManyRows": "An import can hold at most {{limit}} periods. Split the file."
     },
     "waste": {
         "title": "Waste collection",

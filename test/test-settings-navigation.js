@@ -312,8 +312,7 @@ test('Gravatar: jeder Grund, den die Route nennen kann, hat seinen Satz, 429 lie
   // das gespeicherte Bild in Vorschau und Seitenleiste - und speichert NICHT
   // noch einmal: der Server hat es schon, ein zweites Save waere eine Luege
   // an den Nutzer ("ungespeichert").
-  // Source assertions use LF syntax on Windows checkouts too.
-  const source = (await readFile(new URL('../public/settings/pages/personal-account.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
+  const source = await readFile(new URL('../public/settings/pages/personal-account.js', import.meta.url), 'utf8');
   const start = source.indexOf("container.querySelector('#profile-avatar-gravatar')");
   const end = source.indexOf("const profileForm = container.querySelector('#profile-form')");
   assert.ok(start > 0 && end > start, 'der Handler steht vor dem Formular-Submit');
@@ -4050,35 +4049,14 @@ test('Eigenes Modul: die Dateigroesse folgt der Locale', async () => {
 });
 
 
-test('birthday subscription has independent controls and copying exposes its URL on HTTP or clipboard denial', async () => {
-  const { FEEDS, copyFeedUrl } = await import('../public/settings/pages/personal-feeds.js');
+test('birthday subscription belongs to calendar settings and explains its household-wide contents under the link', async () => {
+  const { FEEDS } = await import('../public/settings/pages/personal-feeds.js');
   assert.equal(FEEDS.birthdays.path, '/birthdays/feed');
+  assert.equal(FEEDS.birthdays.text.hint(), 'settings.birthdayFeedHint');
   const section = SETTINGS_SECTIONS.find(item => item.id === 'feed-birthdays');
   assert.equal(section.props.part, 'birthdays');
+  assert.equal(section.sheetId, 'module-calendar');
   assert.equal(section.adminOnly, false);
-  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
-  const previousPrompt = globalThis.__promptModal;
-  const prompts = [], copies = [];
-  globalThis.__promptModal = (...args) => { prompts.push(args); return null; };
-  const url = 'http://lan/feed/birthdays/secret.ics';
-  try {
-    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
-    assert.equal(await copyFeedUrl(url, 'Feed URL'), false);
-    assert.deepEqual(prompts.pop(), ['Feed URL', url]);
-    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: {
-      writeText: async value => { copies.push(value); },
-    } } });
-    assert.equal(await copyFeedUrl(url, 'Feed URL'), true);
-    assert.deepEqual(copies, [url]);
-    globalThis.navigator.clipboard.writeText = async () => { throw new Error('Permission denied'); };
-    assert.equal(await copyFeedUrl(url, 'Feed URL'), false);
-    assert.deepEqual(prompts.pop(), ['Feed URL', url]);
-  } finally {
-    if (previousNavigator) Object.defineProperty(globalThis, 'navigator', previousNavigator);
-    else delete globalThis.navigator;
-    if (previousPrompt === undefined) delete globalThis.__promptModal;
-    else globalThis.__promptModal = previousPrompt;
-  }
 });
 
 

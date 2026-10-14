@@ -3175,7 +3175,8 @@
         "displayRemoveDeviceDetail": "La voce scompare dall'elenco in modo definitivo. L'operazione non può essere annullata.",
         "displayRemoveDeviceActive": "Questo dispositivo è ancora associato. Revocalo prima.",
         "feedExportIncludeBirthdays": "Includi compleanni",
-        "feedExportIncludeBirthdaysHint": "Disattiva questa opzione con un abbonamento separato ai compleanni per evitare compleanni e onomastici duplicati."
+        "feedExportIncludeBirthdaysHint": "Disattiva questa opzione con un abbonamento separato ai compleanni per evitare compleanni e onomastici duplicati.",
+        "birthdayFeedHint": "Chiunque abbia questo link può vedere tutti i compleanni e gli onomastici salvati nella famiglia, anche senza promemoria. Usalo solo sui tuoi dispositivi."
     },
     "login": {
         "tagline": "Bentornato nel tuo pianificatore familiare.",
@@ -5433,7 +5434,23 @@
                 "kcal": "kcal",
                 "g": "g"
             }
-        }
+        },
+        "errorVitalGone": "Questa misurazione non esiste più.",
+        "errorMedicationGone": "Questo farmaco non esiste più.",
+        "errorScheduleGone": "Questa fascia oraria non esiste più.",
+        "errorDoseGone": "Questa voce di assunzione non esiste più.",
+        "errorLabReportGone": "Questo referto non esiste più.",
+        "errorLabResultGone": "Questo analita non esiste più.",
+        "errorActivityGone": "Questa attività non esiste più.",
+        "errorPreventionTypeGone": "Questo tipo di prevenzione non esiste più.",
+        "errorSelectedPreventionTypeGone": "Il tipo scelto non esiste più.",
+        "errorPreventionRecordGone": "Questa voce di prevenzione non esiste più.",
+        "errorNutritionEntryGone": "Questa voce non esiste più.",
+        "errorPeriodGone": "Questo ciclo non esiste più.",
+        "errorCycleDayGone": "Questa voce del giorno non esiste più.",
+        "errorCycleImportTooLarge": "Il testo supera {{limit_kb}} KB. Importa i cicli in parti più piccole.",
+        "errorCycleImportNoRows": "Il file contiene solo la riga di intestazione e nessun ciclo.",
+        "errorCycleImportTooManyRows": "Un’importazione può contenere al massimo {{limit}} cicli. Dividi il file."
     },
     "waste": {
         "title": "Raccolta rifiuti",

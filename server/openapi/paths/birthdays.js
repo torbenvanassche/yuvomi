@@ -35,7 +35,7 @@ export function birthdaysPaths() {
     },
     '/api/v1/birthdays/feed': {
       get: op({ summary: 'Get own birthday ICS subscription link', tag: 'Birthdays',
-        description: 'The independent feed includes all saved birthdays, even with reminders disabled, and excludes other events and name days. Calendar and birthday feed tokens are separate.' }),
+        description: 'The independent feed includes all saved birthdays and name days, even with reminders disabled, and excludes unrelated calendar events. Calendar and birthday feed tokens are separate.' }),
       delete: op({ summary: 'Disable own birthday ICS subscription', tag: 'Birthdays', stateChanging: true }),
     },
     '/api/v1/birthdays/feed/regenerate': {

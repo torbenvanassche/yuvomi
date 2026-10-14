@@ -3189,7 +3189,8 @@
         "displayRemoveDeviceDetail": "항목이 목록에서 완전히 사라집니다. 이 작업은 되돌릴 수 없습니다.",
         "displayRemoveDeviceActive": "이 기기는 아직 페어링되어 있습니다. 먼저 해지하세요.",
         "feedExportIncludeBirthdays": "생일 포함",
-        "feedExportIncludeBirthdaysHint": "별도 생일 피드를 구독할 때 끄면 생일과 이름 기념일이 중복되지 않습니다."
+        "feedExportIncludeBirthdaysHint": "별도 생일 피드를 구독할 때 끄면 생일과 이름 기념일이 중복되지 않습니다.",
+        "birthdayFeedHint": "이 링크를 가진 사람은 알림이 꺼진 항목을 포함해 가구에 저장된 모든 생일과 이름 기념일을 볼 수 있습니다. 본인 기기에서만 사용하세요."
     },
     "login": {
         "tagline": "가족 플래너에 다시 오신 것을 환영합니다.",
@@ -5433,7 +5434,23 @@
                 "kcal": "kcal",
                 "g": "g"
             }
-        }
+        },
+        "errorVitalGone": "이 측정값은 더 이상 없습니다.",
+        "errorMedicationGone": "이 약은 더 이상 없습니다.",
+        "errorScheduleGone": "이 시간대는 더 이상 없습니다.",
+        "errorDoseGone": "이 복용 기록은 더 이상 없습니다.",
+        "errorLabReportGone": "이 소견은 더 이상 없습니다.",
+        "errorLabResultGone": "이 분석물질은 더 이상 없습니다.",
+        "errorActivityGone": "이 활동은 더 이상 없습니다.",
+        "errorPreventionTypeGone": "이 예방 관리 종류는 더 이상 없습니다.",
+        "errorSelectedPreventionTypeGone": "선택한 종류는 더 이상 없습니다.",
+        "errorPreventionRecordGone": "이 예방 관리 기록은 더 이상 없습니다.",
+        "errorNutritionEntryGone": "이 기록은 더 이상 없습니다.",
+        "errorPeriodGone": "이 생리 기간은 더 이상 없습니다.",
+        "errorCycleDayGone": "이 날의 기록은 더 이상 없습니다.",
+        "errorCycleImportTooLarge": "텍스트가 {{limit_kb}}KB보다 큽니다. 생리 기간을 더 작게 나누어 가져오세요.",
+        "errorCycleImportNoRows": "파일에 머리글 행만 있고 생리 기간이 없습니다.",
+        "errorCycleImportTooManyRows": "한 번에 최대 {{limit}}개의 생리 기간만 가져올 수 있습니다. 파일을 나누세요."
     },
     "waste": {
         "title": "쓰레기 수거",

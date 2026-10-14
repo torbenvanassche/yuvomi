@@ -3377,7 +3377,8 @@
         "displayRemoveDeviceDetail": "Запись исчезнет из списка навсегда. Это нельзя отменить.",
         "displayRemoveDeviceActive": "Это устройство ещё подключено. Сначала отзовите его.",
         "feedExportIncludeBirthdays": "Включать дни рождения",
-        "feedExportIncludeBirthdaysHint": "Отключите при отдельной подписке на дни рождения, чтобы дни рождения и именины не дублировались."
+        "feedExportIncludeBirthdaysHint": "Отключите при отдельной подписке на дни рождения, чтобы дни рождения и именины не дублировались.",
+        "birthdayFeedHint": "Любой, у кого есть эта ссылка, увидит все дни рождения и именины, сохранённые в семье, даже без напоминаний. Используйте её только на собственных устройствах."
     },
     "login": {
         "tagline": "С возвращением в ваш семейный планировщик.",
@@ -5691,7 +5692,23 @@
                 "kcal": "ккал",
                 "g": "г"
             }
-        }
+        },
+        "errorVitalGone": "Этого измерения больше нет.",
+        "errorMedicationGone": "Этого лекарства больше нет.",
+        "errorScheduleGone": "Этого времени приёма больше нет.",
+        "errorDoseGone": "Этой записи о приёме больше нет.",
+        "errorLabReportGone": "Этого результата больше нет.",
+        "errorLabResultGone": "Этого показателя больше нет.",
+        "errorActivityGone": "Этой активности больше нет.",
+        "errorPreventionTypeGone": "Этого вида профилактики больше нет.",
+        "errorSelectedPreventionTypeGone": "Выбранного вида больше нет.",
+        "errorPreventionRecordGone": "Этой записи о профилактике больше нет.",
+        "errorNutritionEntryGone": "Этой записи больше нет.",
+        "errorPeriodGone": "Этой менструации больше нет.",
+        "errorCycleDayGone": "Этой записи за день больше нет.",
+        "errorCycleImportTooLarge": "Текст больше {{limit_kb}} КБ. Импортируйте менструации частями поменьше.",
+        "errorCycleImportNoRows": "В файле только строка заголовка и нет ни одной менструации.",
+        "errorCycleImportTooManyRows": "В одном импорте может быть не более {{limit}} менструаций. Разделите файл."
     },
     "waste": {
         "title": "Вывоз мусора",

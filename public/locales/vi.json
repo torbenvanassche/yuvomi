@@ -3175,7 +3175,8 @@
         "displayRemoveDeviceDetail": "Mục này sẽ biến mất vĩnh viễn khỏi danh sách. Không thể hoàn tác.",
         "displayRemoveDeviceActive": "Thiết bị này vẫn đang ghép nối. Hãy thu hồi trước.",
         "feedExportIncludeBirthdays": "Bao gồm sinh nhật",
-        "feedExportIncludeBirthdaysHint": "Tắt khi đăng ký nguồn sinh nhật riêng để tránh trùng lặp sinh nhật và ngày tên."
+        "feedExportIncludeBirthdaysHint": "Tắt khi đăng ký nguồn sinh nhật riêng để tránh trùng lặp sinh nhật và ngày tên.",
+        "birthdayFeedHint": "Bất kỳ ai có liên kết này đều có thể xem tất cả sinh nhật và ngày tên đã lưu trong gia đình, kể cả khi tắt nhắc nhở. Chỉ dùng trên thiết bị của bạn."
     },
     "login": {
         "tagline": "Chào mừng bạn trở lại trình lập kế hoạch gia đình.",
@@ -5433,7 +5434,23 @@
                 "kcal": "kcal",
                 "g": "g"
             }
-        }
+        },
+        "errorVitalGone": "Chỉ số đo này không còn tồn tại.",
+        "errorMedicationGone": "Thuốc này không còn tồn tại.",
+        "errorScheduleGone": "Giờ này không còn tồn tại.",
+        "errorDoseGone": "Mục liều này không còn tồn tại.",
+        "errorLabReportGone": "Kết quả này không còn tồn tại.",
+        "errorLabResultGone": "Chỉ số này không còn tồn tại.",
+        "errorActivityGone": "Hoạt động này không còn tồn tại.",
+        "errorPreventionTypeGone": "Loại chăm sóc phòng ngừa này không còn tồn tại.",
+        "errorSelectedPreventionTypeGone": "Loại đã chọn không còn tồn tại.",
+        "errorPreventionRecordGone": "Mục chăm sóc phòng ngừa này không còn tồn tại.",
+        "errorNutritionEntryGone": "Mục này không còn tồn tại.",
+        "errorPeriodGone": "Kỳ kinh này không còn tồn tại.",
+        "errorCycleDayGone": "Mục của ngày này không còn tồn tại.",
+        "errorCycleImportTooLarge": "Văn bản lớn hơn {{limit_kb}} KB. Hãy nhập các kỳ kinh thành nhiều phần nhỏ hơn.",
+        "errorCycleImportNoRows": "Tệp chỉ có dòng tiêu đề và không có kỳ kinh nào.",
+        "errorCycleImportTooManyRows": "Mỗi lần nhập chỉ được tối đa {{limit}} kỳ kinh. Hãy chia nhỏ tệp."
     },
     "waste": {
         "title": "Thu gom rác",

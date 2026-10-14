@@ -3276,7 +3276,8 @@
         "displayRemoveDeviceDetail": "Záznam ze seznamu nadobro zmizí. Tuto akci nelze vzít zpět.",
         "displayRemoveDeviceActive": "Toto zařízení je stále spárované. Nejprve ho odvolejte.",
         "feedExportIncludeBirthdays": "Zahrnout narozeniny",
-        "feedExportIncludeBirthdaysHint": "Při samostatném odběru narozenin vypněte tuto možnost, aby se narozeniny a svátky nezobrazovaly dvakrát."
+        "feedExportIncludeBirthdaysHint": "Při samostatném odběru narozenin vypněte tuto možnost, aby se narozeniny a svátky nezobrazovaly dvakrát.",
+        "birthdayFeedHint": "Kdokoli s tímto odkazem uvidí všechny narozeniny a svátky uložené v domácnosti, i bez připomínek. Používejte jej pouze na vlastních zařízeních."
     },
     "login": {
         "tagline": "Vítejte zpět ve svém rodinném plánovači.",
@@ -5563,7 +5564,23 @@
                 "kcal": "kcal",
                 "g": "g"
             }
-        }
+        },
+        "errorVitalGone": "Toto měření už neexistuje.",
+        "errorMedicationGone": "Tento lék už neexistuje.",
+        "errorScheduleGone": "Tento čas už neexistuje.",
+        "errorDoseGone": "Tento záznam o dávce už neexistuje.",
+        "errorLabReportGone": "Tento nález už neexistuje.",
+        "errorLabResultGone": "Tento analyt už neexistuje.",
+        "errorActivityGone": "Tato aktivita už neexistuje.",
+        "errorPreventionTypeGone": "Tento typ prevence už neexistuje.",
+        "errorSelectedPreventionTypeGone": "Zvolený typ už neexistuje.",
+        "errorPreventionRecordGone": "Tento záznam prevence už neexistuje.",
+        "errorNutritionEntryGone": "Tento záznam už neexistuje.",
+        "errorPeriodGone": "Tato menstruace už neexistuje.",
+        "errorCycleDayGone": "Tento denní záznam už neexistuje.",
+        "errorCycleImportTooLarge": "Text je větší než {{limit_kb}} KB. Importuj menstruace po menších částech.",
+        "errorCycleImportNoRows": "Soubor obsahuje jen řádek záhlaví a žádné menstruace.",
+        "errorCycleImportTooManyRows": "Jeden import smí obsahovat nejvýše {{limit}} menstruací. Rozděl soubor."
     },
     "waste": {
         "title": "Svoz odpadu",
