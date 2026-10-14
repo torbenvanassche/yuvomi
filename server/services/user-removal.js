@@ -129,6 +129,7 @@ export const PRIVATE_USER_COLUMNS = new Set([
 /** Die fuenf Abo-Adressen, unter denen ein Konto ohne Anmeldung gelesen wird. */
 export const FEED_TOKEN_COLUMNS = [
   'calendar_feed_token',
+  'birthday_feed_token',
   'inventory_deadlines_feed_token',
   'cycle_feed_token',
   'schedule_feed_token',

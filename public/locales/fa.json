@@ -2365,6 +2365,10 @@
         "backupWebdavSaved": "پیکربندی WebDAV ذخیره شد.",
         "backupWebdavEnvHint": "این پیکربندی از طریق متغیرهای محیطی کنترل می‌شود و در اینجا قابل ویرایش نیست.",
         "caldavTitle": "تقویم CalDAV",
+        "birthdayFeedTitle": "خروجی تقویم تولدها",
+
+        "birthdayFeedDescription": "همه تولدهای ذخیره‌شده به صورت رویدادهای سالانه تمام‌روز، حتی بدون یادآوری. در هر برنامه تقویمی که از ICS پشتیبانی می‌کند مشترک شوید.",
+
         "feedExportTitle": "برون‌ریزی خوراک تقویم",
         "feedExportDescription": "تقویم Yuvomi خود را به‌صورت فقط‌خواندنی در Apple Calendar، Google Calendar یا Thunderbird مشترک شوید.",
         "feedExportInactive": "خوراک برون‌ریزی غیرفعال است.",

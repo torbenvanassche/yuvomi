@@ -2388,6 +2388,10 @@
         "backupWebdavSaved": "WebDAV-Konfiguration gespeichert.",
         "backupWebdavEnvHint": "Die Konfiguration wird über Umgebungsvariablen gesteuert und kann hier nicht bearbeitet werden.",
         "caldavTitle": "CalDAV Kalender",
+        "birthdayFeedTitle": "Geburtstagskalender exportieren",
+
+        "birthdayFeedDescription": "Alle gespeicherten Geburtstage als jährliche ganztägige Termine, auch ohne Erinnerungen. Abonniere den Feed in jeder Kalender-App, die ICS unterstützt.",
+
         "feedExportTitle": "Kalender-Feed exportieren",
         "feedExportDescription": "Abonniere deinen Yuvomi-Kalender schreibgeschützt in Apple Kalender, Google Kalender oder Thunderbird.",
         "feedExportInactive": "Der Export-Feed ist deaktiviert.",

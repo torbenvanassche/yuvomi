@@ -2388,6 +2388,10 @@
         "backupWebdavSaved": "Na-save ang pagsasaayos ng WebDAV.",
         "backupWebdavEnvHint": "Kinokontrol ng mga environment variable ang pagsasaayos at hindi ito mae-edit dito.",
         "caldavTitle": "Mga CalDAV na Kalendaryo",
+        "birthdayFeedTitle": "I-export ang kalendaryo ng kaarawan",
+
+        "birthdayFeedDescription": "Lahat ng naka-save na kaarawan bilang taunang buong-araw na kaganapan, kahit walang paalala. Mag-subscribe sa anumang calendar app na sumusuporta sa ICS.",
+
         "feedExportTitle": "I-export ang calendar feed",
         "feedExportDescription": "Mag-subscribe sa iyong kalendaryo sa Yuvomi nang babasahin lamang sa Apple Calendar, Google Calendar o Thunderbird.",
         "feedExportInactive": "Naka-disable ang export feed.",

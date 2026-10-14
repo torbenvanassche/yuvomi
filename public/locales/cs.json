@@ -2437,6 +2437,10 @@
         "backupWebdavSaved": "Konfigurace WebDAV uložena.",
         "backupWebdavEnvHint": "Konfigurace je řízena proměnnými prostředí a nelze ji zde upravovat.",
         "caldavTitle": "CalDAV kalendáře",
+        "birthdayFeedTitle": "Exportovat kalendář narozenin",
+
+        "birthdayFeedDescription": "Všechny uložené narozeniny jako každoroční celodenní události, i bez připomínek. Odebírejte v libovolné kalendářové aplikaci podporující ICS.",
+
         "feedExportTitle": "Exportovat kalendářní kanál",
         "feedExportDescription": "Přihlas se k odběru svého kalendáře Yuvomi pouze pro čtení v aplikaci Apple Kalendář, Google Kalendář nebo Thunderbird.",
         "feedExportInactive": "Exportní kanál je deaktivován.",

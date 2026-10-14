@@ -2288,6 +2288,10 @@
         "caldavSyncFailed": "CalDAV-synkronisering misslyckades",
         "caldavSyncSuccess": "CalDAV-synkroniseringen lyckades",
         "caldavTitle": "CalDAV-kalendrar",
+        "birthdayFeedTitle": "Exportera födelsedagskalender",
+
+        "birthdayFeedDescription": "Alla sparade födelsedagar som årliga heldagshändelser, även utan påminnelser. Prenumerera i valfri kalenderapp som stöder ICS.",
+
         "feedExportTitle": "Exportera kalenderflöde",
         "feedExportDescription": "Prenumerera skrivskyddat på din Yuvomi-kalender i Apple Kalender, Google Kalender eller Thunderbird.",
         "feedExportInactive": "Exportflödet är inaktiverat.",

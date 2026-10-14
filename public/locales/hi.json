@@ -2288,6 +2288,10 @@
         "caldavSyncFailed": "CalDAV सिंक विफल",
         "caldavSyncSuccess": "CalDAV सिंक सफल",
         "caldavTitle": "CalDAV कैलेंडर",
+        "birthdayFeedTitle": "जन्मदिन कैलेंडर निर्यात करें",
+
+        "birthdayFeedDescription": "सभी सहेजे गए जन्मदिन वार्षिक पूरे दिन के कार्यक्रमों के रूप में, बिना रिमाइंडर के भी। ICS का समर्थन करने वाले किसी भी कैलेंडर ऐप में सदस्यता लें।",
+
         "feedExportTitle": "कैलेंडर फ़ीड निर्यात करें",
         "feedExportDescription": "Apple कैलेंडर, Google कैलेंडर या Thunderbird में अपने Yuvomi कैलेंडर को केवल पढ़ने के लिए सब्सक्राइब करें।",
         "feedExportInactive": "निर्यात फ़ीड अक्षम है।",

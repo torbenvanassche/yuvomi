@@ -2458,6 +2458,10 @@
         "caldavSyncFailed": "Не удалось выполнить синхронизацию CalDAV",
         "caldavSyncSuccess": "Синхронизация CalDAV выполнена",
         "caldavTitle": "Календари CalDAV",
+        "birthdayFeedTitle": "Экспорт календаря дней рождения",
+
+        "birthdayFeedDescription": "Все сохранённые дни рождения как ежегодные события на весь день, даже без напоминаний. Подпишитесь в любом приложении календаря с поддержкой ICS.",
+
         "feedExportTitle": "Экспорт ленты календаря",
         "feedExportDescription": "Подпишитесь на свой календарь Yuvomi только для чтения в Apple Calendar, Google Calendar или Thunderbird.",
         "feedExportInactive": "Лента экспорта отключена.",

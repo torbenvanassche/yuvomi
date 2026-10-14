@@ -2255,6 +2255,10 @@
             "newCalendarNameLabel": "Új naptár neve",
             "errorNoCalendarName": "Adj meg egy nevet az új naptárhoz."
         },
+        "birthdayFeedTitle": "Születésnaptár exportálása",
+
+        "birthdayFeedDescription": "Minden mentett születésnap évente ismétlődő egész napos eseményként, emlékeztető nélkül is. Iratkozz fel bármely ICS-t támogató naptáralkalmazásban.",
+
         "feedExportTitle": "Naptár-feed exportálása",
         "feedExportDescription": "Iratkozzon fel a Yuvomi naptárára csak olvasható módban az Apple Naptárban, a Google Naptárban vagy a Thunderbirdben.",
         "feedExportInactive": "Az export feed ki van kapcsolva.",

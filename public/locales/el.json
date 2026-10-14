@@ -2288,6 +2288,10 @@
         "caldavSyncFailed": "Ο συγχρονισμός CalDAV απέτυχε",
         "caldavSyncSuccess": "Ο συγχρονισμός CalDAV ολοκληρώθηκε",
         "caldavTitle": "Ημερολόγια CalDAV",
+        "birthdayFeedTitle": "Εξαγωγή ημερολογίου γενεθλίων",
+
+        "birthdayFeedDescription": "Όλα τα αποθηκευμένα γενέθλια ως ετήσια ολοήμερα συμβάντα, ακόμη και χωρίς υπενθυμίσεις. Εγγραφείτε σε οποιαδήποτε εφαρμογή ημερολογίου που υποστηρίζει ICS.",
+
         "feedExportTitle": "Εξαγωγή ροής ημερολογίου",
         "feedExportDescription": "Εγγραφείτε στο ημερολόγιο Yuvomi σε λειτουργία μόνο ανάγνωσης στο Apple Calendar, Google Calendar ή Thunderbird.",
         "feedExportInactive": "Η ροή εξαγωγής είναι απενεργοποιημένη.",

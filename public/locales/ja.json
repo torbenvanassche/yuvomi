@@ -2288,6 +2288,10 @@
         "caldavSyncFailed": "CalDAV 同期に失敗しました",
         "caldavSyncSuccess": "CalDAV 同期が完了しました",
         "caldavTitle": "CalDAV カレンダー",
+        "birthdayFeedTitle": "誕生日カレンダーをエクスポート",
+
+        "birthdayFeedDescription": "保存されたすべての誕生日を毎年の終日イベントとして表示します。リマインダーがオフでも含まれます。ICS対応のカレンダーアプリで購読できます。",
+
         "feedExportTitle": "カレンダーフィードをエクスポート",
         "feedExportDescription": "Yuvomiカレンダーを読み取り専用でApple カレンダー、Googleカレンダー、Thunderbirdに登録できます。",
         "feedExportInactive": "エクスポートフィードは無効です。",

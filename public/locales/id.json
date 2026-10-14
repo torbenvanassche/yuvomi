@@ -2365,6 +2365,10 @@
         "backupWebdavSaved": "Konfigurasi WebDAV disimpan.",
         "backupWebdavEnvHint": "Konfigurasi dikendalikan melalui variabel lingkungan dan tidak dapat diubah di sini.",
         "caldavTitle": "Kalender CalDAV",
+        "birthdayFeedTitle": "Ekspor kalender ulang tahun",
+
+        "birthdayFeedDescription": "Semua ulang tahun tersimpan sebagai acara tahunan sepanjang hari, termasuk tanpa pengingat. Berlangganan melalui aplikasi kalender apa pun yang mendukung ICS.",
+
         "feedExportTitle": "Ekspor umpan kalender",
         "feedExportDescription": "Berlangganan kalender Yuvomi Anda hanya-baca di Apple Calendar, Google Calendar, atau Thunderbird.",
         "feedExportInactive": "Umpan ekspor dinonaktifkan.",

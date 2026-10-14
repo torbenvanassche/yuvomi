@@ -73,7 +73,7 @@ let LEGACY_DB_PATH; // null außer bei „managed" Layout
  */
 function migrateLegacyDbFile() {
   if (!LEGACY_DB_PATH) return;             // Custom-Pfad → keine Migration
-  if (existsSync(DB_PATH)) {
+  if (existsSync(DB_PATH)) {npm
     if (existsSync(LEGACY_DB_PATH)) {
       log.warn(
         `Both ${path.basename(DB_PATH)} and legacy ${path.basename(LEGACY_DB_PATH)} exist — ` +
@@ -10809,6 +10809,15 @@ const MIGRATIONS = [
       WHEN NEW.local_calendar_id IS NOT NULL AND (NEW.external_source IS NOT 'local'
         OR NEW.target_google_calendar_id IS NOT NULL OR NEW.target_caldav_account_id IS NOT NULL)
       BEGIN SELECT RAISE(ABORT, 'Local and sync calendars are mutually exclusive'); END;
+    `,
+  },
+  {
+    version: 246,
+    description: 'Birthdays: independently revocable ICS subscriptions',
+    up: `
+      ALTER TABLE users ADD COLUMN birthday_feed_token TEXT;
+      CREATE UNIQUE INDEX idx_users_birthday_feed_token ON users(birthday_feed_token)
+        WHERE birthday_feed_token IS NOT NULL;
     `,
   },
 ];

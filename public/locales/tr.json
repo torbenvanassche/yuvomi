@@ -2288,6 +2288,10 @@
         "caldavSyncFailed": "CalDAV eşitlemesi başarısız",
         "caldavSyncSuccess": "CalDAV eşitlemesi başarılı",
         "caldavTitle": "CalDAV takvimleri",
+        "birthdayFeedTitle": "Doğum günü takvimini dışa aktar",
+
+        "birthdayFeedDescription": "Hatırlatıcılar kapalı olsa da tüm kayıtlı doğum günleri yıllık tam günlük etkinlikler olarak gösterilir. ICS destekleyen herhangi bir takvim uygulamasından abone olun.",
+
         "feedExportTitle": "Takvim akışını dışa aktar",
         "feedExportDescription": "Yuvomi takvimine Apple Takvim, Google Takvim veya Thunderbird'de salt okunur olarak abone ol.",
         "feedExportInactive": "Dışa aktarma akışı devre dışı.",

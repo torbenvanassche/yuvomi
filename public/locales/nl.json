@@ -2325,6 +2325,10 @@
         "backupWebdavSaved": "WebDAV-configuratie opgeslagen.",
         "backupWebdavEnvHint": "De configuratie wordt beheerd via omgevingsvariabelen en kan hier niet worden bewerkt.",
         "caldavTitle": "CalDAV-kalenders",
+        "birthdayFeedTitle": "Verjaardagskalender exporteren",
+
+        "birthdayFeedDescription": "Alle opgeslagen verjaardagen als jaarlijkse gebeurtenissen van een hele dag, ook zonder herinneringen. Abonneer je in elke agenda-app die ICS ondersteunt.",
+
         "feedExportTitle": "Agenda-feed exporteren",
         "feedExportDescription": "Abonneer je alleen-lezen op je Yuvomi-agenda in Apple Agenda, Google Agenda of Thunderbird.",
         "feedExportInactive": "De exportfeed is uitgeschakeld.",

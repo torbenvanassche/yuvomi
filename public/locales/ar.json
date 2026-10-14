@@ -2544,6 +2544,10 @@
         "caldavSyncFailed": "فشلت مزامنة CalDAV",
         "caldavSyncSuccess": "نجحت مزامنة CalDAV",
         "caldavTitle": "تقويمات CalDAV",
+        "birthdayFeedTitle": "تصدير تقويم أعياد الميلاد",
+
+        "birthdayFeedDescription": "جميع أعياد الميلاد المحفوظة كأحداث سنوية طوال اليوم، حتى بدون تذكيرات. اشترك باستخدام أي تطبيق تقويم يدعم ICS.",
+
         "feedExportTitle": "تصدير تغذية التقويم",
         "feedExportDescription": "اشترك في تقويم Yuvomi الخاص بك للقراءة فقط في تقويم Apple أو تقويم Google أو Thunderbird.",
         "feedExportInactive": "تغذية التصدير معطّلة.",

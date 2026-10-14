@@ -2365,6 +2365,10 @@
         "backupWebdavSaved": "WebDAV 구성이 저장되었습니다.",
         "backupWebdavEnvHint": "이 구성은 환경 변수로 제어되며 여기서 편집할 수 없습니다.",
         "caldavTitle": "CalDAV 캘린더",
+        "birthdayFeedTitle": "생일 캘린더 내보내기",
+
+        "birthdayFeedDescription": "알림이 꺼진 생일을 포함해 저장된 모든 생일을 매년 반복되는 종일 일정으로 표시합니다. ICS를 지원하는 모든 캘린더 앱에서 구독할 수 있습니다.",
+
         "feedExportTitle": "캘린더 피드 내보내기",
         "feedExportDescription": "Apple 캘린더, Google 캘린더 또는 Thunderbird에서 Yuvomi 캘린더를 읽기 전용으로 구독하세요.",
         "feedExportInactive": "내보내기 피드가 비활성화되어 있습니다.",

@@ -312,7 +312,8 @@ test('Gravatar: jeder Grund, den die Route nennen kann, hat seinen Satz, 429 lie
   // das gespeicherte Bild in Vorschau und Seitenleiste - und speichert NICHT
   // noch einmal: der Server hat es schon, ein zweites Save waere eine Luege
   // an den Nutzer ("ungespeichert").
-  const source = await readFile(new URL('../public/settings/pages/personal-account.js', import.meta.url), 'utf8');
+  // Source assertions use LF syntax on Windows checkouts too.
+  const source = (await readFile(new URL('../public/settings/pages/personal-account.js', import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
   const start = source.indexOf("container.querySelector('#profile-avatar-gravatar')");
   const end = source.indexOf("const profileForm = container.querySelector('#profile-form')");
   assert.ok(start > 0 && end > start, 'der Handler steht vor dem Formular-Submit');
@@ -572,7 +573,7 @@ test('Mitglieder erreichen ihre eigenen Termin-Vorgaben', () => {
   const sheet = findSettingsLeaf('/settings/personal/calendar', member);
   assert.equal(sheet?.id, 'module-calendar');
   assert.deepEqual(settingsSheetSections(sheet, member).map((entry) => entry.id),
-    ['personal-calendar', 'personal-calendar-subscriptions', 'personal-feeds']);
+    ['personal-calendar', 'personal-calendar-subscriptions', 'personal-feeds', 'feed-birthdays']);
   // Der haushaltweite Teil bleibt adminOnly.
   assert.deepEqual(settingsSheetSections(sheet, admin).filter((entry) => entry.adminOnly).map((entry) => entry.id),
     ['modules-calendar', 'sync-calendar']);
@@ -3094,6 +3095,7 @@ test('R14: jeder Export steht im Blatt seines Moduls', async () => {
   assert.equal(home('personal-feeds').sheetId, 'module-calendar', 'der Kalender-Feed bleibt im Kalender');
   assert.equal(home('personal-feeds').props?.part, 'calendar');
   for (const [id, sheet, part] of [
+    ['feed-birthdays', 'module-calendar', 'birthdays'],
     ['feed-schedule', 'module-schedule', 'schedule'],
     ['feed-cycle', 'module-health', 'cycle'],
     ['feed-inventory', 'module-inventory', 'inventory'],
@@ -3279,9 +3281,9 @@ test('R16: ein Blatt mit mehr als drei Abschnitten fuehrt Sprungmarken auf seine
 
   const calendar = settingsSheetJumpTargets(sheet('module-calendar'), admin);
   assert.deepEqual(calendar.map((target) => target.id),
-    ['personal-calendar', 'personal-calendar-subscriptions', 'personal-feeds', 'modules-calendar', 'sync-calendar'],
+    ['personal-calendar', 'personal-calendar-subscriptions', 'personal-feeds', 'feed-birthdays', 'modules-calendar', 'sync-calendar'],
     'in der Reihenfolge des Blatts: erst "Fuer mich", dann der Haushalt');
-  assert.equal(calendar[4].url, '/settings/modules/calendar?section=sync-calendar', 'dasselbe Ziel wie die Umleitungen');
+  assert.equal(calendar[5].url, '/settings/modules/calendar?section=sync-calendar', 'dasselbe Ziel wie die Umleitungen');
   assert.equal(calendar[0].labelKey, 'settings.pageCalendarDefaults', 'die Marke heisst wie der Abschnitt in der Registry');
 
   // Drei Abschnitte sind ein Blick, keine Navigation.
@@ -3593,7 +3595,7 @@ test('R17: kein Einstellungsblatt rendert eine Karte mit genau einem Bedieneleme
     'personal-appearance', 'personal-notifications', 'admin-family', 'modules-countdowns',
     'personal-calendar', 'personal-feeds', 'modules-calendar', 'options-schedule', 'options-tasks',
     'options-budget', 'options-housekeeping', 'options-health', 'modules-rewards', 'personal-health',
-    'feed-schedule', 'feed-cycle', 'feed-inventory', 'feed-waste',
+    'feed-birthdays', 'feed-schedule', 'feed-cycle', 'feed-inventory', 'feed-waste',
   ];
   for (const id of GROUPED) {
     const html = rendered.get(id) ?? '';
@@ -4045,4 +4047,36 @@ test('Eigenes Modul: die Dateigroesse folgt der Locale', async () => {
   // Kein von Hand gebautes Kuerzel mehr.
   const src = await readFile(new URL('../public/settings/pages/modules-install.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, ''), /toFixed\(|['`] ?MB['`]|['`] ?KB['`]/);
+});
+
+
+test('birthday subscription has independent controls and copying exposes its URL on HTTP or clipboard denial', async () => {
+  const { FEEDS, copyFeedUrl } = await import('../public/settings/pages/personal-feeds.js');
+  assert.equal(FEEDS.birthdays.path, '/birthdays/feed');
+  const section = SETTINGS_SECTIONS.find(item => item.id === 'feed-birthdays');
+  assert.equal(section.props.part, 'birthdays');
+  assert.equal(section.adminOnly, false);
+  const previousNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const previousPrompt = globalThis.__promptModal;
+  const prompts = [], copies = [];
+  globalThis.__promptModal = (...args) => { prompts.push(args); return null; };
+  const url = 'http://lan/feed/birthdays/secret.ics';
+  try {
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: {} });
+    assert.equal(await copyFeedUrl(url, 'Feed URL'), false);
+    assert.deepEqual(prompts.pop(), ['Feed URL', url]);
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { clipboard: {
+      writeText: async value => { copies.push(value); },
+    } } });
+    assert.equal(await copyFeedUrl(url, 'Feed URL'), true);
+    assert.deepEqual(copies, [url]);
+    globalThis.navigator.clipboard.writeText = async () => { throw new Error('Permission denied'); };
+    assert.equal(await copyFeedUrl(url, 'Feed URL'), false);
+    assert.deepEqual(prompts.pop(), ['Feed URL', url]);
+  } finally {
+    if (previousNavigator) Object.defineProperty(globalThis, 'navigator', previousNavigator);
+    else delete globalThis.navigator;
+    if (previousPrompt === undefined) delete globalThis.__promptModal;
+    else globalThis.__promptModal = previousPrompt;
+  }
 });

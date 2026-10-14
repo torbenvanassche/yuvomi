@@ -2348,6 +2348,10 @@
         "backupWebdavSaved": "WebDAV configuration saved.",
         "backupWebdavEnvHint": "Configuration is controlled by environment variables and cannot be edited here.",
         "caldavTitle": "CalDAV Calendars",
+        "birthdayFeedTitle": "Birthday calendar export",
+
+        "birthdayFeedDescription": "All saved birthdays as yearly all-day events, including those with reminders off. Subscribe in any calendar app that supports ICS.",
+
         "feedExportTitle": "Export calendar feed",
         "feedExportDescription": "Subscribe to your Yuvomi calendar read-only in Apple Calendar, Google Calendar, or Thunderbird.",
         "feedExportInactive": "The export feed is disabled.",

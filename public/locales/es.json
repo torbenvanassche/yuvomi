@@ -2288,6 +2288,10 @@
         "caldavSyncFailed": "Error en la sincronización CalDAV",
         "caldavSyncSuccess": "Sincronización CalDAV correcta",
         "caldavTitle": "Calendarios CalDAV",
+        "birthdayFeedTitle": "Exportar calendario de cumpleaños",
+
+        "birthdayFeedDescription": "Todos los cumpleaños guardados como eventos anuales de todo el día, incluso sin recordatorios. Suscríbete desde cualquier aplicación de calendario compatible con ICS.",
+
         "feedExportTitle": "Exportar feed de calendario",
         "feedExportDescription": "Suscríbete a tu calendario de Yuvomi en modo solo lectura en Calendario de Apple, Google Calendar o Thunderbird.",
         "feedExportInactive": "El feed de exportación está desactivado.",

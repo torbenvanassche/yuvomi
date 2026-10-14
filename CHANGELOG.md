@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Birthday calendar export.** Settings → Calendar includes an independent ICS subscription for all
+  saved birthdays, including birthdays with reminders disabled. Subscribe using any calendar app
+  or service that supports ICS. The feed uses yearly all-day events and can be rotated or disabled
+  without changing other calendar subscriptions.
+
 ## [2.77.0] - 2026-10-14
 
 ### Added

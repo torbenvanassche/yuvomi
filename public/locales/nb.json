@@ -2348,6 +2348,10 @@
         "backupWebdavSaved": "WebDAV-konfigurasjon lagret.",
         "backupWebdavEnvHint": "Konfigurasjonen styres av miljøvariabler og kan ikke redigeres her.",
         "caldavTitle": "CalDAV-kalendere",
+        "birthdayFeedTitle": "Eksporter bursdagskalender",
+
+        "birthdayFeedDescription": "Alle lagrede bursdager som årlige heldagshendelser, også uten påminnelser. Abonner i enhver kalenderapp som støtter ICS.",
+
         "feedExportTitle": "Eksporter kalenderstrøm",
         "feedExportDescription": "Abonner på din Yuvomi-kalender i skrivebeskyttet modus i Apple Kalender, Google Kalender eller Thunderbird.",
         "feedExportInactive": "Eksportstrømmen er deaktivert.",

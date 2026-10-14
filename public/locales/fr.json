@@ -2288,6 +2288,10 @@
         "caldavSyncFailed": "Échec de la synchronisation CalDAV",
         "caldavSyncSuccess": "Synchronisation CalDAV réussie",
         "caldavTitle": "Agendas CalDAV",
+        "birthdayFeedTitle": "Exporter le calendrier des anniversaires",
+
+        "birthdayFeedDescription": "Tous les anniversaires enregistrés comme événements annuels sur toute la journée, même sans rappel. Abonnez-vous dans toute application de calendrier compatible avec ICS.",
+
         "feedExportTitle": "Exporter le flux calendrier",
         "feedExportDescription": "Abonnez-vous à votre calendrier Yuvomi en lecture seule dans Apple Calendrier, Google Agenda ou Thunderbird.",
         "feedExportInactive": "Le flux d'export est désactivé.",

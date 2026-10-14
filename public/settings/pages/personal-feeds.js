@@ -1,9 +1,10 @@
 /**
  * Modul: Feed-Abos (persoenlich)
- * Zweck: Die vier schreibgeschuetzten ICS-Feeds, mit denen eine Person
+ * Zweck: Die schreibgeschuetzten ICS-Feeds, mit denen eine Person
  *        Yuvomi-Daten in ihrem eigenen Kalenderprogramm abonniert - der
- *        Haushaltskalender, die Inventar-Fristen, der Zyklus und der eigene
- *        Schichtplan.
+ *        Haushaltskalender, Geburtstage, Inventar-Fristen, Zyklus, Schichtplan
+ *        und Abholungen. Geburtstage haben ein eigenes Token und werden
+ *        unabhaengig von ihren Erinnerungen exportiert.
  *
  * Warum ein eigenes Blatt und warum unter `personal`: alle vier Tokens haengen
  * an der eigenen users-Zeile (calendar_feed_token, Migration 61;
@@ -40,21 +41,49 @@
 import { api } from '/api.js';
 import { t } from '/i18n.js';
 import { esc } from '/utils/html.js';
-import { confirmModal } from '/components/modal.js';
+import { confirmModal, promptModal } from '/components/modal.js';
 import { createInlineError, settingSwitchRowHtml, toggleRowHtml } from '/settings/components.js';
 
 function showToast(message, tone = 'default') {
   window.yuvomi?.showToast(message, tone);
 }
 
+export async function copyFeedUrl(url, label) {
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+      return true;
+    }
+  } catch { /* Keep the URL available on HTTP and when clipboard access is denied. */ }
+  await promptModal(label, url);
+  return false;
+}
+
 /**
- * Die fuenf Feeds, jeder mit seinen Texten. Die Schluessel stehen hier
+ * Die sechs Feeds, jeder mit seinen Texten. Die Schluessel stehen hier
  * ausgeschrieben statt aus einem Praefix gebaut: die Wachen (test:settings-copy,
  * test:frontend-audit) lesen die t()-Aufrufe im Quelltext, und eine gebaute Adresse
  * saehen sie nicht. `path` ist die Route: GET liest, DELETE schaltet ab, POST
  * `<path>/regenerate` erzeugt die Adresse - beim ersten Mal heisst das "an".
  */
 export const FEEDS = Object.freeze({
+  birthdays: {
+    path: '/birthdays/feed',
+    text: {
+      title: () => t('settings.birthdayFeedTitle'),
+      description: () => t('settings.birthdayFeedDescription'),
+      urlLabel: () => t('settings.feedExportUrlLabel'),
+      hint: () => t('settings.feedExportHint'),
+      copy: () => t('settings.feedExportCopy'),
+      copied: () => t('settings.feedExportCopied'),
+      subscribe: () => t('settings.feedExportSubscribe'),
+      regenerate: () => t('settings.feedExportRegenerate'),
+    },
+    confirmDisable: () => confirmModal(t('settings.feedExportDisableConfirm'),
+      { danger: true, confirmLabel: t('settings.feedExportDisable'), detail: t('settings.feedExportDisableConfirmDetail') }),
+    confirmRegenerate: () => confirmModal(t('settings.feedExportRegenerateConfirm'),
+      { danger: true, confirmLabel: t('settings.feedExportRegenerate'), detail: t('settings.feedExportRegenerateConfirmDetail') }),
+  },
   calendar: {
     path: '/calendar/feed',
     text: {
@@ -263,8 +292,7 @@ async function loadFeed(host, part) {
 
   host.querySelector('[data-feed-copy]')?.addEventListener('click', async () => {
     try {
-      await navigator.clipboard?.writeText(data.url);
-      showToast(feed.text.copied(), 'success');
+      if (await copyFeedUrl(data.url, feed.text.urlLabel())) showToast(feed.text.copied(), 'success');
     } catch (err) {
       showToast(err.message || t('common.errorGeneric'), 'danger');
     }

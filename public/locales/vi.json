@@ -2301,6 +2301,10 @@
         "backupSchedulerTriggering": "Đang tạo sao lưu...",
         "backupSchedulerTriggeredToast": "Sao lưu được tạo thành công.",
         "caldavTitle": "Lịch CalDAV",
+        "birthdayFeedTitle": "Xuất lịch sinh nhật",
+
+        "birthdayFeedDescription": "Tất cả sinh nhật đã lưu dưới dạng sự kiện cả ngày hằng năm, kể cả khi tắt nhắc nhở. Đăng ký trong bất kỳ ứng dụng lịch nào hỗ trợ ICS.",
+
         "feedExportTitle": "Xuất luồng lịch",
         "feedExportDescription": "Đăng ký lịch Yuvomi của bạn ở chế độ chỉ đọc trong Apple Calendar, Google Calendar hoặc Thunderbird.",
         "feedExportInactive": "Luồng xuất đã bị tắt.",
