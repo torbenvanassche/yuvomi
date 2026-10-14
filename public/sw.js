@@ -345,6 +345,7 @@ const PAGE_MODULES = [
   '/pages/budget-stats.js',
   '/pages/split-expenses.js',
   '/pages/subscriptions.js',
+  '/components/budget-transfer-dialog.js',
   '/components/category-manager.js',
   '/components/icon-picker.js',
   '/components/tag-manager.js',

@@ -142,7 +142,7 @@
     "test:budget-account-inherit-migration": "node --test test/test-budget-account-inherit-migration.js",
     "test:budget-series-migration": "node --test test/test-budget-series-migration.js",
     "test:budget-categories-routes": "node --experimental-sqlite --test test/test-budget-categories-routes.js",
-    "test:budget-structure": "DB_PATH=:memory: node --test test/test-budget-structure.js",
+    "test:budget-structure": "node --test test/test-budget-structure.js",
     "test:subscriptions": "node --experimental-sqlite test/test-subscriptions.js",
     "test:subscription-renew-permission": "node --experimental-sqlite --test test/test-subscription-renew-permission.js",
     "test:subscription-budget-projection": "node --experimental-sqlite --test test/test-subscription-budget-projection.js",

@@ -54,7 +54,7 @@ function access(req, res) {
   const entry = load(Number(req.params.id));
   if (!entry?.transfer_entry_id) { res.status(404).json({ error: 'Transfer not found', code: 404 }); return null; }
   if (!mayEdit(req, entry) || !mayEdit(req, transferPair(db.get(), entry))) {
-    res.status(403).json({ error: 'You cannot modify this transfer.', code: 403 }); return null;
+    res.status(403).json({ error: 'Permission denied.', code: 403 }); return null;
   }
   return outgoing(entry);
 }
