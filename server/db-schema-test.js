@@ -1540,7 +1540,7 @@ const MIGRATIONS_SQL = {
       OR NEW.target_google_calendar_id IS NOT NULL OR NEW.target_caldav_account_id IS NOT NULL)
     BEGIN SELECT RAISE(ABORT, 'Local and sync calendars are mutually exclusive'); END;
   `,
-  246: `
+  247: `
     ALTER TABLE budget_entries ADD COLUMN transfer_entry_id INTEGER NULL REFERENCES budget_entries(id) ON DELETE CASCADE;
     CREATE INDEX idx_budget_transfer ON budget_entries(transfer_entry_id);
     INSERT OR IGNORE INTO budget_categories (key, name, type, sort_order)
