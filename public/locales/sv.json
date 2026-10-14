@@ -1586,7 +1586,6 @@
         "catSaving": "Sparande",
         "summaryTransfers": "Överföringar",
         "transferDeleteConfirm": "Ta bort båda sidorna av överföringen?",
-
         "transferDeleteConfirmDetail": "Båda länkade posterna tas bort och saldona på båda kontona räknas om. Om hela serien tas bort försvinner också alla dess förekomster. Det går inte att ångra.",
         "typeLoan": "Lån",
         "tabsLabel": "Budgetsektioner",

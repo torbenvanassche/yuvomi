@@ -1663,7 +1663,6 @@
         "catSaving": "Spoření",
         "summaryTransfers": "Převody",
         "transferDeleteConfirm": "Smazat obě strany tohoto převodu?",
-
         "transferDeleteConfirmDetail": "Oba propojené záznamy budou smazány a zůstatky obou účtů přepočítány. Smazáním celé série se smažou i všechny její výskyty. Tuto akci nelze vrátit zpět.",
         "typeLoan": "Půjčka",
         "tabsLabel": "Oblasti rozpočtu",

@@ -2,6 +2,26 @@ import { op, jsonBody, idParam, stringPathParam, langParam, DOCUMENT_LINKS_READ_
 
 export function budgetPaths() {
   return {
+    '/api/v1/budget/transfers': {
+      post: op({
+        summary: 'Transfer money between two budget accounts', tag: 'Budget', stateChanging: true,
+        requestBody: jsonBody(null, 'Required: title, positive amount, date (YYYY-MM-DD), from_account_id and to_account_id (two different existing accounts). Optional: outgoing expense category and subcategory (default financial_other / saving), visibility, is_recurring, recurrence_interval, recurrence_interval_count and recurrence_confirm. Virtual recurrence and recurrence_rule are not supported; transfer_entry_id is read-only.'),
+        description: 'Creates linked outgoing and incoming entries atomically. Returns the outgoing entry in data, including from_account_id, to_account_id and transfer_entry_id. Transfers affect account balances but are excluded from income and expense totals.',
+        responses: {
+          201: { description: 'Transfer created' },
+          400: { description: 'Invalid transfer fields; reason: transfer_invalid' },
+          401: { $ref: '#/components/responses/Unauthorized' },
+          500: { $ref: '#/components/responses/InternalServerError' },
+        },
+      }),
+    },
+    '/api/v1/budget/transfers/{id}': {
+      get: op({ summary: 'Get a transfer by either linked entry ID', tag: 'Budget', params: [idParam()], description: 'Returns the outgoing entry in data with from_account_id and to_account_id. Requires edit permission for both linked entries; otherwise returns 403. An unknown or non-transfer entry returns 404.' }),
+      put: op({ summary: 'Update both entries of a transfer', tag: 'Budget', params: [idParam()], stateChanging: true, requestBody: jsonBody(null, 'Transfer fields as for POST /budget/transfers; omitted fields retain their stored values.'), description: 'Updates both linked entries atomically. Requires edit permission for both. Changing recurrence fields here returns 400 with reason transfer_series_required; use the series endpoint. Invalid fields return 400 with reason transfer_invalid; an unknown transfer returns 404.' }),
+    },
+    '/api/v1/budget/transfers/{id}/series': {
+      put: op({ summary: 'Update a recurring transfer series', tag: 'Budget', params: [idParam()], stateChanging: true, requestBody: jsonBody(null, 'Transfer fields as for POST /budget/transfers; date is the series start date. Omitted fields retain their series values.'), description: 'Updates both series definitions and their future bookings atomically, preserving past bookings when the schedule changes. Visibility applies to the entire series, including its past. Requires edit permission for both linked entries. Returns the outgoing anchor in data. Returns 400 for a non-recurring transfer, invalid fields, an invalid start date, or is_recurring set to false; delete the series to end it. An unknown transfer returns 404.' }),
+    },
     '/api/v1/budget/summary': { get: op({ summary: 'Get budget summary', tag: 'Budget', description: '`pending` (`count`, `income`, `expenses`) reports what is expected and in no total: expected bookings and the subscription payments projected for the month (see `GET /api/v1/budget`). `pending.expected_omitted: true` appears only when the projection hit its limit of 5000 lines; the figures then contain no subscription payment.' }) },
     '/api/v1/budget/plans': {
       get: op({ summary: 'Get planned budget vs. actual for a month (category caps + savings goal)', tag: 'Budget', description: 'In personal budget mode the actual figures count what you can see, like the summary: `scope` (`mine`|`household`, default `mine`) picks the view, private entries of others do not count, and the amount of an entry of someone else whose details are hidden (`shared_amount`) counts only toward income and balance of the savings goal, never toward a category. Shared mode counts every entry.' }),

@@ -1586,7 +1586,6 @@
         "catSaving": "Tiết kiệm",
         "summaryTransfers": "Chuyển khoản",
         "transferDeleteConfirm": "Xóa cả hai bên của giao dịch chuyển khoản này?",
-
         "transferDeleteConfirmDetail": "Cả hai giao dịch liên kết sẽ bị xóa và số dư của cả hai tài khoản được tính lại. Xóa toàn bộ chuỗi cũng xóa tất cả các lần lặp của nó. Không thể hoàn tác thao tác này.",
         "typeLoan": "Khoản vay",
         "tabsLabel": "Các phần ngân sách",

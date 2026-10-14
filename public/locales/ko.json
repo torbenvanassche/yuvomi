@@ -1600,7 +1600,6 @@
         "catSaving": "저축",
         "summaryTransfers": "이체",
         "transferDeleteConfirm": "이 이체의 양쪽 기록을 삭제할까요?",
-
         "transferDeleteConfirmDetail": "연결된 두 기록이 삭제되고 두 계좌의 잔액이 다시 계산됩니다. 전체 반복을 삭제하면 해당하는 모든 기록도 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
         "typeLoan": "대출",
         "tabsLabel": "예산 영역",

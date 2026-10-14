@@ -1586,7 +1586,6 @@
         "catSaving": "Megtakarítás",
         "summaryTransfers": "Átutalások",
         "transferDeleteConfirm": "Törlöd az átutalás mindkét oldalát?",
-
         "transferDeleteConfirmDetail": "Mindkét összekapcsolt tétel törlődik, és mindkét számla egyenlege újraszámolódik. A teljes sorozat törlésével annak összes előfordulása is törlődik. Ez nem vonható vissza.",
         "typeLoan": "Hitel",
         "tabsLabel": "Költségvetési szakaszok",

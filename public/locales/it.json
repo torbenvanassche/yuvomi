@@ -1586,7 +1586,6 @@
         "catSaving": "Risparmio",
         "summaryTransfers": "Trasferimenti",
         "transferDeleteConfirm": "Eliminare entrambe le parti di questo trasferimento?",
-
         "transferDeleteConfirmDetail": "Entrambe le registrazioni collegate vengono eliminate e i saldi dei due conti ricalcolati. Eliminando l’intera serie si eliminano anche tutte le sue occorrenze. L’azione è irreversibile.",
         "typeLoan": "Prestito",
         "tabsLabel": "Sezioni del bilancio",

@@ -1586,7 +1586,6 @@
         "catSaving": "Poupança",
         "summaryTransfers": "Transferências",
         "transferDeleteConfirm": "Eliminar os dois lados desta transferência?",
-
         "transferDeleteConfirmDetail": "Os dois movimentos associados são eliminados e os saldos das duas contas recalculados. Eliminar toda a série também elimina todas as suas ocorrências. Esta ação não pode ser anulada.",
         "typeLoan": "Empréstimo",
         "tabsLabel": "Seções do orçamento",

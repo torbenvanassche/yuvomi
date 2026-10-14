@@ -1600,7 +1600,6 @@
         "catSaving": "Sparen",
         "summaryTransfers": "Umbuchungen",
         "transferDeleteConfirm": "Beide Seiten dieser Umbuchung löschen?",
-
         "transferDeleteConfirmDetail": "Beide verknüpften Buchungen werden gelöscht und beide Kontostände neu berechnet. Beim Löschen der gesamten Serie werden auch alle ihre Buchungen gelöscht. Das lässt sich nicht rückgängig machen.",
         "typeLoan": "Darlehen",
         "tabsLabel": "Budgetbereiche",

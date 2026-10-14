@@ -1586,7 +1586,6 @@
         "catSaving": "Tasarruf",
         "summaryTransfers": "Transferler",
         "transferDeleteConfirm": "Bu transferin iki tarafı da silinsin mi?",
-
         "transferDeleteConfirmDetail": "Bağlı iki kayıt da silinir ve her iki hesabın bakiyesi yeniden hesaplanır. Serinin tamamını silmek tüm tekrarlarını da siler. Bu işlem geri alınamaz.",
         "typeLoan": "Borç",
         "tabsLabel": "Bütçe bölümleri",

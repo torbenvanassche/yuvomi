@@ -1600,7 +1600,6 @@
         "catSaving": "Tabungan",
         "summaryTransfers": "Transfer",
         "transferDeleteConfirm": "Hapus kedua sisi transfer ini?",
-
         "transferDeleteConfirmDetail": "Kedua catatan terkait dihapus dan saldo kedua akun dihitung ulang. Menghapus seluruh rangkaian juga menghapus semua pengulangannya. Tindakan ini tidak dapat dibatalkan.",
         "typeLoan": "Pinjaman",
         "tabsLabel": "Area anggaran",

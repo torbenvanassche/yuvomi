@@ -1586,7 +1586,6 @@
         "catSaving": "貯蓄",
         "summaryTransfers": "振替",
         "transferDeleteConfirm": "この振替の両方の記録を削除しますか？",
-
         "transferDeleteConfirmDetail": "リンクされた両方の記録が削除され、両口座の残高が再計算されます。シリーズ全体を削除すると、そのすべての繰り返しも削除されます。この操作は元に戻せません。",
         "typeLoan": "貸付",
         "tabsLabel": "予算セクション",

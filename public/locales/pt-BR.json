@@ -1586,7 +1586,6 @@
         "catSaving": "Poupança",
         "summaryTransfers": "Transferências",
         "transferDeleteConfirm": "Excluir os dois lados desta transferência?",
-
         "transferDeleteConfirmDetail": "Os dois lançamentos vinculados são excluídos e os saldos das duas contas recalculados. Excluir toda a série também exclui todas as suas ocorrências. Esta ação não pode ser desfeita.",
         "typeLoan": "Empréstimo",
         "tabsLabel": "Seções do orçamento",

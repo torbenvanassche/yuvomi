@@ -1586,7 +1586,6 @@
         "catSaving": "储蓄",
         "summaryTransfers": "转账",
         "transferDeleteConfirm": "删除这笔转账的双方记录？",
-
         "transferDeleteConfirmDetail": "两条关联记录都将被删除，两个账户的余额将重新计算。删除整个系列还会删除其所有重复记录。此操作无法撤销。",
         "typeLoan": "借款",
         "tabsLabel": "预算分区",

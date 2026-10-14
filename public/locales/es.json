@@ -1586,7 +1586,6 @@
         "catSaving": "Ahorro",
         "summaryTransfers": "Transferencias",
         "transferDeleteConfirm": "¿Eliminar ambas partes de esta transferencia?",
-
         "transferDeleteConfirmDetail": "Se eliminan ambos apuntes vinculados y se recalculan los saldos de ambas cuentas. Al eliminar toda la serie también se eliminan todas sus operaciones. No se puede deshacer.",
         "typeLoan": "Préstamo",
         "tabsLabel": "Secciones del presupuesto",

@@ -1586,7 +1586,6 @@
         "catSaving": "Épargne",
         "summaryTransfers": "Virements",
         "transferDeleteConfirm": "Supprimer les deux écritures de ce virement ?",
-
         "transferDeleteConfirmDetail": "Les deux écritures liées sont supprimées et les soldes des deux comptes sont recalculés. Supprimer toute la série supprime aussi toutes ses occurrences. Cette action est irréversible.",
         "typeLoan": "Prêt",
         "tabsLabel": "Sections du budget",

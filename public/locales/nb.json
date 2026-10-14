@@ -1586,7 +1586,6 @@
         "catSaving": "Sparing",
         "summaryTransfers": "Overføringer",
         "transferDeleteConfirm": "Slette begge sider av overføringen?",
-
         "transferDeleteConfirmDetail": "Begge tilknyttede posteringer slettes og saldoene på begge kontoene beregnes på nytt. Sletting av hele serien sletter også alle forekomstene. Dette kan ikke angres.",
         "typeLoan": "Lån",
         "tabsLabel": "Budsjettseksjoner",

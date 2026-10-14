@@ -1754,7 +1754,6 @@
         "catSaving": "Oszczędzanie",
         "summaryTransfers": "Przelewy",
         "transferDeleteConfirm": "Usunąć obie strony tego przelewu?",
-
         "transferDeleteConfirmDetail": "Oba powiązane wpisy zostaną usunięte, a salda obu kont przeliczone. Usunięcie całej serii usuwa również wszystkie jej wystąpienia. Tej operacji nie można cofnąć.",
         "typeLoan": "Pożyczka",
         "tabsLabel": "Sekcje budżetu",

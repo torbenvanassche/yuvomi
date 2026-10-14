@@ -1586,7 +1586,6 @@
         "catSaving": "Saving",
         "summaryTransfers": "Transfers",
         "transferDeleteConfirm": "Delete both sides of this transfer?",
-
         "transferDeleteConfirmDetail": "Both linked entries are deleted and both account balances are recalculated. Deleting the entire series also deletes all its occurrences. This cannot be undone.",
         "typeLoan": "Loan",
         "tabsLabel": "Budget sections",

@@ -1586,7 +1586,6 @@
         "catSaving": "Sparen",
         "summaryTransfers": "Overboekingen",
         "transferDeleteConfirm": "Beide kanten van deze overboeking verwijderen?",
-
         "transferDeleteConfirmDetail": "Beide gekoppelde boekingen worden verwijderd en beide rekeningsaldi opnieuw berekend. Als je de hele reeks verwijdert, verdwijnen ook alle boekingen ervan. Dit kan niet ongedaan worden gemaakt.",
         "typeLoan": "Lening",
         "tabsLabel": "Budgetsecties",
