@@ -1166,8 +1166,6 @@
         "localCalendarDisableExport": "Export deaktivieren",
         "localCalendarExportCopied": "Exportlink kopiert",
         "localCalendarDeleteConfirm": "\"{{name}}\" löschen?",
-        "birthdayCalendarRemoveDetail": "Nur diese Kalendergruppe und ihr gemeinsamer Feed-Link werden entfernt. Geburtstage, vorhandene Termine, Erinnerungen und externe Sync-Verknüpfungen bleiben unverändert. Geburtstage erscheinen wieder in der bisherigen Geburtstagsebene.",
-
         "localCalendarDeleteDetail": "Termine aus diesem Kalender werden in den Standardkalender verschoben, und sein Exportlink funktioniert danach nicht mehr.",
         "localCalendarDeleteDetailIcloud": "Termine aus diesem Kalender werden in den Standardkalender verschoben und danach über Apple Calendar zu iCloud hochgeladen. Sein Exportlink funktioniert danach nicht mehr."
     },
@@ -2391,9 +2389,7 @@
         "backupWebdavEnvHint": "Die Konfiguration wird über Umgebungsvariablen gesteuert und kann hier nicht bearbeitet werden.",
         "caldavTitle": "CalDAV Kalender",
         "birthdayFeedTitle": "Geburtstagskalender exportieren",
-
-        "birthdayFeedDescription": "Alle gespeicherten Geburtstage als jährliche ganztägige Termine, auch ohne Erinnerungen. Abonniere den Feed in jeder Kalender-App, die ICS unterstützt.",
-
+        "birthdayFeedDescription": "Alle gespeicherten Geburtstage und Namenstage als jährliche ganztägige Termine, auch ohne Erinnerung. In jeder Kalender-App mit ICS-Unterstützung abonnierbar.",
         "feedExportTitle": "Kalender-Feed exportieren",
         "feedExportDescription": "Abonniere deinen Yuvomi-Kalender schreibgeschützt in Apple Kalender, Google Kalender oder Thunderbird.",
         "feedExportInactive": "Der Export-Feed ist deaktiviert.",
@@ -3191,7 +3187,9 @@
         "displayRemoveDevice": "Entfernen",
         "displayRemoveDeviceConfirm": "Eintrag dieses Geräts entfernen?",
         "displayRemoveDeviceDetail": "Der Eintrag verschwindet endgültig aus der Liste. Das lässt sich nicht rückgängig machen.",
-        "displayRemoveDeviceActive": "Dieses Gerät ist noch gekoppelt. Widerrufe es zuerst."
+        "displayRemoveDeviceActive": "Dieses Gerät ist noch gekoppelt. Widerrufe es zuerst.",
+        "feedExportIncludeBirthdays": "Geburtstage einschließen",
+        "feedExportIncludeBirthdaysHint": "Bei einem separaten Geburtstagsabo ausschalten, damit Geburtstage und Namenstage nicht doppelt erscheinen."
     },
     "login": {
         "tagline": "Willkommen zurück bei deinem Familienplaner.",

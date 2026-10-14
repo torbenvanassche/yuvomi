@@ -1133,7 +1133,6 @@ function passesPersonFilters(item) {
  * bis dahin stehen, bei scheiterndem Sync auf Dauer.
  */
 function eventSourceKey(ev) {
-  if (state.localCalendars.some(calendar => calendar.is_birthday && Number(calendar.id) === Number(ev?.local_calendar_id))) return `local:${ev.local_calendar_id}`;
   if (ev?.subscription_id) return `sub:${ev.subscription_id}`;
   const ref = ev?.source_calendar_ref_id ?? ev?.calendar_ref_id;
   if (ref) return `cal:${ref}`;
@@ -1229,7 +1228,6 @@ function activeFilterCount() {
  * an einem Geburtstag haengen (siehe localizeBirthdayEvent).
  */
 function isVisibleLayer(ev, showBirthdays = state.layerBirthdays) {
-  if (state.localCalendars.some(calendar => calendar.is_birthday && Number(calendar.id) === Number(ev?.local_calendar_id))) return true;
   return showBirthdays || !ev.birthday_name;
 }
 
@@ -1726,20 +1724,10 @@ async function loadRange(from, to) {
   await wastePromise;
 }
 
-function migrateBirthdayLayer() {
-  const calendar = state.localCalendars.find(item => item.is_birthday);
-  if (!calendar || state.layerBirthdays) return;
-  state.hiddenSources.set(`local:${calendar.id}`, { name: calendar.name, color: calendar.color });
-  persistHiddenSources();
-  state.layerBirthdays = true;
-  try { localStorage.setItem(LAYER_BIRTHDAYS_KEY, 'true'); } catch {}
-}
-
-async function loadLocalCalendars(migratePreferences = true) {
+async function loadLocalCalendars() {
   try {
     const res = await api.get('/calendar/calendars');
     state.localCalendars = Array.isArray(res.data) ? res.data : [];
-    if (migratePreferences) migrateBirthdayLayer();
     state.localCalendarsError = null;
   } catch (err) {
     console.warn('[Calendar] Local calendars fetch failed:', err);
@@ -1972,7 +1960,7 @@ export async function render(container, { user }) {
   const [,,, prefsRes, documentOptionsRes] = await Promise.all([
     loadRange(from, to),
     loadUsers(),
-    loadLocalCalendars(false),
+    loadLocalCalendars(),
     api.get('/preferences').catch(() => ({ data: {} })),
     api.get('/documents/meta/options').catch(() => ({ data: {} })),
   ]);
@@ -2004,7 +1992,6 @@ export async function render(container, { user }) {
   state.assignedToMe  = restoreAssignedToMe(state.user);
   state.people = restorePeopleFilter(state.users);
   state.hiddenSources = restoreHiddenSources(state.user?.id);
-  migrateBirthdayLayer();
 
   renderToolbar();
   renderView();
@@ -5202,7 +5189,7 @@ function availableLayers() {
   // mehr: im Blatt kostet eine Zeile keine Kopfzeile, und ein Schalter, der
   // je nach Datenlage verschwindet, ist im Blatt schwerer zu finden als eine
   // Zeile, die immer an derselben Stelle steht.
-  if (!state.localCalendars.some(calendar => calendar.is_birthday)) rows.push({
+  rows.push({
     key: 'birthdays', label: t('calendar.toggleBirthdays'),
     checked: state.layerBirthdays, color: null,
   });
@@ -5315,9 +5302,6 @@ function renderLocalCalendarsContent() {
           <i data-lucide="plus" class="icon-md" aria-hidden="true"></i>${t('calendar.localCalendarCreate')}
         </button>
       </form>` : ''}
-      ${moduleAccess('calendar') === 'write' && !state.localCalendars.some(calendar => calendar.is_birthday) ? `<button type="button" class="btn btn--secondary js-calendar-create-birthdays">
-        <i data-lucide="cake" class="icon-md" aria-hidden="true"></i>${t('calendar.localCalendarCreate')} · ${t('birthdays.title')}
-      </button>` : ''}
       <div class="cal-calendar-list">
         ${rows || emptyStateHTML({
           icon: 'calendar-days',
@@ -5422,21 +5406,6 @@ async function openLocalCalendarsModal() {
   });
 
   panel.addEventListener('click', async (e) => {
-    if (e.target.closest('.js-calendar-create-birthdays')) {
-      try {
-        const res = await api.post('/calendar/calendars/birthdays', { name: t('birthdays.title'), color: '#FF2D55' });
-        if (!state.layerBirthdays) {
-          state.hiddenSources.set(`local:${res.data.id}`, { name: res.data.name, color: res.data.color });
-          persistHiddenSources();
-        }
-        await refreshLocalCalendarsPanel(panel);
-        // Existing events acquire their collection in the server projection.
-        await loadRange(state.rangeFrom, state.rangeTo);
-        renderView();
-        refocusAfterRender();
-      } catch { window.yuvomi?.showToast(t('calendar.saveError'), 'danger'); }
-      return;
-    }
     if (e.target.closest('.js-calendar-retry-load')) {
       await refreshLocalCalendarsPanel(panel);
       return;
@@ -5482,7 +5451,7 @@ async function openLocalCalendarsModal() {
       } else if (e.target.closest('[data-action="calendar-delete"]')) {
         const ok = await confirmOverModal(t('calendar.localCalendarDeleteConfirm', { name: calendar.name }), {
           closeOnConfirm: false,
-          detail: calendar.is_birthday ? t('calendar.birthdayCalendarRemoveDetail') : defaultCalendarUploadsToIcloud()
+          detail: defaultCalendarUploadsToIcloud()
             ? t('calendar.localCalendarDeleteDetailIcloud')
             : t('calendar.localCalendarDeleteDetail'),
           confirmLabel: t('common.delete'),
@@ -5490,15 +5459,8 @@ async function openLocalCalendarsModal() {
         });
         if (!ok) return;
         await api.delete(`/calendar/calendars/${id}`);
-        if (calendar.is_birthday) {
-          state.layerBirthdays = !state.hiddenSources.has(`local:${id}`);
-          try { localStorage.setItem(LAYER_BIRTHDAYS_KEY, state.layerBirthdays ? 'true' : 'false'); } catch {}
-          state.hiddenSources.delete(`local:${id}`);
-          persistHiddenSources();
-        }
         window.yuvomi?.showToast(t('calendar.localCalendarDeleted'), 'success');
         await refreshLocalCalendarsPanel(panel);
-        if (calendar.is_birthday) { await loadRange(state.rangeFrom, state.rangeTo); renderView(); }
         refocusAfterRender();
       }
     } catch (err) {
@@ -6201,7 +6163,7 @@ export const __test = {
   restorePeopleFilter,
   restoreAssignedToMe,
   restoreHiddenSources,
-  localCalendarDisplayName, eventLocalCalendarDisplayName, renderLocalCalendarRow, moveLocalCalendar, copyText, openLocalCalendarsModal, migrateBirthdayLayer, localCalendarState: state,
+  localCalendarDisplayName, eventLocalCalendarDisplayName, renderLocalCalendarRow, moveLocalCalendar, copyText, openLocalCalendarsModal, localCalendarState: state,
   persistHiddenSources,
   activeFilterCount,
   UNASSIGNED,
@@ -7014,6 +6976,47 @@ function eventStartFromForm(root) {
   return st ? `${sd}T${st}` : sd;
 }
 
+/** Das Ende, das das Formular gerade traegt - Gegenstueck zu eventStartFromForm. */
+function eventEndFromForm(root) {
+  if (root.querySelector('#modal-allday')?.checked) {
+    return readDateInput(root, '#modal-allday-end') || readDateInput(root, '#modal-end-date') || null;
+  }
+  const ed = readDateInput(root, '#modal-end-date');
+  const et = parseTimeInput(root.querySelector('#modal-end-time')?.value || '');
+  return ed ? (et ? `${ed}T${et}` : ed) : null;
+}
+
+/**
+ * Beginn, Ende und „ganztaegig", wie das Formular sie beim Oeffnen zeigte
+ * (#1958). Gegen diesen Stand prueft das Speichern, ob jemand die Zeit
+ * angefasst hat - siehe eventTimesUntouched().
+ */
+const eventTimeBaselines = new WeakMap();
+
+function eventTimesFromForm(root) {
+  return {
+    allDay: !!root.querySelector('#modal-allday')?.checked,
+    start: eventStartFromForm(root),
+    end: eventEndFromForm(root),
+  };
+}
+
+/**
+ * Zeigt das Formular noch dieselbe Zeit wie beim Oeffnen? (#1958)
+ *
+ * Gefragt wird nach den ZUSAMMENGESETZTEN Werten, nicht nach den einzelnen
+ * Feldern: die Datums- und Zeitfelder sind `<yuvomi-datepicker>`-Hosts, die
+ * der Feld-Ausgangsstand von #1284 (`input, select, textarea`) gar nicht
+ * sieht. Ohne Ausgangsstand gilt die Zeit als angefasst - im Zweifel geht sie
+ * mit, wie vor #1958.
+ */
+function eventTimesUntouched(root) {
+  const before = eventTimeBaselines.get(root);
+  if (!before) return false;
+  const now = eventTimesFromForm(root);
+  return now.allDay === before.allDay && now.start === before.start && now.end === before.end;
+}
+
 /**
  * Wie eine Zeile nach dem Beginn heissen muss, wenn der Beginn im Dialog
  * verschoben wurde.
@@ -7403,8 +7406,8 @@ function defaultLocalCalendar() {
 
 function populateLocalCalendarSelect(selectElement, currentEvent = null) {
   if (!selectElement) return;
-  const calendars = state.localCalendars.filter(calendar => !calendar.is_birthday).length
-    ? state.localCalendars.filter(calendar => !calendar.is_birthday)
+  const calendars = state.localCalendars.length
+    ? state.localCalendars
     : [{ id: currentEvent?.local_calendar_id || defaultLocalCalendar()?.id || null,
       name: t('calendar.defaultLocalCalendar'), color: '#007AFF', is_default: true }];
   const selectedId = currentEvent?.local_calendar_id ?? defaultLocalCalendar()?.id ?? calendars[0]?.id;
@@ -7817,6 +7820,7 @@ function wireEventForm(panel, { mode, event = null, reminder = null }) {
   // es ueberhaupt etwas zu fragen gibt (#1284). Als Letztes: alles darueber
   // darf noch Werte setzen, die zum Ausgangsstand gehoeren.
   eventFormBaselines.set(panel, readEventFormState(panel));
+  eventTimeBaselines.set(panel, eventTimesFromForm(panel));
 }
 
 /**
@@ -8171,7 +8175,7 @@ function buildEventModalContent({ mode, event, date, reminder = null, time = nul
              placeholder="${t('calendar.titlePlaceholder')}" value="${esc(isEdit ? event.title : '')}">
     </div>
 
-    ${state.localCalendars.filter(calendar => !calendar.is_birthday).length > 1 && (!isEdit || event.local_calendar_id) ? `<div class="form-group">
+    ${state.localCalendars.length > 1 && (!isEdit || event.local_calendar_id) ? `<div class="form-group">
       <label class="form-label" for="event-local-calendar">${t('calendar.localCalendarLabel')}</label>
       <select class="form-input" id="event-local-calendar"></select>
     </div>` : ''}
@@ -8330,13 +8334,10 @@ async function saveEvent(overlay, mode, event, existingReminder = null, attachme
 
   if (allday) {
     start_datetime = eventStartFromForm(overlay);
-    end_datetime   = readDateInput(overlay, '#modal-allday-end')
-                   || readDateInput(overlay, '#modal-end-date');
-    end_datetime   = end_datetime || null;
+    end_datetime   = eventEndFromForm(overlay);
   } else {
     const stRaw = overlay.querySelector('#modal-start-time').value;
     const st = parseTimeInput(stRaw);
-    const ed = readDateInput(overlay, '#modal-end-date');
     const etRaw = overlay.querySelector('#modal-end-time').value;
     const et = parseTimeInput(etRaw);
     if ((stRaw && !st) || (etRaw && !et)) {
@@ -8349,7 +8350,7 @@ async function saveEvent(overlay, mode, event, existingReminder = null, attachme
     // Dieselbe Zusammensetzung, mit der die Erinnerungszeilen den Beginn im
     // Dialog verfolgen - zwei Schreibweisen koennten auseinanderlaufen.
     start_datetime = eventStartFromForm(overlay);
-    end_datetime   = ed ? (et ? `${ed}T${et}` : ed) : null;
+    end_datetime   = eventEndFromForm(overlay);
   }
 
   const visibleDateFields = allday
@@ -8577,6 +8578,19 @@ async function saveEvent(overlay, mode, event, existingReminder = null, attachme
           savePath = target.path;
           reminderBaseStart = newStart;
           reloadAfter = true;
+        } else if (eventTimesUntouched(overlay)) {
+          // EINE ZEIT, DIE NIEMAND ANGEFASST HAT, GEHT NICHT MIT (#1958). Das
+          // Formular zeigt einen Instant (`14:00:00Z`) in der Anzeigezone und
+          // schickt ihn als nackte Ziffern zurueck; die Route deutet die in der
+          // Haushaltszone. Ohne gesetzte Haushaltszone ist die Anzeigezone die
+          // des Browsers, die Haushaltszone die des Servers - und ein reiner
+          // Titel-Edit verschob den Termin um ihren Abstand. Fehlen Beginn und
+          // Ende, behaelt die Route die gespeicherten Werte (COALESCE). Beide
+          // fallen nur ZUSAMMEN weg: wer eines anfasst, schickt beide, damit
+          // eine Zeile nie zwei Speicherformen traegt.
+          seriesBody = { ...body };
+          delete seriesBody.start_datetime;
+          delete seriesBody.end_datetime;
         }
         const res = localRecurring
           ? await requestCalendarOccurrenceMutation({

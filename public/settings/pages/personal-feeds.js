@@ -6,10 +6,11 @@
  *        und Abholungen. Geburtstage haben ein eigenes Token und werden
  *        unabhaengig von ihren Erinnerungen exportiert.
  *
- * Warum ein eigenes Blatt und warum unter `personal`: alle vier Tokens haengen
+ * Warum persoenliche Abschnitte: alle sechs Tokens haengen
  * an der eigenen users-Zeile (calendar_feed_token, Migration 61;
  * inventory_deadlines_feed_token, Migration 144; cycle_feed_token,
- * Migration 180; schedule_feed_token, Migration 183), und alle vier Routen
+ * Migration 180; schedule_feed_token, Migration 183; waste_feed_token;
+ * birthday_feed_token, Migration 247), und alle sechs Routen
  * tragen serverseitig bewusst keinen
  * Admin-Check. Die ersten beiden lagen trotzdem auf `sync-calendar`, das
  * adminOnly ist - in einem Haushalt mit fuenf Mitgliedern konnte also genau
@@ -73,7 +74,7 @@ export const FEEDS = Object.freeze({
       title: () => t('settings.birthdayFeedTitle'),
       description: () => t('settings.birthdayFeedDescription'),
       urlLabel: () => t('settings.feedExportUrlLabel'),
-      hint: () => t('settings.feedExportHint'),
+      hint: () => t('settings.birthdayFeedDescription') + ' ' + t('settings.feedExportHint'),
       copy: () => t('settings.feedExportCopy'),
       copied: () => t('settings.feedExportCopied'),
       subscribe: () => t('settings.feedExportSubscribe'),
@@ -192,6 +193,13 @@ function extrasHtml(part, data, types) {
       description: t('settings.feedExportShowAssigneesHint'),
       descriptionId: 'feed-show-assignees-hint',
       attrs: { id: 'feed-show-assignees', 'aria-describedby': 'feed-show-assignees-hint' },
+    })}
+    ${settingSwitchRowHtml({
+      label: t('settings.feedExportIncludeBirthdays'),
+      checked: data.includeBirthdays !== false,
+      description: t('settings.feedExportIncludeBirthdaysHint'),
+      descriptionId: 'feed-include-birthdays-hint',
+      attrs: { id: 'feed-include-birthdays', 'aria-describedby': 'feed-include-birthdays-hint' },
     })}`;
   }
   if (part === 'waste' && types.length) {
@@ -315,6 +323,20 @@ async function loadFeed(host, part) {
       showToast(t('settings.feedExportSaved'), 'success');
     } catch (err) {
       input.checked = !next; // Fehlschlag → visuellen Zustand zurücksetzen
+      showToast(err.message || t('common.errorGeneric'), 'danger');
+    } finally {
+      input.disabled = false;
+    }
+  });
+  host.querySelector('#feed-include-birthdays')?.addEventListener('change', async (e) => {
+    const input = e.currentTarget;
+    const next = input.checked;
+    input.disabled = true;
+    try {
+      await api.put('/calendar/feed', { includeBirthdays: next });
+      showToast(t('settings.feedExportSaved'), 'success');
+    } catch (err) {
+      input.checked = !next;
       showToast(err.message || t('common.errorGeneric'), 'danger');
     } finally {
       input.disabled = false;

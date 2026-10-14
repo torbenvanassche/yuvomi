@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Export uitschakelen",
         "localCalendarExportCopied": "Exportlink gekopieerd",
         "localCalendarDeleteConfirm": "\"{{name}}\" verwijderen?",
-        "birthdayCalendarRemoveDetail": "Alleen deze kalendergroep en de gedeelde feedlink worden verwijderd. Verjaardagen, bestaande afspraken, herinneringen en externe synchronisatie blijven behouden. Verjaardagen keren terug naar de oorspronkelijke laag.",
-
         "localCalendarDeleteDetail": "Afspraken uit deze agenda worden naar de standaardagenda verplaatst en de exportlink werkt daarna niet meer.",
         "localCalendarDeleteDetailIcloud": "Afspraken uit deze agenda worden naar de standaardagenda verplaatst en daarna via Apple Agenda naar iCloud geüpload. De exportlink werkt daarna niet meer."
     },
@@ -2328,9 +2326,7 @@
         "backupWebdavEnvHint": "De configuratie wordt beheerd via omgevingsvariabelen en kan hier niet worden bewerkt.",
         "caldavTitle": "CalDAV-kalenders",
         "birthdayFeedTitle": "Verjaardagskalender exporteren",
-
-        "birthdayFeedDescription": "Alle opgeslagen verjaardagen als jaarlijkse gebeurtenissen van een hele dag, ook zonder herinneringen. Abonneer je in elke agenda-app die ICS ondersteunt.",
-
+        "birthdayFeedDescription": "Alle opgeslagen verjaardagen en naamdagen als jaarlijkse gebeurtenissen voor de hele dag, ook zonder herinnering. Te abonneren in elke agenda-app met ICS-ondersteuning.",
         "feedExportTitle": "Agenda-feed exporteren",
         "feedExportDescription": "Abonneer je alleen-lezen op je Yuvomi-agenda in Apple Agenda, Google Agenda of Thunderbird.",
         "feedExportInactive": "De exportfeed is uitgeschakeld.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Verwijderen",
         "displayRemoveDeviceConfirm": "Vermelding van dit apparaat verwijderen?",
         "displayRemoveDeviceDetail": "De vermelding verdwijnt definitief uit de lijst. Dit kan niet ongedaan worden gemaakt.",
-        "displayRemoveDeviceActive": "Dit apparaat is nog gekoppeld. Trek het eerst in."
+        "displayRemoveDeviceActive": "Dit apparaat is nog gekoppeld. Trek het eerst in.",
+        "feedExportIncludeBirthdays": "Verjaardagen opnemen",
+        "feedExportIncludeBirthdaysHint": "Schakel dit uit bij een apart verjaardagsabonnement om dubbele verjaardagen en naamdagen te voorkomen."
     },
     "login": {
         "tagline": "Welkom terug bij je gezinsplanner.",

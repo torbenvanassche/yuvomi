@@ -23,7 +23,8 @@ Every table: `id INTEGER PRIMARY KEY`, `created_at TEXT`, `updated_at TEXT` (ISO
 | oidc_sub | TEXT | OIDC subject identifier from the provider, nullable. Populated on first SSO login. |
 | oidc_provider | TEXT | OIDC issuer URL of the provider that set `oidc_sub`, nullable. Partial UNIQUE index on `(oidc_sub, oidc_provider)` WHERE NOT NULL. |
 | calendar_feed_token | TEXT | Secret token authenticating the user's read-only ICS export feed, nullable. Partial UNIQUE index on `calendar_feed_token` WHERE NOT NULL. |
-| birthday_feed_token | TEXT | Independent birthday ICS subscription secret, nullable, uniquely indexed (migration 246); cleared when its owner is deactivated. |
+| birthday_feed_token | TEXT | Independent birthday ICS subscription secret, nullable, uniquely indexed (migration 247); cleared when its owner is deactivated. |
+| calendar_feed_include_birthdays | INTEGER | Personal calendar-feed switch (0/1, default 1; migration 247). Turning it off excludes generated birthdays and name days from that feed without changing the app layer or the separate birthday feed. |
 | calendar_feed_show_assignees | INTEGER | Opt-in flag (0/1, default 0): when set, the read-only ICS export feed appends the assigned members to each event's `SUMMARY`, e.g. `Pool party (Mom, Dad)`. |
 | onboarding_version | INTEGER | NOT NULL, default 0 (migration v168) — the walkthrough version this account has seen |
 | changelog_seen_version | TEXT | Nullable (migration v173) — the INSTALLED version at this account's last look at the changelog. Drives the "New in your app" list |
@@ -87,7 +88,7 @@ links made the delete fail with a bare 500. The rule now lives in
   whoever issues it, so a token a former administrator issued for another account is a secret
   in their hand), open invitations it created are revoked and open display pairing codes it
   issued are spent (a device already paired stays: its secret only ever went to that device,
-  and `display_devices` does not record who paired it), the five feed tokens are cleared, password reset tokens, two-factor recovery codes,
+  and `display_devices` does not record who paired it), the six feed tokens are cleared, password reset tokens, two-factor recovery codes,
   idempotency keys, push subscriptions, personal notification channels, reminders not yet delivered
   and care grants held as caregiver are removed, `outlook_accounts.owner_user_id` and the default
   assignee of synced calendars are cleared. `oidc_sub` stays bound, so the SSO callback finds the
@@ -1045,6 +1046,7 @@ them with 400 (see the Reminders section), because the run would recreate them w
 | subscription_id | INTEGER | FK → ICS Subscriptions (CASCADE delete) |
 | user_modified | INTEGER | 0/1 — prevents sync overwrite when 1. Set on **any** edit to a mirrored appointment, which is why it no longer gates the colour, see below |
 | color_modified | INTEGER | 0/1 (migration v167, #899) — the colour's own state: `1` means "this colour is managed locally", set only when `color` actually changes and by the upload paths for a colour they just sent to a provider. Inbound gates the colour column on this instead of `user_modified`, which a mere title edit already flips; and `color IS NULL AND color_modified = 1` is the *cleared* state the outbound may mirror, as opposed to a colour that was never learned. Backfilled as `color_modified = user_modified` |
+| series_authored | INTEGER | 0/1, default 0 (migration v246, #1935) - who wrote the start date and the recurrence rule last: `1` means Yuvomi. Set when the event is created in Yuvomi and whenever an edit in Yuvomi changes its start or its rule, also on a mirrored or imported series; compared as the same moment and the same rule, not as text, so a title edit that sends the unchanged start back in another notation does not set it. Cleared by the inbound sync (Google, CalDAV, Apple) when it writes a different start or a different rule into the row than the row held, compared as the text that goes into the column and without judging whose change it is: Yuvomi's own aligned upload coming back (31 January where 15 January was entered) clears it as well, and so does the provider's notation of the same rule (`RRULE:` prefix). That costs nothing on the way out, because the row then holds the aligned start itself, and the next change of start or rule in Yuvomi sets the mark again. Kept apart from `external_source`, which says where the row is mirrored and is rewritten when an upload is booked. Every outbound path (Google insert and patch, CalDAV and Apple creating PUT and update, Outlook, the ICS feed) aligns the start with the rule only for rows that carry the mark (#986); without it a series goes back word for word (#756). The inbound sync itself writes start, end, rule and zone as before this column existed, and reminders follow a moved start (#1377); leaving the entered start in place when only Yuvomi's own aligned form comes back is #1956 and not built. Migration v246 sets it for rows with `external_source = 'local'`; rows that were already mirrored stay `0` because their origin cannot be told apart any more |
 | calendar_ref_id | INTEGER | FK → External Calendars (ON DELETE SET NULL) |
 | caldav_account_id | INTEGER | FK → CalDAV Accounts (ON DELETE SET NULL), nullable (migration v238, #1860) - the account a mirrored CalDAV event belongs to. Set only on rows with `external_source = 'caldav'`, and only by the sync; Apple, Google, ICS and local rows stay `NULL`. See "One row per UID" below |
 | attachment_name | TEXT | Original filename of attached file, nullable |
@@ -2656,33 +2658,26 @@ person. No country- or name-based lookup is performed.
 
 ### Birthday ICS subscription
 
-Calendar → Manage calendars also offers Create calendar · Birthdays. This optional managed
-local calendar groups existing birthday and name-day events through their original source links.
-Enabling it stores `birthday_local_calendar_id` in `sync_config` and adopts existing events on
-read, without creating duplicates or rewriting event IDs, reminders, assignments or provider links.
-Future generated birthday events use the same resolver. Reminder-disabled birthdays keep the
-existing behaviour: they do not acquire calendar events. Existing per-user hidden birthday-layer
-preferences migrate to the managed calendar's source toggle. Authored event and import destination
-pickers exclude this collection; the API rejects it as an authored destination. Removing the
-collection removes its grouping and local-calendar feed link, restores the legacy layer and retains
-the birthday records, events, reminders and sync links. The manager's normal calendar feed exports
-the generated events in this collection; the independent subscription below still exports all saved
-birthdays, including those without reminders.
-
 Settings → Calendar → Birthday calendar export provides a separate subscription URL at
 `/feed/birthdays/:token.ics`. Every authenticated member manages their own link through
 `GET /api/v1/birthdays/feed`, `POST /api/v1/birthdays/feed/regenerate` and
 `DELETE /api/v1/birthdays/feed`. Tokens are independent of the general calendar feed,
 are rate limited, and stop working after rotation, revocation or account deactivation.
-The content is household-wide: all saved birthdays with a birth date, including reminders
-turned off, as transparent yearly all-day events. Names follow the household language;
-stable birthday IDs identify events. Birth years, notes, photos and name days are omitted.
+The content is household-wide: all saved birthdays with a birth date and all saved name days,
+including records with reminders turned off, as transparent yearly all-day events. The feed ignores
+the household Birthdays module switch because it is the module's own export (DECISIONS.md, entry 11).
+Names follow the household language; stable birthday and name-day IDs identify events separately.
+Birth years, notes and photos are omitted.
 February 29 recurs on leap years, following the yearly ICS rule. The URL can be subscribed to in
 any calendar app or service that supports ICS. For example, in Home Assistant use
 [Remote Calendar](https://www.home-assistant.io/integrations/remote_calendar):
 Settings → Devices & services → Add Integration → Remote Calendar, then paste the HTTP(S) URL.
-The existing general calendar feed still includes generated birthday events. Ordinary local-calendar
-feeds exclude them; the optional managed birthday calendar has its own feed as described above.
+The existing general calendar feed includes generated birthday and name-day events by default.
+Its personal "Include birthdays" switch (`users.calendar_feed_include_birthdays`, via
+`PUT /api/v1/calendar/feed` with `includeBirthdays`) can exclude them to avoid duplicates when
+subscribing to both feeds. The household Birthdays module switch continues to suppress birthdays
+in the mixed calendar feed. Local-calendar feeds continue to exclude generated events; the app
+keeps its existing birthday layer filter and reminder-based visibility.
 
 ### API Tokens
 Named Bearer / X-API-Key tokens for non-interactive external integrations. Admin-only creation and revocation. Token values are SHA-256-hashed at rest; the plaintext is shown only once after creation.

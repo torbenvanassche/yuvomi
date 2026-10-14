@@ -371,6 +371,7 @@ export const SETTINGS_SECTIONS = freezeEntries([
     options: [
       { key: 'settings.feedExportTitle', terms: ['ICS', 'iCal'] },
       'settings.feedExportShowAssignees',
+      'settings.feedExportIncludeBirthdays',
     ],
     adminOnly: false,
     loader: () => import('/settings/pages/personal-feeds.js'),

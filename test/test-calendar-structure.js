@@ -101,7 +101,6 @@ const EXPECTED = [
   // local calendars
   'GET /calendars',
   'POST /calendars',
-  'POST /calendars/birthdays',
   'PATCH /calendars/reorder',
   'PUT /calendars/:id',
   'DELETE /calendars/:id',

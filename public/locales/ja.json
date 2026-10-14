@@ -1151,8 +1151,6 @@
         "localCalendarDisableExport": "書き出しを無効化",
         "localCalendarExportCopied": "書き出しリンクをコピーしました",
         "localCalendarDeleteConfirm": "「{{name}}」を削除しますか？",
-        "birthdayCalendarRemoveDetail": "このカレンダーのグループと共有リンクだけが削除されます。誕生日、既存の予定、リマインダー、外部同期のリンクは変更されません。誕生日は元のレイヤーに戻ります。",
-
         "localCalendarDeleteDetail": "このカレンダーの予定は既定のカレンダーへ移動し、エクスポートリンクは使えなくなります。",
         "localCalendarDeleteDetailIcloud": "このカレンダーの予定は既定のカレンダーへ移動し、その後 Apple カレンダー経由で iCloud にアップロードされます。エクスポートリンクは使えなくなります。",
         "localCalendarEventCount_one": "{{count}}件の予定"
@@ -2291,9 +2289,7 @@
         "caldavSyncSuccess": "CalDAV 同期が完了しました",
         "caldavTitle": "CalDAV カレンダー",
         "birthdayFeedTitle": "誕生日カレンダーをエクスポート",
-
-        "birthdayFeedDescription": "保存されたすべての誕生日を毎年の終日イベントとして表示します。リマインダーがオフでも含まれます。ICS対応のカレンダーアプリで購読できます。",
-
+        "birthdayFeedDescription": "保存されたすべての誕生日と名前の日を、毎年の終日予定として配信します。リマインダーがオフのものも含みます。ICS対応のカレンダーアプリで購読できます。",
         "feedExportTitle": "カレンダーフィードをエクスポート",
         "feedExportDescription": "Yuvomiカレンダーを読み取り専用でApple カレンダー、Googleカレンダー、Thunderbirdに登録できます。",
         "feedExportInactive": "エクスポートフィードは無効です。",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "削除",
         "displayRemoveDeviceConfirm": "この端末の項目を削除しますか？",
         "displayRemoveDeviceDetail": "この項目は一覧から完全に消えます。この操作は取り消せません。",
-        "displayRemoveDeviceActive": "この端末はまだペアリングされています。先に失効させてください。"
+        "displayRemoveDeviceActive": "この端末はまだペアリングされています。先に失効させてください。",
+        "feedExportIncludeBirthdays": "誕生日を含める",
+        "feedExportIncludeBirthdaysHint": "独立した誕生日フィードを購読する場合はオフにして、誕生日と名前の日の重複を防いでください。"
     },
     "login": {
         "tagline": "家族のプランナーへおかえりなさい。",

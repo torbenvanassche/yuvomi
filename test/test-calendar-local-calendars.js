@@ -34,50 +34,6 @@ const baseUrl = await new Promise((resolve) => {
 
 test.after(() => server.close());
 
-test('optional birthday calendar adopts legacy and mirrored events without rewriting reminders or hiding settings', async () => {
-  const { syncBirthdayArtifacts } = await import('../server/services/birthdays.js');
-  const enabledId = db.prepare("INSERT INTO birthdays (name,birth_date,name_day,created_by,reminder_offset) VALUES ('Managed birthday','1980-05-01','05-02',1,'7')").run().lastInsertRowid;
-  const disabledId = db.prepare("INSERT INTO birthdays (name,birth_date,created_by,reminder_offset) VALUES ('Hidden birthday','1980-05-03',1,'')").run().lastInsertRowid;
-  for (const id of [enabledId, disabledId]) syncBirthdayArtifacts(db, db.prepare('SELECT * FROM birthdays WHERE id = ?').get(id));
-  const birthday = db.prepare('SELECT * FROM birthdays WHERE id = ?').get(enabledId);
-  db.prepare("UPDATE calendar_events SET external_source = 'apple', external_calendar_id = 'legacy-icloud' WHERE id = ?").run(birthday.calendar_event_id);
-  const beforeEvents = db.prepare('SELECT * FROM calendar_events ORDER BY id').all();
-  const beforeReminders = db.prepare('SELECT * FROM reminders ORDER BY id').all();
-  actor = { ...ADMIN, access: 'read' };
-  assert.equal((await call('POST', '/calendars/birthdays', { body: { name: 'Birthdays' } })).status, 403);
-  actor = ADMIN;
-  const created = await call('POST', '/calendars/birthdays', { body: { name: 'Birthdays' } });
-  assert.equal(created.status, 201, JSON.stringify(created.body));
-  const id = created.body.data.id;
-  try {
-    assert.equal(created.body.data.is_birthday, true);
-    assert.equal((await call('POST', '/calendars/birthdays', { body: { name: 'Birthdays' } })).body.data.id, id);
-    assert.deepEqual(db.prepare('SELECT * FROM calendar_events ORDER BY id').all(), beforeEvents);
-    assert.deepEqual(db.prepare('SELECT * FROM reminders ORDER BY id').all(), beforeReminders);
-    assert.equal(resolveLocalCalendarId(db, birthday.calendar_event_id), id);
-    assert.equal(resolveLocalCalendarId(db, birthday.name_day_calendar_event_id), id);
-    const rows = (await call('GET', '/api/v1/calendar?from=2035-05-01&to=2035-05-04')).body.data;
-    assert.ok(rows.some(row => row.birthday_name === 'Managed birthday' && row.local_calendar_id === id));
-    assert.ok(!rows.some(row => row.birthday_name === 'Hidden birthday'));
-    assert.equal(db.prepare('SELECT calendar_event_id FROM birthdays WHERE id = ?').get(disabledId).calendar_event_id, null);
-    const authored = await call('POST', '/', { body: { title: 'Wrong destination', start_datetime: '2035-05-01', local_calendar_id: id } });
-    assert.equal(authored.status, 400);
-    const ics = buildCalendarFeed(db, id, new Date('2035-05-01T00:00:00Z'), 'UTC');
-    assert.match(ics, /Managed birthday/);
-    assert.doesNotMatch(ics, /Hidden birthday|Wrong destination/);
-    assert.equal((await call('DELETE', `/calendars/${id}`)).status, 204);
-    assert.equal(resolveLocalCalendarId(db, birthday.calendar_event_id), null);
-    assert.deepEqual(db.prepare('SELECT * FROM calendar_events ORDER BY id').all(), beforeEvents);
-  } finally {
-    actor = ADMIN;
-    db.prepare('DELETE FROM sync_config WHERE key = ?').run('birthday_local_calendar_id');
-    db.prepare('DELETE FROM local_calendars WHERE id = ?').run(id);
-    for (const reminder of beforeReminders) db.prepare('DELETE FROM reminders WHERE id = ?').run(reminder.id);
-    for (const row of beforeEvents) db.prepare('DELETE FROM calendar_events WHERE id = ?').run(row.id);
-    db.prepare('DELETE FROM birthdays WHERE id IN (?,?)').run(enabledId, disabledId);
-  }
-});
-
 async function call(method, route, { body } = {}) {
   const headers = {};
   let payload;

@@ -1308,8 +1308,6 @@
         "localCalendarDisableExport": "Wyłącz eksport",
         "localCalendarExportCopied": "Link eksportu skopiowany",
         "localCalendarDeleteConfirm": "Usunąć „{{name}}”?",
-        "birthdayCalendarRemoveDetail": "Usunięte zostaną tylko ta grupa i jej udostępniony link. Urodziny, wydarzenia, przypomnienia i synchronizacja zewnętrzna pozostaną bez zmian. Urodziny wrócą do pierwotnej warstwy.",
-
         "localCalendarDeleteDetail": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a jego link eksportu przestanie działać.",
         "localCalendarDeleteDetailIcloud": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a następnie przesłane do iCloud przez Apple Calendar. Jego link eksportu przestanie działać.",
         "localCalendarEventCount_many": "{{count}} wydarzeń",
@@ -2540,9 +2538,7 @@
         "backupWebdavEnvHint": "Konfiguracja jest kontrolowana przez zmienne środowiskowe i nie można jej tu edytować.",
         "caldavTitle": "Kalendarze CalDAV",
         "birthdayFeedTitle": "Eksportuj kalendarz urodzin",
-
-        "birthdayFeedDescription": "Wszystkie zapisane urodziny jako coroczne wydarzenia całodniowe, również bez przypomnień. Subskrybuj w dowolnej aplikacji kalendarza obsługującej ICS.",
-
+        "birthdayFeedDescription": "Wszystkie zapisane urodziny i imieniny jako coroczne wydarzenia całodniowe, także bez przypomnień. Subskrybuj w dowolnej aplikacji kalendarza obsługującej ICS.",
         "feedExportTitle": "Eksportuj kanał kalendarza",
         "feedExportDescription": "Subskrybuj swój kalendarz Yuvomi w trybie tylko do odczytu w Kalendarzu Apple, Kalendarzu Google lub Thunderbird.",
         "feedExportInactive": "Kanał eksportu jest wyłączony.",
@@ -3393,7 +3389,9 @@
         "displayRemoveDevice": "Usuń",
         "displayRemoveDeviceConfirm": "Usunąć wpis tego urządzenia?",
         "displayRemoveDeviceDetail": "Wpis zniknie z listy na stałe. Tego nie można cofnąć.",
-        "displayRemoveDeviceActive": "To urządzenie jest nadal sparowane. Najpierw je unieważnij."
+        "displayRemoveDeviceActive": "To urządzenie jest nadal sparowane. Najpierw je unieważnij.",
+        "feedExportIncludeBirthdays": "Uwzględniaj urodziny",
+        "feedExportIncludeBirthdaysHint": "Wyłącz przy osobnej subskrypcji urodzin, aby uniknąć podwójnych urodzin i imienin."
     },
     "login": {
         "tagline": "Witaj ponownie w swoim planerze rodzinnym.",

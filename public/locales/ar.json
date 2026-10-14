@@ -1366,8 +1366,6 @@
         "localCalendarDisableExport": "إيقاف التصدير",
         "localCalendarExportCopied": "تم نسخ رابط التصدير",
         "localCalendarDeleteConfirm": "حذف \"{{name}}\"؟",
-        "birthdayCalendarRemoveDetail": "تُحذف مجموعة التقويم ورابطها المشترك فقط. تبقى أعياد الميلاد والأحداث والتذكيرات وروابط المزامنة الخارجية دون تغيير. تعود أعياد الميلاد إلى طبقتها الأصلية.",
-
         "localCalendarDeleteDetail": "ستنقل أحداث هذا التقويم إلى التقويم الافتراضي، وسيتوقف رابط التصدير الخاص به عن العمل.",
         "localCalendarDeleteDetailIcloud": "ستنقل أحداث هذا التقويم إلى التقويم الافتراضي، ثم ترفع إلى iCloud عبر تقويم Apple. وسيتوقف رابط التصدير الخاص به عن العمل.",
         "localCalendarEventCount_zero": "{{count}} أحداث",
@@ -2547,9 +2545,7 @@
         "caldavSyncSuccess": "نجحت مزامنة CalDAV",
         "caldavTitle": "تقويمات CalDAV",
         "birthdayFeedTitle": "تصدير تقويم أعياد الميلاد",
-
-        "birthdayFeedDescription": "جميع أعياد الميلاد المحفوظة كأحداث سنوية طوال اليوم، حتى بدون تذكيرات. اشترك باستخدام أي تطبيق تقويم يدعم ICS.",
-
+        "birthdayFeedDescription": "جميع أعياد الميلاد وأيام الأسماء المحفوظة كأحداث سنوية طوال اليوم، حتى دون تذكيرات. يمكن الاشتراك بأي تطبيق تقويم يدعم ICS.",
         "feedExportTitle": "تصدير تغذية التقويم",
         "feedExportDescription": "اشترك في تقويم Yuvomi الخاص بك للقراءة فقط في تقويم Apple أو تقويم Google أو Thunderbird.",
         "feedExportInactive": "تغذية التصدير معطّلة.",
@@ -3481,7 +3477,9 @@
         "displayRemoveDevice": "إزالة",
         "displayRemoveDeviceConfirm": "هل تريد إزالة إدخال هذا الجهاز؟",
         "displayRemoveDeviceDetail": "يختفي الإدخال من القائمة نهائيًا. ولا يمكن التراجع عن ذلك.",
-        "displayRemoveDeviceActive": "هذا الجهاز ما زال مقترنًا. أبطِله أولًا."
+        "displayRemoveDeviceActive": "هذا الجهاز ما زال مقترنًا. أبطِله أولًا.",
+        "feedExportIncludeBirthdays": "تضمين أعياد الميلاد",
+        "feedExportIncludeBirthdaysHint": "عطّل هذا الخيار عند الاشتراك في موجز أعياد الميلاد المنفصل لتجنب تكرار أعياد الميلاد وأيام الأسماء."
     },
     "login": {
         "tagline": "مرحبًا بعودتك إلى منظّم عائلتك.",

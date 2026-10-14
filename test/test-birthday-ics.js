@@ -7,6 +7,10 @@ process.env.DB_PATH = ':memory:';
 process.env.SESSION_SECRET = 'birthday-feed-test';
 const { get } = await import('../server/db.js');
 const feed = await import('../server/services/birthday-ics.js');
+const calendarFeed = await import('../server/services/ics-export.js');
+const { default: calendarFeedRouter } = await import('../server/routes/calendar/feed.js');
+const { MIGRATIONS, migrate } = await import('../server/db.js');
+const { default: Database } = await import('better-sqlite3-multiple-ciphers');
 const { default: birthdaysRouter } = await import('../server/routes/birthdays.js');
 const db = get();
 const ids = ['first', 'second'].map(name => Number(db.prepare("INSERT INTO users (username, display_name, password_hash, role) VALUES (?, ?, 'x', 'member')").run(name, name).lastInsertRowid));
@@ -18,6 +22,7 @@ app.use((req, _res, next) => {
   next();
 });
 app.use('/birthdays', birthdaysRouter);
+app.use('/calendar', calendarFeedRouter);
 const server = app.listen(0, '127.0.0.1');
 await new Promise(resolve => server.once('listening', resolve));
 const base = `http://127.0.0.1:${server.address().port}`;
@@ -32,7 +37,7 @@ test('birthday-only ICS includes reminder-free birthdays, all-day recurrence and
   assert.equal(created.status, 201, JSON.stringify(created.body));
   assert.equal(created.body.data.calendar_event_id, null);
   await call('POST', '/birthdays', { name: 'Leap birthday', birth_date: '2000-02-29', reminder_offset: '' });
-  db.prepare("INSERT INTO calendar_events (title,start_datetime,created_by) VALUES ('Not a birthday','2035-01-01',?)").run(actor);
+  db.prepare("INSERT INTO calendar_events (title,start_datetime,created_by) VALUES ('Not a birthday','2035-01-01T12:00:00',?)").run(actor);
   const ics = feed.buildBirthdayFeed(db, new Date('2035-01-01T00:00:00Z'));
   assert.match(ics, /Ada\\, Test/);
   assert.match(ics, /DTSTART;VALUE=DATE:20001231\r\nDTEND;VALUE=DATE:20010101/);
@@ -112,4 +117,60 @@ test('production birthday ICS route accepts only its own token and ends access w
       child.kill(); await exited;
     }
   }
+});
+
+
+test('name days export without reminders, with stable UIDs distinct from birthdays', async () => {
+  actor = ids[0];
+  const created = await call('POST', '/birthdays', { name: 'Name-only export', birth_date: '1984-07-01', name_day: '12-31', reminder_offset: '' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  const ics = feed.buildBirthdayFeed(db);
+  const id = created.body.data.id;
+  assert.match(ics, new RegExp('UID:name-day-' + id + '@yuvomi'));
+  assert.match(ics, new RegExp('UID:birthday-' + id + '@yuvomi'));
+  assert.match(ics, /SUMMARY:Name day: Name-only export/);
+  assert.match(ics, /DTSTART;VALUE=DATE:20001231\r\nDTEND;VALUE=DATE:20010101/);
+  db.prepare('UPDATE birthdays SET name = ? WHERE id = ?').run('Renamed name day', id);
+  assert.match(feed.buildBirthdayFeed(db), new RegExp('UID:name-day-' + id + '@yuvomi'));
+});
+
+test('calendar birthday inclusion defaults on, is personal, survives token rotation and leaves the separate feed intact', async () => {
+  actor = ids[0];
+  const created = await call('POST', '/birthdays', { name: 'Calendar inclusion probe', birth_date: '1990-05-12', name_day: '05-13', reminder_offset: '0' });
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  await call('POST', '/calendar/feed/regenerate');
+  assert.equal((await call('GET', '/calendar/feed')).body.data.includeBirthdays, true);
+  assert.match(calendarFeed.buildFeed(db, actor), /Calendar inclusion probe/);
+  const disabled = await call('PUT', '/calendar/feed', { includeBirthdays: false });
+  assert.equal(disabled.status, 200);
+  assert.equal(disabled.body.data.includeBirthdays, false);
+  assert.doesNotMatch(calendarFeed.buildFeed(db, actor), /Calendar inclusion probe/);
+  assert.match(calendarFeed.buildFeed(db, ids[1]), /Calendar inclusion probe/);
+  assert.match(feed.buildBirthdayFeed(db), /Calendar inclusion probe/);
+  const before = db.prepare('SELECT * FROM users WHERE id = ?').get(actor);
+  assert.equal((await call('PUT', '/calendar/feed', { showAssignees: true, includeBirthdays: 'false' })).status, 400);
+  assert.deepEqual(db.prepare('SELECT * FROM users WHERE id = ?').get(actor), before, 'invalid options never partially write');
+  await call('POST', '/calendar/feed/regenerate');
+  assert.equal((await call('GET', '/calendar/feed')).body.data.includeBirthdays, false);
+  assert.equal((await call('PUT', '/calendar/feed', { showAssignees: true })).body.data.includeBirthdays, false);
+  await call('PUT', '/calendar/feed', { includeBirthdays: true });
+  assert.match(calendarFeed.buildFeed(db, actor), /Calendar inclusion probe/);
+  db.prepare("INSERT INTO sync_config (key,value) VALUES ('disabled_modules', ?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(JSON.stringify(['birthdays']));
+  try {
+    assert.doesNotMatch(calendarFeed.buildFeed(db, actor), /Calendar inclusion probe/);
+    assert.match(feed.buildBirthdayFeed(db), /Calendar inclusion probe/);
+  } finally { db.prepare("DELETE FROM sync_config WHERE key='disabled_modules'").run(); }
+});
+
+test('birthday feed migration leaves existing calendar subscriptions enabled and creates independent token storage', () => {
+  const database = new Database(':memory:');
+  try {
+    const migration = MIGRATIONS.find(item => item.description.startsWith('Birthdays: independently'));
+    migrate(database, MIGRATIONS.filter(item => item.version < migration.version));
+    database.prepare("INSERT INTO users (username,display_name,password_hash,calendar_feed_token) VALUES ('existing','Existing','x','existing-token')").run();
+    migrate(database, [migration]);
+    assert.deepEqual(database.prepare('SELECT calendar_feed_token, birthday_feed_token, calendar_feed_include_birthdays FROM users').get(),
+      { calendar_feed_token: 'existing-token', birthday_feed_token: null, calendar_feed_include_birthdays: 1 });
+    assert.throws(() => database.prepare('UPDATE users SET calendar_feed_include_birthdays=2').run(), /CHECK constraint/);
+  } finally { database.close(); }
 });

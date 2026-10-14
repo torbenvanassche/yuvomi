@@ -1151,8 +1151,6 @@
         "localCalendarDisableExport": "停用导出",
         "localCalendarExportCopied": "导出链接已复制",
         "localCalendarDeleteConfirm": "删除“{{name}}”？",
-        "birthdayCalendarRemoveDetail": "仅移除此日历分组及其共享订阅链接。生日、现有事件、提醒和外部同步链接保持不变。生日将回到原来的图层。",
-
         "localCalendarDeleteDetail": "此日历中的事件将移至默认日历，其导出链接也将停止工作。",
         "localCalendarDeleteDetailIcloud": "此日历中的事件将移至默认日历，随后通过 Apple 日历上传到 iCloud。其导出链接也将停止工作。",
         "localCalendarEventCount_one": "{{count}} 个事件"
@@ -2291,9 +2289,7 @@
         "caldavSyncSuccess": "CalDAV 同步成功",
         "caldavTitle": "CalDAV 日历",
         "birthdayFeedTitle": "导出生日日历",
-
-        "birthdayFeedDescription": "将所有已保存的生日导出为每年重复的全天事件，包括已关闭提醒的生日。可在任何支持ICS的日历应用中订阅。",
-
+        "birthdayFeedDescription": "所有已保存的生日和命名日均以每年重复的全天活动导出，包括关闭提醒的记录。可在任何支持 ICS 的日历应用中订阅。",
         "feedExportTitle": "导出日历订阅源",
         "feedExportDescription": "在 Apple 日历、Google 日历或 Thunderbird 中以只读方式订阅你的 Yuvomi 日历。",
         "feedExportInactive": "导出订阅源已停用。",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "移除",
         "displayRemoveDeviceConfirm": "要移除这台设备的条目吗？",
         "displayRemoveDeviceDetail": "该条目将从列表中永久消失。此操作无法撤销。",
-        "displayRemoveDeviceActive": "这台设备仍处于配对状态。请先撤销它。"
+        "displayRemoveDeviceActive": "这台设备仍处于配对状态。请先撤销它。",
+        "feedExportIncludeBirthdays": "包含生日",
+        "feedExportIncludeBirthdaysHint": "订阅独立生日订阅源时关闭此选项，避免生日和命名日重复显示。"
     },
     "login": {
         "tagline": "欢迎回到您的家庭计划工具。",

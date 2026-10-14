@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Dışa aktarımı kapat",
         "localCalendarExportCopied": "Dışa aktarım bağlantısı kopyalandı",
         "localCalendarDeleteConfirm": "\"{{name}}\" silinsin mi?",
-        "birthdayCalendarRemoveDetail": "Yalnızca bu takvim grubu ve paylaşılan bağlantısı kaldırılır. Doğum günleri, etkinlikler, hatırlatıcılar ve dış eşitleme bağlantıları değişmez. Doğum günleri önceki katmanına döner.",
-
         "localCalendarDeleteDetail": "Bu takvimdeki etkinlikler varsayılan takvime taşınır ve dışa aktarma bağlantısı artık çalışmaz.",
         "localCalendarDeleteDetailIcloud": "Bu takvimdeki etkinlikler varsayılan takvime taşınır ve ardından Apple Takvim üzerinden iCloud'a yüklenir. Dışa aktarma bağlantısı artık çalışmaz."
     },
@@ -2291,9 +2289,7 @@
         "caldavSyncSuccess": "CalDAV eşitlemesi başarılı",
         "caldavTitle": "CalDAV takvimleri",
         "birthdayFeedTitle": "Doğum günü takvimini dışa aktar",
-
-        "birthdayFeedDescription": "Hatırlatıcılar kapalı olsa da tüm kayıtlı doğum günleri yıllık tam günlük etkinlikler olarak gösterilir. ICS destekleyen herhangi bir takvim uygulamasından abone olun.",
-
+        "birthdayFeedDescription": "Hatırlatıcıları kapalı olanlar dahil, kayıtlı tüm doğum günleri ve isim günleri yıllık tam gün etkinlikleridir. ICS destekleyen her takvim uygulamasında abone olunabilir.",
         "feedExportTitle": "Takvim akışını dışa aktar",
         "feedExportDescription": "Yuvomi takvimine Apple Takvim, Google Takvim veya Thunderbird'de salt okunur olarak abone ol.",
         "feedExportInactive": "Dışa aktarma akışı devre dışı.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Kaldır",
         "displayRemoveDeviceConfirm": "Bu cihazın kaydı kaldırılsın mı?",
         "displayRemoveDeviceDetail": "Kayıt listeden kalıcı olarak silinir. Bu geri alınamaz.",
-        "displayRemoveDeviceActive": "Bu cihaz hâlâ eşleştirilmiş. Önce iptal edin."
+        "displayRemoveDeviceActive": "Bu cihaz hâlâ eşleştirilmiş. Önce iptal edin.",
+        "feedExportIncludeBirthdays": "Doğum günlerini dahil et",
+        "feedExportIncludeBirthdaysHint": "Ayrı doğum günü akışına abone olduğunuzda doğum günlerinin ve isim günlerinin yinelenmesini önlemek için kapatın."
     },
     "login": {
         "tagline": "Aile planlayıcına tekrar hoş geldin.",

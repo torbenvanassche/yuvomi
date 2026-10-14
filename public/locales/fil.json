@@ -1166,8 +1166,6 @@
         "localCalendarDisableExport": "I-disable ang export",
         "localCalendarExportCopied": "Nakopya ang link ng export",
         "localCalendarDeleteConfirm": "Tanggalin ang \"{{name}}\"?",
-        "birthdayCalendarRemoveDetail": "Ang pangkat ng kalendaryong ito at ang nakabahaging link lang ang aalisin. Hindi magbabago ang mga kaarawan, kaganapan, paalala at panlabas na sync. Babalik ang mga kaarawan sa dating layer.",
-
         "localCalendarDeleteDetail": "Ililipat ang mga kaganapan mula rito sa default na kalendaryo, at hindi na gagana ang export link nito.",
         "localCalendarDeleteDetailIcloud": "Ililipat ang mga kaganapan mula rito sa default na kalendaryo at pagkatapos ay ia-upload sa iCloud sa pamamagitan ng Apple Calendar. Hindi na gagana ang export link nito."
     },
@@ -2391,9 +2389,7 @@
         "backupWebdavEnvHint": "Kinokontrol ng mga environment variable ang pagsasaayos at hindi ito mae-edit dito.",
         "caldavTitle": "Mga CalDAV na Kalendaryo",
         "birthdayFeedTitle": "I-export ang kalendaryo ng kaarawan",
-
-        "birthdayFeedDescription": "Lahat ng naka-save na kaarawan bilang taunang buong-araw na kaganapan, kahit walang paalala. Mag-subscribe sa anumang calendar app na sumusuporta sa ICS.",
-
+        "birthdayFeedDescription": "Lahat ng naka-save na kaarawan at araw ng pangalan bilang taunang buong araw na kaganapan, kahit walang paalala. Mag-subscribe sa anumang calendar app na sumusuporta sa ICS.",
         "feedExportTitle": "I-export ang calendar feed",
         "feedExportDescription": "Mag-subscribe sa iyong kalendaryo sa Yuvomi nang babasahin lamang sa Apple Calendar, Google Calendar o Thunderbird.",
         "feedExportInactive": "Naka-disable ang export feed.",
@@ -3191,7 +3187,9 @@
         "displayRemoveDevice": "Alisin",
         "displayRemoveDeviceConfirm": "Alisin ang entry ng device na ito?",
         "displayRemoveDeviceDetail": "Tuluyang mawawala ang entry sa listahan. Hindi ito maibabalik.",
-        "displayRemoveDeviceActive": "Nakapares pa ang device na ito. Bawiin muna ito."
+        "displayRemoveDeviceActive": "Nakapares pa ang device na ito. Bawiin muna ito.",
+        "feedExportIncludeBirthdays": "Isama ang mga kaarawan",
+        "feedExportIncludeBirthdaysHint": "I-off kapag naka-subscribe sa hiwalay na feed ng kaarawan upang hindi madoble ang mga kaarawan at araw ng pangalan."
     },
     "login": {
         "tagline": "Maligayang pagbabalik sa iyong family planner.",

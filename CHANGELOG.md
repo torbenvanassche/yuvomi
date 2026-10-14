@@ -10,12 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Birthday calendar export.** Settings → Calendar includes an independent ICS subscription for all
-  saved birthdays, including birthdays with reminders disabled. Subscribe using any calendar app
+  saved birthdays and name days, including records with reminders disabled. Subscribe using any calendar app
   or service that supports ICS. The feed uses yearly all-day events and can be rotated or disabled
-  without changing other calendar subscriptions.
-  Calendar → Manage calendars can optionally create a managed birthday calendar for easy filtering.
-  Existing birthday and name-day events are adopted without duplication, and their reminders and
-  external sync links are preserved. Removing the grouping restores the original birthday layer.
+  without changing other calendar subscriptions. A personal "Include birthdays" switch on the
+  existing calendar feed is on by default; turn it off when using both feeds to avoid duplicates.
+
+### Fixed
+
+- **A "last day of the month" series keeps its start date in Google, CalDAV and Apple Calendar after
+  an edit** (#1935). A series you create in Yuvomi from a date in the middle of the month is sent
+  with a start date its own rule accepts: entered on 15 January, it starts on 31 January over there.
+  That only held for the first upload. After any later edit, even one that only changed the title,
+  the other calendar got 15 January as the start and could show that day as one occurrence more
+  than Yuvomi does. The series now goes out with the same start on every upload. The same applies
+  when you change the start date or the repeat rule of a series that is already synced, including
+  one that came from the other calendar. A synced series whose start date and rule you did not
+  change in Yuvomi is still sent back exactly as it came in. A series that already shows the wrong
+  start date in the other calendar is corrected the next time you change its start date or its
+  repeat rule in Yuvomi.
+- **Saving an event without touching its time no longer moves it** (#1958). With no household time
+  zone set and the app opened from a device in another time zone than the server, the event form
+  showed a synced event in the device's zone and sent those digits back on every save; the server
+  read them in its own zone, so renaming an event moved it by the difference between the two
+  zones, and an all-day event stored as midnight UTC could slip to the day before. The form now
+  leaves start and end out of the save when you did not change them, and the stored time stays as
+  it was. Setting a household time zone in Settings is still the way to make device and server
+  agree on times you type in.
 
 ## [2.77.0] - 2026-10-14
 

@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Export kikapcsolása",
         "localCalendarExportCopied": "Exportlink másolva",
         "localCalendarDeleteConfirm": "Törlöd: „{{name}}”?",
-        "birthdayCalendarRemoveDetail": "Csak ez a naptárcsoport és a megosztott hivatkozása törlődik. A születésnapok, események, emlékeztetők és külső szinkronkapcsolatok változatlanok maradnak. A születésnapok visszatérnek az eredeti rétegbe.",
-
         "localCalendarDeleteDetail": "A naptár eseményei az alapértelmezett naptárba kerülnek, és az exportálási hivatkozása többé nem fog működni.",
         "localCalendarDeleteDetailIcloud": "A naptár eseményei az alapértelmezett naptárba kerülnek, majd az Apple Naptár kapcsolaton keresztül feltöltődnek az iCloudba. Az exportálási hivatkozása többé nem fog működni."
     },
@@ -2258,9 +2256,7 @@
             "errorNoCalendarName": "Adj meg egy nevet az új naptárhoz."
         },
         "birthdayFeedTitle": "Születésnaptár exportálása",
-
-        "birthdayFeedDescription": "Minden mentett születésnap évente ismétlődő egész napos eseményként, emlékeztető nélkül is. Iratkozz fel bármely ICS-t támogató naptáralkalmazásban.",
-
+        "birthdayFeedDescription": "Minden mentett születésnap és névnap évente ismétlődő egész napos eseményként, emlékeztető nélkül is. Bármely ICS-t támogató naptáralkalmazásban használható.",
         "feedExportTitle": "Naptár-feed exportálása",
         "feedExportDescription": "Iratkozzon fel a Yuvomi naptárára csak olvasható módban az Apple Naptárban, a Google Naptárban vagy a Thunderbirdben.",
         "feedExportInactive": "Az export feed ki van kapcsolva.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Eltávolítás",
         "displayRemoveDeviceConfirm": "Eltávolítod ennek az eszköznek a bejegyzését?",
         "displayRemoveDeviceDetail": "A bejegyzés végleg eltűnik a listáról. Ezt nem lehet visszavonni.",
-        "displayRemoveDeviceActive": "Ez az eszköz még párosítva van. Előbb vond vissza."
+        "displayRemoveDeviceActive": "Ez az eszköz még párosítva van. Előbb vond vissza.",
+        "feedExportIncludeBirthdays": "Születésnapok felvétele",
+        "feedExportIncludeBirthdaysHint": "Külön születésnapi naptárra feliratkozva kapcsolja ki, hogy a születésnapok és névnapok ne jelenjenek meg kétszer."
     },
     "login": {
         "tagline": "Üdv újra a családi tervezőben.",

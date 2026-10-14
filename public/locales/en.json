@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Disable export",
         "localCalendarExportCopied": "Export link copied",
         "localCalendarDeleteConfirm": "Delete \"{{name}}\"?",
-        "birthdayCalendarRemoveDetail": "Only this calendar grouping and its shared feed link are removed. Birthday records, existing events, reminders and external sync links stay unchanged. Birthdays return to the original birthday layer.",
-
         "localCalendarDeleteDetail": "Events from this calendar move to the default calendar, and its export link will stop working.",
         "localCalendarDeleteDetailIcloud": "Events from this calendar move to the default calendar and are then uploaded to iCloud through Apple Calendar. Its export link will stop working."
     },
@@ -2351,9 +2349,7 @@
         "backupWebdavEnvHint": "Configuration is controlled by environment variables and cannot be edited here.",
         "caldavTitle": "CalDAV Calendars",
         "birthdayFeedTitle": "Birthday calendar export",
-
-        "birthdayFeedDescription": "All saved birthdays as yearly all-day events, including those with reminders off. Subscribe in any calendar app that supports ICS.",
-
+        "birthdayFeedDescription": "All saved birthdays and name days as yearly all-day events, including those with reminders off. Subscribe in any calendar app that supports ICS.",
         "feedExportTitle": "Export calendar feed",
         "feedExportDescription": "Subscribe to your Yuvomi calendar read-only in Apple Calendar, Google Calendar, or Thunderbird.",
         "feedExportInactive": "The export feed is disabled.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Remove",
         "displayRemoveDeviceConfirm": "Remove the entry for this device?",
         "displayRemoveDeviceDetail": "The entry disappears from the list for good. This cannot be undone.",
-        "displayRemoveDeviceActive": "This device is still paired. Revoke it first."
+        "displayRemoveDeviceActive": "This device is still paired. Revoke it first.",
+        "feedExportIncludeBirthdays": "Include birthdays",
+        "feedExportIncludeBirthdaysHint": "Turn this off when you subscribe to the separate birthday feed to avoid duplicate birthdays and name days."
     },
     "login": {
         "tagline": "Welcome back to your family planner.",

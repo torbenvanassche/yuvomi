@@ -3,33 +3,6 @@ import { randomBytes, timingSafeEqual } from 'node:crypto';
 const DEFAULT_CALENDAR_NAME = 'Yuvomi';
 const DEFAULT_CALENDAR_COLOR = '#007AFF';
 const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
-const BIRTHDAY_CALENDAR_KEY = 'birthday_local_calendar_id';
-
-export function birthdayCalendarId(conn) {
-  const value = conn.prepare('SELECT value FROM sync_config WHERE key = ?').get(BIRTHDAY_CALENDAR_KEY)?.value;
-  return conn.prepare('SELECT id FROM local_calendars WHERE id = ? AND is_default = 0').get(Number(value))?.id ?? null;
-}
-
-/** Adopt existing source links instead of rewriting or duplicating birthday events. */
-export function createBirthdayCalendar(conn, { name, color, createdBy }) {
-  return conn.transaction(() => {
-    const existing = birthdayCalendarId(conn);
-    if (existing) return localCalendarById(conn, existing);
-    const id = conn.prepare(`INSERT INTO local_calendars (name,color,sort_order,created_by)
-      VALUES (?, ?, (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM local_calendars), ?)`)
-      .run(name, color, createdBy).lastInsertRowid;
-    conn.prepare('INSERT OR REPLACE INTO sync_config (key,value) VALUES (?,?)').run(BIRTHDAY_CALENDAR_KEY, String(id));
-    return localCalendarById(conn, id);
-  })();
-}
-
-export function removeBirthdayCalendarSetting(conn, calendarId) {
-  conn.prepare('DELETE FROM sync_config WHERE key = ? AND value = ?').run(BIRTHDAY_CALENDAR_KEY, String(calendarId));
-}
-
-export function birthdayCalendarFlagSql(alias = 'lc') {
-  return `${alias}.id = (SELECT CAST(value AS INTEGER) FROM sync_config WHERE key = 'birthday_local_calendar_id')`;
-}
 
 function serializeCalendar(req, row, feedUrl, { includeFeedToken = false } = {}) {
   if (!row) return null;
@@ -39,7 +12,6 @@ function serializeCalendar(req, row, feedUrl, { includeFeedToken = false } = {})
     name: row.name,
     color: row.color,
     is_default: !!row.is_default,
-    is_birthday: !!row.is_birthday,
     sort_order: row.sort_order ?? 0,
     feed_token: token,
     feed_url: token ? feedUrl(req, token) : null,
@@ -69,7 +41,7 @@ function defaultCalendarId(conn) {
 function localCalendarById(conn, id) {
   const numeric = Number(id);
   if (!Number.isInteger(numeric) || numeric < 1) return null;
-  return conn.prepare(`SELECT lc.*, ${birthdayCalendarFlagSql()} AS is_birthday FROM local_calendars lc WHERE id = ?`).get(numeric) ?? null;
+  return conn.prepare('SELECT * FROM local_calendars WHERE id = ?').get(numeric) ?? null;
 }
 
 function validateCalendarId(conn, raw, { required = false } = {}) {
@@ -82,7 +54,6 @@ function validateCalendarId(conn, raw, { required = false } = {}) {
   }
   const row = localCalendarById(conn, id);
   if (!row) return { value: null, error: 'Kalender: Dieser Kalender existiert nicht mehr.' };
-  if (row.is_birthday) return { value: null, error: 'Birthday calendars are managed through the Birthdays module.' };
   return { value: row.id, error: null };
 }
 
@@ -143,11 +114,7 @@ export {
  * SQL form lets feeds, counts and event projections use the exact same rule.
  */
 export function localCalendarIdSql(alias = 'e') {
-  return `(CASE WHEN EXISTS (SELECT 1 FROM birthdays b
-      WHERE b.calendar_event_id IN (${alias}.id, ${alias}.recurrence_parent_id)
-         OR b.name_day_calendar_event_id IN (${alias}.id, ${alias}.recurrence_parent_id))
-    THEN (SELECT id FROM local_calendars WHERE ${birthdayCalendarFlagSql('local_calendars')} AND is_default = 0)
-    WHEN ${alias}.external_source = 'local'
+  return `(CASE WHEN ${alias}.external_source = 'local'
     AND ${alias}.target_google_calendar_id IS NULL
     AND ${alias}.target_caldav_account_id IS NULL
     AND NOT EXISTS (SELECT 1 FROM birthdays b

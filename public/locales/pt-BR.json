@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Desativar exportação",
         "localCalendarExportCopied": "Link de exportação copiado",
         "localCalendarDeleteConfirm": "Eliminar \"{{name}}\"?",
-        "birthdayCalendarRemoveDetail": "Somente este agrupamento e seu link compartilhado são removidos. Aniversários, eventos, lembretes e sincronizações externas permanecem inalterados. Os aniversários voltam à camada original.",
-
         "localCalendarDeleteDetail": "Os eventos deste calendário serão movidos para o calendário predefinido e a respetiva ligação de exportação deixará de funcionar.",
         "localCalendarDeleteDetailIcloud": "Os eventos deste calendário serão movidos para o calendário predefinido e depois enviados ao iCloud pelo Apple Calendar. A respetiva ligação de exportação deixará de funcionar."
     },
@@ -2290,9 +2288,7 @@
         "caldavSyncSuccess": "Sincronização CalDAV concluída",
         "caldavTitle": "Calendários CalDAV",
         "birthdayFeedTitle": "Exportar calendário de aniversários",
-
-        "birthdayFeedDescription": "Todos os aniversários salvos como eventos anuais de dia inteiro, mesmo sem lembretes. Assine em qualquer aplicativo de calendário compatível com ICS.",
-
+        "birthdayFeedDescription": "Todos os aniversários e dias do nome salvos como eventos anuais de dia inteiro, mesmo sem lembretes. Compatível com qualquer aplicativo de calendário com suporte a ICS.",
         "feedExportTitle": "Exportar feed de calendário",
         "feedExportDescription": "Assine o seu calendário Yuvomi somente para leitura no Calendário da Apple, Google Calendar ou Thunderbird.",
         "feedExportInactive": "O feed de exportação está desativado.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Remover",
         "displayRemoveDeviceConfirm": "Remover a entrada deste dispositivo?",
         "displayRemoveDeviceDetail": "A entrada some da lista de forma definitiva. Isto não pode ser anulado.",
-        "displayRemoveDeviceActive": "Este dispositivo ainda está pareado. Revogue-o primeiro."
+        "displayRemoveDeviceActive": "Este dispositivo ainda está pareado. Revogue-o primeiro.",
+        "feedExportIncludeBirthdays": "Incluir aniversários",
+        "feedExportIncludeBirthdaysHint": "Desative ao assinar o calendário separado de aniversários para evitar aniversários e dias do nome duplicados."
     },
     "login": {
         "tagline": "Bem-vindo de volta ao seu planejador familiar.",

@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Inaktivera export",
         "localCalendarExportCopied": "Exportlänk kopierad",
         "localCalendarDeleteConfirm": "Radera \"{{name}}\"?",
-        "birthdayCalendarRemoveDetail": "Bara denna kalendergrupp och dess delade flödeslänk tas bort. Födelsedagar, händelser, påminnelser och externa synklänkar är oförändrade. Födelsedagar återgår till det ursprungliga lagret.",
-
         "localCalendarDeleteDetail": "Händelser från den här kalendern flyttas till standardkalendern och exportlänken slutar att fungera.",
         "localCalendarDeleteDetailIcloud": "Händelser från den här kalendern flyttas till standardkalendern och laddas sedan upp till iCloud via Apple Calendar. Exportlänken slutar att fungera."
     },
@@ -2291,9 +2289,7 @@
         "caldavSyncSuccess": "CalDAV-synkroniseringen lyckades",
         "caldavTitle": "CalDAV-kalendrar",
         "birthdayFeedTitle": "Exportera födelsedagskalender",
-
-        "birthdayFeedDescription": "Alla sparade födelsedagar som årliga heldagshändelser, även utan påminnelser. Prenumerera i valfri kalenderapp som stöder ICS.",
-
+        "birthdayFeedDescription": "Alla sparade födelsedagar och namnsdagar som årliga heldagshändelser, även utan påminnelser. Prenumerera i valfri kalenderapp med ICS-stöd.",
         "feedExportTitle": "Exportera kalenderflöde",
         "feedExportDescription": "Prenumerera skrivskyddat på din Yuvomi-kalender i Apple Kalender, Google Kalender eller Thunderbird.",
         "feedExportInactive": "Exportflödet är inaktiverat.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Ta bort",
         "displayRemoveDeviceConfirm": "Ta bort posten för den här enheten?",
         "displayRemoveDeviceDetail": "Posten försvinner från listan för gott. Det går inte att ångra.",
-        "displayRemoveDeviceActive": "Den här enheten är fortfarande parkopplad. Återkalla den först."
+        "displayRemoveDeviceActive": "Den här enheten är fortfarande parkopplad. Återkalla den först.",
+        "feedExportIncludeBirthdays": "Inkludera födelsedagar",
+        "feedExportIncludeBirthdaysHint": "Stäng av när du prenumererar på det separata födelsedagsflödet för att undvika dubbla födelsedagar och namnsdagar."
     },
     "login": {
         "tagline": "Välkommen tillbaka till din familjeplanerare.",

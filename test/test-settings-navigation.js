@@ -4080,3 +4080,31 @@ test('birthday subscription has independent controls and copying exposes its URL
     else globalThis.__promptModal = previousPrompt;
   }
 });
+
+
+test('calendar feed birthday switch persists changes and restores its visual state after an API failure', async () => {
+  const { render } = await import('../public/settings/pages/personal-feeds.js');
+  const previous = globalThis.__apiStub;
+  const previousWindow = globalThis.window;
+  globalThis.window = { yuvomi: { showToast() {} } };
+  const input = { checked: true, disabled: false, addEventListener(_type, listener) { this.change = listener; } };
+  let html = '';
+  const host = { dataset: { part: 'calendar' }, replaceChildren() {}, insertAdjacentHTML(_where, markup) { html = markup; },
+    querySelector(selector) { return selector === '#feed-include-birthdays' ? input : null; } };
+  const writes = [];
+  try {
+    globalThis.__apiStub = { get: async () => ({ data: { url: 'https://example.test/feed/calendar/token.ics', includeBirthdays: true } }),
+      put: async (path, body) => { writes.push([path, body]); } };
+    await render(host);
+    assert.match(html, /id="feed-include-birthdays"/);
+    input.checked = false;
+    await input.change({ currentTarget: input });
+    assert.deepEqual(writes, [['/calendar/feed', { includeBirthdays: false }]]);
+    assert.equal(input.disabled, false);
+    globalThis.__apiStub.put = async () => { throw new Error('Rejected'); };
+    input.checked = true;
+    await input.change({ currentTarget: input });
+    assert.equal(input.checked, false, 'failed save restores the previous choice');
+    assert.equal(input.disabled, false);
+  } finally { globalThis.__apiStub = previous; globalThis.window = previousWindow; }
+});

@@ -126,7 +126,7 @@ export const PRIVATE_USER_COLUMNS = new Set([
   'expense_group_members.user_id',
 ]);
 
-/** Die fuenf Abo-Adressen, unter denen ein Konto ohne Anmeldung gelesen wird. */
+/** Die sechs Abo-Adressen, unter denen ein Konto ohne Anmeldung gelesen wird. */
 export const FEED_TOKEN_COLUMNS = [
   'calendar_feed_token',
   'birthday_feed_token',

@@ -1165,8 +1165,6 @@
         "localCalendarDisableExport": "Nonaktifkan ekspor",
         "localCalendarExportCopied": "Tautan ekspor disalin",
         "localCalendarDeleteConfirm": "Hapus \"{{name}}\"?",
-        "birthdayCalendarRemoveDetail": "Hanya kelompok kalender ini dan tautan bersama yang dihapus. Ulang tahun, acara, pengingat, dan sinkronisasi eksternal tetap sama. Ulang tahun kembali ke lapisan semula.",
-
         "localCalendarDeleteDetail": "Acara dari kalender ini dipindahkan ke kalender default, dan tautan ekspornya akan berhenti berfungsi.",
         "localCalendarDeleteDetailIcloud": "Acara dari kalender ini dipindahkan ke kalender default lalu diunggah ke iCloud melalui Apple Calendar. Tautan ekspornya akan berhenti berfungsi.",
         "localCalendarEventCount_one": "{{count}} acara"
@@ -2368,9 +2366,7 @@
         "backupWebdavEnvHint": "Konfigurasi dikendalikan melalui variabel lingkungan dan tidak dapat diubah di sini.",
         "caldavTitle": "Kalender CalDAV",
         "birthdayFeedTitle": "Ekspor kalender ulang tahun",
-
-        "birthdayFeedDescription": "Semua ulang tahun tersimpan sebagai acara tahunan sepanjang hari, termasuk tanpa pengingat. Berlangganan melalui aplikasi kalender apa pun yang mendukung ICS.",
-
+        "birthdayFeedDescription": "Semua ulang tahun dan hari nama tersimpan sebagai acara tahunan sepanjang hari, termasuk tanpa pengingat. Berlangganan melalui aplikasi kalender apa pun yang mendukung ICS.",
         "feedExportTitle": "Ekspor umpan kalender",
         "feedExportDescription": "Berlangganan kalender Yuvomi Anda hanya-baca di Apple Calendar, Google Calendar, atau Thunderbird.",
         "feedExportInactive": "Umpan ekspor dinonaktifkan.",
@@ -3191,7 +3187,9 @@
         "displayRemoveDevice": "Hapus",
         "displayRemoveDeviceConfirm": "Hapus entri perangkat ini?",
         "displayRemoveDeviceDetail": "Entri hilang dari daftar untuk selamanya. Ini tidak bisa dibatalkan.",
-        "displayRemoveDeviceActive": "Perangkat ini masih dipasangkan. Cabut dulu."
+        "displayRemoveDeviceActive": "Perangkat ini masih dipasangkan. Cabut dulu.",
+        "feedExportIncludeBirthdays": "Sertakan ulang tahun",
+        "feedExportIncludeBirthdaysHint": "Nonaktifkan saat berlangganan feed ulang tahun terpisah agar ulang tahun dan hari nama tidak muncul dua kali."
     },
     "login": {
         "tagline": "Selamat datang kembali di perencana keluarga Anda.",

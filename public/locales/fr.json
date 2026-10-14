@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Désactiver l’export",
         "localCalendarExportCopied": "Lien d’export copié",
         "localCalendarDeleteConfirm": "Supprimer « {{name}} » ?",
-        "birthdayCalendarRemoveDetail": "Seuls ce regroupement et son lien de flux partagé sont supprimés. Les anniversaires, événements, rappels et liens de synchronisation restent inchangés. Les anniversaires retrouvent leur couche initiale.",
-
         "localCalendarDeleteDetail": "Les événements de ce calendrier seront déplacés vers le calendrier par défaut, et son lien d’export cessera de fonctionner.",
         "localCalendarDeleteDetailIcloud": "Les événements de ce calendrier seront déplacés vers le calendrier par défaut, puis envoyés vers iCloud via Apple Calendar. Son lien d’export cessera de fonctionner."
     },
@@ -2291,9 +2289,7 @@
         "caldavSyncSuccess": "Synchronisation CalDAV réussie",
         "caldavTitle": "Agendas CalDAV",
         "birthdayFeedTitle": "Exporter le calendrier des anniversaires",
-
-        "birthdayFeedDescription": "Tous les anniversaires enregistrés comme événements annuels sur toute la journée, même sans rappel. Abonnez-vous dans toute application de calendrier compatible avec ICS.",
-
+        "birthdayFeedDescription": "Tous les anniversaires et fêtes enregistrés comme événements annuels sur une journée, même sans rappel. Compatible avec toute application de calendrier prenant en charge ICS.",
         "feedExportTitle": "Exporter le flux calendrier",
         "feedExportDescription": "Abonnez-vous à votre calendrier Yuvomi en lecture seule dans Apple Calendrier, Google Agenda ou Thunderbird.",
         "feedExportInactive": "Le flux d'export est désactivé.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Supprimer",
         "displayRemoveDeviceConfirm": "Supprimer l'entrée de cet appareil ?",
         "displayRemoveDeviceDetail": "L'entrée disparaît définitivement de la liste. Cette action est irréversible.",
-        "displayRemoveDeviceActive": "Cet appareil est encore appairé. Révoquez-le d'abord."
+        "displayRemoveDeviceActive": "Cet appareil est encore appairé. Révoquez-le d'abord.",
+        "feedExportIncludeBirthdays": "Inclure les anniversaires",
+        "feedExportIncludeBirthdaysHint": "Désactivez cette option avec un abonnement séparé aux anniversaires pour éviter les doublons des anniversaires et fêtes."
     },
     "login": {
         "tagline": "Bon retour sur votre planificateur familial.",

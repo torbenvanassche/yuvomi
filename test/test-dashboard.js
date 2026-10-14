@@ -69,6 +69,8 @@ db.exec(`
   CREATE TABLE housekeeping_work_sessions (id INTEGER PRIMARY KEY, calendar_event_id INTEGER);
 `);
 db.exec(MIGRATIONS_SQL[245]);
+// Migration 246 (#1935) hat ein Funktions-up und steht nicht im Spiegel.
+db.exec('ALTER TABLE calendar_events ADD COLUMN series_authored INTEGER NOT NULL DEFAULT 0 CHECK(series_authored IN (0, 1));');
 
 // Testdaten einfügen
 const u1 = db.prepare(`INSERT INTO users (username, display_name, password_hash, avatar_color, role)
@@ -2014,7 +2016,8 @@ cdb.exec(`
 `);
 cdb.exec(MIGRATIONS_SQL[245]);
 cdb.exec('ALTER TABLE calendar_events ADD COLUMN external_calendar_id TEXT');
-cdb.exec(MIGRATIONS_SQL[2]); // Birthday calendar grouping is stored in sync_config.
+// Migration 246 (#1935) hat ein Funktions-up und steht nicht im Spiegel.
+cdb.exec('ALTER TABLE calendar_events ADD COLUMN series_authored INTEGER NOT NULL DEFAULT 0 CHECK(series_authored IN (0, 1));');
 
 const cu1 = cdb.prepare(`INSERT INTO users (username, display_name, password_hash, avatar_color)
   VALUES ('theodore', 'Theodore', 'x', '#34C759')`).run();
@@ -2415,7 +2418,9 @@ test('getUpcomingEvents: private ICS-Termine fremder User werden ausgeblendet', 
       recurrence_rule TEXT,
       subscription_id INTEGER,
       calendar_ref_id INTEGER,
-      visibility TEXT NOT NULL DEFAULT 'all'
+      visibility TEXT NOT NULL DEFAULT 'all',
+      -- Migration 246 (#1935): das Anlegen eines Geburtstagstermins setzt die Marke.
+      series_authored INTEGER NOT NULL DEFAULT 0
     );
     CREATE TABLE birthdays (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Desactivar exportación",
         "localCalendarExportCopied": "Enlace de exportación copiado",
         "localCalendarDeleteConfirm": "¿Eliminar \"{{name}}\"?",
-        "birthdayCalendarRemoveDetail": "Solo se elimina esta agrupación y su enlace compartido. Los cumpleaños, eventos, recordatorios y enlaces de sincronización permanecen intactos. Los cumpleaños vuelven a su capa original.",
-
         "localCalendarDeleteDetail": "Los eventos de este calendario se moverán al calendario predeterminado y su enlace de exportación dejará de funcionar.",
         "localCalendarDeleteDetailIcloud": "Los eventos de este calendario se moverán al calendario predeterminado y después se subirán a iCloud a través de Apple Calendar. Su enlace de exportación dejará de funcionar."
     },
@@ -2291,9 +2289,7 @@
         "caldavSyncSuccess": "Sincronización CalDAV correcta",
         "caldavTitle": "Calendarios CalDAV",
         "birthdayFeedTitle": "Exportar calendario de cumpleaños",
-
-        "birthdayFeedDescription": "Todos los cumpleaños guardados como eventos anuales de todo el día, incluso sin recordatorios. Suscríbete desde cualquier aplicación de calendario compatible con ICS.",
-
+        "birthdayFeedDescription": "Todos los cumpleaños y onomásticas guardados como eventos anuales de todo el día, incluso sin recordatorios. Suscríbete con cualquier calendario compatible con ICS.",
         "feedExportTitle": "Exportar feed de calendario",
         "feedExportDescription": "Suscríbete a tu calendario de Yuvomi en modo solo lectura en Calendario de Apple, Google Calendar o Thunderbird.",
         "feedExportInactive": "El feed de exportación está desactivado.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Eliminar",
         "displayRemoveDeviceConfirm": "¿Eliminar la entrada de este dispositivo?",
         "displayRemoveDeviceDetail": "La entrada desaparece de la lista de forma definitiva. Esto no se puede deshacer.",
-        "displayRemoveDeviceActive": "Este dispositivo sigue vinculado. Revócalo primero."
+        "displayRemoveDeviceActive": "Este dispositivo sigue vinculado. Revócalo primero.",
+        "feedExportIncludeBirthdays": "Incluir cumpleaños",
+        "feedExportIncludeBirthdaysHint": "Desactívalo si te suscribes al calendario de cumpleaños separado para evitar cumpleaños y onomásticas duplicados."
     },
     "login": {
         "tagline": "Bienvenido de nuevo a tu planificador familiar.",

@@ -210,36 +210,3 @@ test('deleting a calendar names the iCloud upload only while the default calenda
     else globalThis.__confirmOverModal = previous.confirmOverModal;
   }
 });
-
-
-test('managed birthdays migrate the legacy layer toggle and use their local source even when mirrored', () => {
-  const state = calendar.localCalendarState;
-  const previous = { calendars: state.localCalendars, layer: state.layerBirthdays, hidden: state.hiddenSources, events: state.events, window: globalThis.window };
-  try {
-    globalThis.window = { yuvomi: {} };
-    state.localCalendars = [{ id: 1, name: 'Default', is_default: true }, { id: 2, name: 'Birthdays', is_birthday: true }];
-    state.layerBirthdays = false;
-    state.hiddenSources = new Map();
-    const event = { local_calendar_id: 2, birthday_name: 'Ada', source_calendar_ref_id: 99 };
-    state.events = [event];
-    calendar.migrateBirthdayLayer();
-    assert.equal(state.layerBirthdays, true);
-    assert.ok(state.hiddenSources.has('local:2'), 'the old hidden preference migrates');
-    assert.equal(calendar.eventSourceKey(event), 'local:2', 'a provider link cannot steal birthday grouping');
-    assert.equal(calendar.isVisibleLayer(event), true);
-    assert.equal(calendar.passesSourceFilter(event), false);
-    state.hiddenSources.delete('local:2');
-    calendar.migrateBirthdayLayer();
-    assert.equal(calendar.passesSourceFilter(event), true, 'the new source switch can show the migrated collection');
-    assert.ok(!calendar.availableLayers().some(row => row.key === 'birthdays'), 'one toggle controls the managed collection');
-    assert.doesNotMatch(calendar.buildEventModalContent({ mode: 'create', date: '2035-05-01' }), /id="event-local-calendar"/,
-      'the managed collection is not an authored destination');
-    state.localCalendars = state.localCalendars.filter(row => !row.is_birthday);
-    state.layerBirthdays = false;
-    assert.equal(calendar.isVisibleLayer({ birthday_name: 'Ada' }), false, 'legacy layer still works without a managed calendar');
-  } finally {
-    state.localCalendars = previous.calendars; state.layerBirthdays = previous.layer;
-    state.hiddenSources = previous.hidden; state.events = previous.events;
-    globalThis.window = previous.window;
-  }
-});

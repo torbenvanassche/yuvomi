@@ -1152,8 +1152,6 @@
         "localCalendarDisableExport": "Disattiva esportazione",
         "localCalendarExportCopied": "Link di esportazione copiato",
         "localCalendarDeleteConfirm": "Eliminare \"{{name}}\"?",
-        "birthdayCalendarRemoveDetail": "Vengono rimossi solo questo raggruppamento e il suo link condiviso. Compleanni, eventi, promemoria e collegamenti di sincronizzazione restano invariati. I compleanni tornano al livello originale.",
-
         "localCalendarDeleteDetail": "Gli eventi di questo calendario verranno spostati nel calendario predefinito e il suo link di esportazione smetterà di funzionare.",
         "localCalendarDeleteDetailIcloud": "Gli eventi di questo calendario verranno spostati nel calendario predefinito e poi caricati su iCloud tramite Apple Calendar. Il suo link di esportazione smetterà di funzionare."
     },
@@ -2291,9 +2289,7 @@
         "caldavSyncSuccess": "Sincronizzazione CalDAV riuscita",
         "caldavTitle": "Calendari CalDAV",
         "birthdayFeedTitle": "Esporta calendario dei compleanni",
-
-        "birthdayFeedDescription": "Tutti i compleanni salvati come eventi annuali di un giorno intero, anche senza promemoria. Abbonati con qualsiasi app calendario che supporti ICS.",
-
+        "birthdayFeedDescription": "Tutti i compleanni e gli onomastici salvati come eventi annuali di un giorno intero, anche senza promemoria. Compatibile con qualsiasi calendario che supporti ICS.",
         "feedExportTitle": "Esporta feed calendario",
         "feedExportDescription": "Iscriviti al tuo calendario Yuvomi in sola lettura su Calendario Apple, Google Calendar o Thunderbird.",
         "feedExportInactive": "Il feed di esportazione è disattivato.",
@@ -3177,7 +3173,9 @@
         "displayRemoveDevice": "Rimuovi",
         "displayRemoveDeviceConfirm": "Rimuovere la voce di questo dispositivo?",
         "displayRemoveDeviceDetail": "La voce scompare dall'elenco in modo definitivo. L'operazione non può essere annullata.",
-        "displayRemoveDeviceActive": "Questo dispositivo è ancora associato. Revocalo prima."
+        "displayRemoveDeviceActive": "Questo dispositivo è ancora associato. Revocalo prima.",
+        "feedExportIncludeBirthdays": "Includi compleanni",
+        "feedExportIncludeBirthdaysHint": "Disattiva questa opzione con un abbonamento separato ai compleanni per evitare compleanni e onomastici duplicati."
     },
     "login": {
         "tagline": "Bentornato nel tuo pianificatore familiare.",
