@@ -178,8 +178,7 @@ for (const locale of LOCALES) {
 test('jede Locale-Datei ist Zeile für Zeile 4-Leerzeichen-formatiert', () => {
   const wrong = [];
   for (const locale of LOCALES) {
-    // Git may check out CRLF on Windows; JSON formatting is otherwise identical.
-    const raw = readLocale(locale).replace(/\r\n/g, '\n');
+    const raw = readLocale(locale);
     const canonical = `${JSON.stringify(JSON.parse(raw), null, 4)}\n`;
     if (raw === canonical) continue;
     // Den ORT nennen, nicht nur die Tatsache: ohne Zeilennummer steht man vor

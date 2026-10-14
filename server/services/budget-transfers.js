@@ -3,6 +3,12 @@ export const TRANSFER_INCOME_CATEGORY = 'Geschenke & Transfers';
 export const TRANSFER_SAVING_CATEGORY = 'financial_other';
 export const TRANSFER_SAVING_SUBCATEGORY = 'saving';
 
+export function transferIncomeCategory(database) {
+  return database.prepare(`SELECT key FROM budget_categories WHERE type = 'income'
+    ORDER BY (key = ?) DESC, sort_order ASC, name COLLATE NOCASE ASC LIMIT 1`)
+    .get(TRANSFER_INCOME_CATEGORY)?.key;
+}
+
 export function transferPair(database, entry) {
   const partner = database.prepare('SELECT * FROM budget_entries WHERE id = ?').get(entry.transfer_entry_id);
   if (!partner || partner.transfer_entry_id !== entry.id) throw new Error('Broken transfer pair');
@@ -27,7 +33,7 @@ export function createTransfer(database, values) {
     `);
     const outgoing = insert.run({ ...values, amount: -values.amount, account_id: values.from_account_id }).lastInsertRowid;
     const incoming = insert.run({ ...values, amount: values.amount, account_id: values.to_account_id,
-      category: TRANSFER_INCOME_CATEGORY, subcategory: '' }).lastInsertRowid;
+      category: transferIncomeCategory(database), subcategory: '' }).lastInsertRowid;
     linkTransfer(database, outgoing, incoming);
     return database.prepare('SELECT * FROM budget_entries WHERE id = ?').get(outgoing);
   })();

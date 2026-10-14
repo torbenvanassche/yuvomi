@@ -129,7 +129,7 @@ function routerSources(entry, prefix = '', seen = new Map()) {
   // Praefix des Elternrouters.
   for (const [, file] of imports) {
     if (mounted.has(file)) continue;
-    if (!file.startsWith(`${resolve(ROOT, 'server/routes')}${sep}`)) continue;
+    if (!file.includes(`${resolve(ROOT, 'server/routes')}${sep}`)) continue;
     routerSources(file, prefix, seen);
   }
   return seen;

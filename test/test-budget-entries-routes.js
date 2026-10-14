@@ -133,7 +133,7 @@ test('GET /summary: Savings has its own chart bar under the stored Financials ca
   const r = await call('GET', '/summary?month=2042-01');
   assert.equal(r.status, 200);
   assert.deepEqual(r.body.data.byCategory, [
-    { category: 'saving', income: 0, expenses: -125, total: -125 },
+    { category: '__saving__', income: 0, expenses: -125, total: -125 },
     { category: 'financial_other', income: 0, expenses: -10, total: -10 },
   ]);
   assert.equal(r.body.data.expenses, -135);
@@ -164,9 +164,9 @@ test('salary and an account transfer keep income, spending, and account balances
   assert.equal(summary.income, 1000);
   assert.equal(summary.expenses, 0);
   assert.equal(summary.balance, 1000);
-  assert.equal(summary.moved_to_savings, 10);
-  assert.deepEqual(summary.byCategory.find(c => c.category === 'saving'),
-    { category: 'saving', income: 0, expenses: 0, total: 0, transfers: 10 });
+  assert.equal(summary.transfers, 10);
+  assert.deepEqual(summary.byCategory.find(c => c.category === '__saving__'),
+    { category: '__saving__', income: 0, expenses: 0, total: 0, transfers: 10 });
   assert.equal(summary.byCategory.some(c => c.category === 'Geschenke & Transfers'), false);
   const stats = (await call('GET', '/stats?range=month&anchor=2042-03-01')).body.data;
   assert.deepEqual(stats.totals, { income: 1000, expenses: 0, balance: 1000 });

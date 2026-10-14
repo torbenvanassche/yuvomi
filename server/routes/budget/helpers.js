@@ -17,6 +17,8 @@ import { computeLoanSchedule, remainingPrincipalFromPayments, remainingInstallme
 import { todayKey } from '../../utils/timezone.js';
 import { DEFAULT_LOCALE, resolveHouseholdLocale, supportedLocaleFor } from '../../utils/i18n.js';
 import { newNonMembers } from '../../services/household-members.js';
+import { MAX_INTERVAL_COUNT } from '../../../public/utils/budget-recurrence.js';
+import { SAVINGS_CHART_CATEGORY } from '../../../public/utils/budget-chart-category.js';
 
 // --------------------------------------------------------
 // Persönlich/geteilt (#476/#505): Haushalts-Modus + Sichtbarkeits-Enforcement.
@@ -133,7 +135,6 @@ export function mayEdit(req, row) {
 
 const LOCALE_CACHE = new Map();
 const CATEGORY_LABEL_KEYS = {
-  saving: 'catSaving',
   housing: 'catHousing',
   food: 'catFood',
   transport: 'catTransport',
@@ -150,6 +151,7 @@ const CATEGORY_LABEL_KEYS = {
   'Sonstiges Einkommen': 'catOtherIncome',
 };
 const SUBCATEGORY_LABEL_KEYS = {
+  saving: 'catSaving',
   rent_mortgage: 'subcatRentMortgage',
   condominium: 'subcatCondominium',
   utilities: 'subcatUtilities',
@@ -261,7 +263,7 @@ export const RECURRENCE_INTERVAL_KEYS = ['weekly', 'monthly', 'yearly'];
 
 // Obergrenze wie im RRULE-Formular der Aufgaben/Termine: dieselbe Zahl im
 // Eingabefeld, damit "alle N" überall dasselbe Höchstmaß hat.
-export const MAX_INTERVAL_COUNT = 99;
+export { MAX_INTERVAL_COUNT };
 
 /** Anzahl auf eine ganze Zahl in [1, MAX_INTERVAL_COUNT] bringen. */
 export function normalizeIntervalCount(value) {
@@ -838,6 +840,39 @@ export function budgetCurrency() {
   return db.get().prepare("SELECT value FROM sync_config WHERE key = 'currency'").get()?.value || 'EUR';
 }
 
+export function budgetChartCategorySql(alias) {
+  return `CASE WHEN ${alias}.category = 'financial_other' AND ${alias}.subcategory = 'saving'
+    THEN '${SAVINGS_CHART_CATEGORY}' ELSE ${alias}.category END`;
+}
+
+/** Transfers carry one amount, so both accounts must use the same effective currency. */
+export function transferCurrenciesMatch(firstId, secondId) {
+  const currency = budgetCurrency();
+  const account = db.get().prepare('SELECT currency FROM budget_accounts WHERE id = ?');
+  const first = account.get(firstId);
+  const second = account.get(secondId);
+  return Boolean(first && second && (first.currency || currency) === (second.currency || currency));
+}
+
+export function isArchivedBudgetAccount(id) {
+  return Boolean(db.get().prepare('SELECT archived FROM budget_accounts WHERE id = ?').get(id)?.archived);
+}
+
+export function budgetAccountCurrency(id) {
+  return db.get().prepare('SELECT currency FROM budget_accounts WHERE id = ?').get(id)?.currency || budgetCurrency();
+}
+
+function accountFractionDigits(currency) {
+  try { return new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions().minimumFractionDigits; }
+  catch { return 2; }
+}
+
+export function transferAmountFitsCurrency(amount, accountId) {
+  const value = Number(amount);
+  return Number.isFinite(value) && value !== 0
+    && Number(value.toFixed(accountFractionDigits(budgetAccountCurrency(accountId)))) === value;
+}
+
 /**
  * Fester Umrechnungskurs eines Darlehens in die Budget-Währung (#582).
  * Semantik: 1 Einheit Darlehenswährung = rate Einheiten Budget-Währung.
@@ -1305,18 +1340,22 @@ export function listAccounts(includeArchived = false, filter = { clause: '', par
     ORDER BY a.sort_order ASC, a.name COLLATE NOCASE ASC
   `).all(today, ...f.params, ...f.params, ...f.params, includeArchived ? 1 : 0);
   return rows.map((a) => {
-    const currentBalance = cents(a.current_balance);
+    // Preserve three-decimal account currencies, including linked transfers.
+    // Keep existing fractional values on zero-decimal accounts as before.
+    const digits = Math.max(2, accountFractionDigits(a.currency || budgetCurrency()));
+    const round = value => Number(Number(value).toFixed(digits));
+    const currentBalance = round(a.current_balance);
     // Verfügbarer Rahmen nur für Kreditkarten mit gepflegtem Limit. Ein negativer
     // Saldo ist die offene Schuld; ein positiver (Guthaben auf der Karte) vergrößert
     // den Rahmen nicht, deshalb der Clamp auf 0.
     const availableLimit = a.type === 'credit' && a.credit_limit != null
-      ? Math.max(0, cents(a.credit_limit) - Math.max(0, -currentBalance))
+      ? Math.max(0, round(a.credit_limit) - Math.max(0, -currentBalance))
       : null;
     return {
       ...a,
-      starting_balance:  cents(a.starting_balance),
+      starting_balance:  round(a.starting_balance),
       current_balance:   currentBalance,
-      projected_balance: cents(a.projected_balance),
+      projected_balance: round(a.projected_balance),
       available_limit:   availableLimit,
     };
   });

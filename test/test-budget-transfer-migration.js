@@ -58,3 +58,28 @@ test('transfer migration preserves a household Saving category, its subcategorie
     assert.deepEqual(database.pragma('foreign_key_check'), []);
   } finally { database.close(); }
 });
+
+test('transfer migration does not restore deleted Financials or transfer-income categories', () => {
+  const database = beforeTransferMigration();
+  try {
+    database.prepare("DELETE FROM budget_subcategories WHERE category_key = 'financial_other'").run();
+    database.prepare("DELETE FROM budget_categories WHERE key IN ('financial_other', 'Geschenke & Transfers')").run();
+    const categories = database.prepare('SELECT * FROM budget_categories ORDER BY key').all();
+    const subcategories = database.prepare('SELECT * FROM budget_subcategories ORDER BY key').all();
+    migrate(database, [migration]);
+    assert.deepEqual(database.prepare('SELECT * FROM budget_categories ORDER BY key').all(), categories);
+    assert.deepEqual(database.prepare('SELECT * FROM budget_subcategories ORDER BY key').all(), subcategories);
+    assert.deepEqual(database.pragma('foreign_key_check'), []);
+  } finally { database.close(); }
+});
+
+test('transfer migration keeps an existing household Savings subcategory without renaming or duplicating it', () => {
+  const database = beforeTransferMigration();
+  try {
+    database.prepare("INSERT INTO budget_subcategories (key, category_key, name, sort_order) VALUES ('my_savings', 'financial_other', 'Savings', 3)").run();
+    const before = database.prepare("SELECT * FROM budget_subcategories WHERE category_key = 'financial_other' ORDER BY key").all();
+    migrate(database, [migration]);
+    assert.deepEqual(database.prepare("SELECT * FROM budget_subcategories WHERE category_key = 'financial_other' ORDER BY key").all(), before);
+    assert.equal(database.prepare("SELECT 1 FROM budget_subcategories WHERE key = 'saving'").get(), undefined);
+  } finally { database.close(); }
+});

@@ -7,6 +7,9 @@
 
 import { api } from '/api.js';
 import { openTransferDialog, transferFieldsHtml, wireTransferForm } from '/components/budget-transfer-dialog.js';
+import { budgetToggleHtml, budgetIntervalFieldsHtml, wireBudgetIntervalFields } from '/components/budget-recurrence-fields.js';
+import { MAX_INTERVAL_COUNT } from '/utils/budget-recurrence.js';
+import { SAVINGS_CHART_CATEGORY, budgetChartCategory } from '/utils/budget-chart-category.js';
 import { openModal as openSharedModal, closeModal, confirmOverModal, advancedSection, wireBlurValidation, reportFieldError, refocusAfterRender } from '/components/modal.js';
 import { renderDocumentAttachField, bindDocumentAttachField, attachmentLinksNode } from '/components/document-attach.js';
 import { openDetailView } from '/components/detail-view.js';
@@ -64,6 +67,7 @@ const GROUP_RESPONSIBLE_KEY = 'yuvomi:budget:group-responsible';
 const LOAN_SORT_KEY = 'yuvomi:budget:loan-sort';
 
 const SUBCATEGORY_I18N = () => ({
+  saving:                   t('budget.catSaving'),
   rent_mortgage:            t('budget.subcatRentMortgage'),
   condominium:              t('budget.subcatCondominium'),
   utilities:                t('budget.subcatUtilities'),
@@ -119,6 +123,7 @@ function categoryLabel(category) {
   // Kategorie und steht in keiner Kategorienliste - er kommt vom Server als
   // Schluessel, damit die Maske nicht an einer Sprache klebt.
   if (category === MASKED_CATEGORY) return t('budget.maskedCategory');
+  if (category === SAVINGS_CHART_CATEGORY) return t('budget.catSaving');
   const item = typeof category === 'object'
     ? category
     : [...expenseCategories(), ...incomeCategories()].find((c) => c.key === category);
@@ -1345,7 +1350,7 @@ function renderBody() {
   // DER SALDO FUEHRT (Critique R18): eine Display-Stufe in der Seitenleiste,
   // Einnahmen und Ausgaben eine Stufe leiser (panel.css `.metric-card--lead`).
   const balanceCard = `
-      <div class="metric-card ${balanceTone} ${leadCardClass(amountByRole(s.balance, 'balance').text)}">
+      <div class="metric-card budget-balance-card ${balanceTone} ${leadCardClass(amountByRole(s.balance, 'balance').text)}">
         <div class="metric-card__label">${t('budget.balance')}</div>
         <div class="metric-card__value">${amountByRole(s.balance, 'balance').text}</div>
         ${p && !balanceNeutral ? renderTrend(s.balance, p.balance, prevLabel, 'higher') : ''}
@@ -1383,8 +1388,8 @@ function renderBody() {
     <!-- Zusammenfassung -->
     <div class="metric-grid${expensesOnly ? ' metric-grid--expenses-only' : ' metric-grid--led'}">
       ${expensesOnly ? expensesCard : incomeCard + expensesCard + balanceCard}
-      <div class="metric-card"><div class="metric-card__label">${t('budget.summaryTransfers')}</div><div class="metric-card__value">${amountByRole(s.moved_to_savings || 0, 'total').text}</div></div>
     </div>
+    ${s.transfers > 0 ? `<div class="metric-card budget-transfer-summary"><div class="metric-card__label">${t('budget.summaryTransfers')}</div><div class="metric-card__value">${amountByRole(s.transfers, 'total').text}</div></div>` : ''}
     </div>
     ${pendingNote}
 
@@ -2202,7 +2207,7 @@ function visibleEntries({ ignoreSubcategory = false } = {}) {
         (user) => user.id === state.responsibleFilterId
       );
 
-    const matchesCategory = !state.categoryFilter || entry.category === state.categoryFilter;
+    const matchesCategory = !state.categoryFilter || budgetChartCategory(entry) === state.categoryFilter;
 
     const filter = state.subcategoryFilter;
     const matchesSubcategory = ignoreSubcategory
@@ -2415,8 +2420,9 @@ function entryRows(list, { fullDate = false, rowClass = '' } = {}) {
   const markUpcoming = !isForecastMonth(state.month);
   return list.map((e) => {
     const isIncome  = e.amount > 0;
-    const amtClass  = isIncome ? 'budget-entry__amount--income' : 'budget-entry__amount--expenses';
-    const indClass  = isIncome ? 'budget-entry__indicator--income' : 'budget-entry__indicator--expenses';
+    const isTransfer = Boolean(e.transfer_entry_id);
+    const amtClass  = isTransfer ? 'budget-entry__amount--transfer' : isIncome ? 'budget-entry__amount--income' : 'budget-entry__amount--expenses';
+    const indClass  = isTransfer ? 'budget-entry__indicator--transfer' : isIncome ? 'budget-entry__indicator--income' : 'budget-entry__indicator--expenses';
     // Rolle `flow`: eine einzelne Kontobewegung trägt immer ein Vorzeichen, und
     // das Vorzeichen kommt aus dem Zahlformat (signDisplay), nicht aus einem
     // vorangestellten '+' - sonst steht es in RTL-Locales auf der falschen Seite.
@@ -2473,6 +2479,12 @@ function entryRows(list, { fullDate = false, rowClass = '' } = {}) {
       ? ` <span class="budget-badge budget-badge--masked">${esc(t('budget.amountOnlyBadge'))}</span>`
       : '';
     const displayTitle = masked ? t('budget.maskedEntryTitle') : e.title;
+    const partnerAccount = e.transfer_account_id ?? state.entries.find(row => row.id === e.transfer_entry_id)?.account_id;
+    const sourceName = accountName(isIncome ? partnerAccount : e.account_id);
+    const targetName = accountName(isIncome ? e.account_id : partnerAccount);
+    const transferMark = isTransfer ? ` <span class="budget-badge budget-badge--transfer"><i data-lucide="arrow-left-right" class="icon-sm" aria-hidden="true"></i>${esc(t('budget.typeTransfer'))}</span>` : '';
+    const transferRoute = isTransfer && !masked && sourceName && targetName
+      ? ` · <span class="budget-transfer-route">${esc(sourceName)} → ${esc(targetName)}</span>` : '';
     // Beleg-Marke (#583): zeigt an, dass zu dieser Buchung ein Nachweis liegt.
     // Zählt bewusst nicht mit - die Zahl beantwortet keine Frage, die man vor
     // dem Öffnen der Buchung hat.
@@ -2533,9 +2545,9 @@ function entryRows(list, { fullDate = false, rowClass = '' } = {}) {
       ? `${esc(t('budget.expectedSubscriptionOpen'))}: `
       : (ro ? '' : `${esc(t('budget.editEntry'))}: `);
     const titleCell = masked
-      ? `<div class="list-row__name budget-entry__title">${esc(displayTitle)}${sharedBadge}${maskedBadge}${pendingBadge}</div>`
+      ? `<div class="list-row__name budget-entry__title">${esc(displayTitle)}${sharedBadge}${maskedBadge}${pendingBadge}${transferMark}</div>`
       : `<button class="list-row__name budget-entry__title" type="button"
-           aria-label="${titleAction}${esc(e.title)}, ${amountText}">${esc(displayTitle)}${sharedBadge}${maskedBadge}${pendingBadge}</button>`;
+           aria-label="${titleAction}${esc(e.title)}, ${amountText}">${esc(displayTitle)}${sharedBadge}${maskedBadge}${pendingBadge}${transferMark}</button>`;
     // ZUSTAENDIGE (#1057) als Avatar-Stapel in der Metazeile - dieselbe Sprache,
     // die Kalender und Aufgaben fuer "wer gehoert dazu" schon sprechen. Bei
     // einer maskierten Buchung faellt er weg: deren Zweck bleibt verborgen, und
@@ -2557,7 +2569,7 @@ function entryRows(list, { fullDate = false, rowClass = '' } = {}) {
         <div class="budget-entry__indicator ${indClass}"></div>
         <div class="list-row__main">
           ${titleCell}
-          <div class="list-row__meta budget-entry__meta">${date}${upcomingMark}${categoryMetaText}${acctMeta}${recurTag}${receiptMark}${responsibleMark}</div>
+          <div class="list-row__meta budget-entry__meta">${date}${upcomingMark}${categoryMetaText}${isTransfer ? transferRoute : acctMeta}${recurTag}${receiptMark}${responsibleMark}</div>
         </div>
         <div class="budget-entry__amount ${amtClass}">${amountText}</div>
         <div class="list-row__actions">${rowActions}
@@ -3862,7 +3874,8 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
   // damit die Zuordnung ablesbar ist, nimmt hier aber keine Eingabe entgegen - der
   // Server bucht ohnehin nach der Richtung und würde eine Umkehr still zurückdrehen.
   const isLoanPayment = isEdit && (entry.loan_payment_id != null || entry.loan_id != null);
-  const initialTypeId = !isEdit && ['loan', 'transfer'].includes(initialType) ? initialType : (isExpense ? 'expense' : 'income');
+  const canTransfer = (state.accounts ?? []).filter(account => !account.archived).length >= 2;
+  const initialTypeId = !isEdit && (initialType === 'loan' || initialType === 'transfer' && canTransfer) ? initialType : (isExpense ? 'expense' : 'income');
   // Bei virtuellen Serien hält amount nur den Monatsanteil; im Formular den eingegebenen Periodenbetrag zeigen.
   const editAmount = isEdit && entry.recurrence_virtual && entry.recurrence_full_amount != null
     ? entry.recurrence_full_amount
@@ -3875,9 +3888,7 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
   const absAmount  = isEdit ? String(Math.abs(editAmount)) : '';
   const curInterval = isEdit && entry.recurrence_interval ? entry.recurrence_interval : 'monthly';
   // „Alle N" (#636). Bestandsserien tragen 1, solange niemand etwas anderes wählt.
-  const curCount = Math.min(99, Math.max(1, Number(isEdit && entry.recurrence_interval_count) || 1));
-  const intervalOption = (val, key) =>
-    `<option value="${val}" ${curInterval === val ? 'selected' : ''}>${t(key)}</option>`;
+  const curCount = Math.min(MAX_INTERVAL_COUNT, Math.max(1, Number(isEdit && entry.recurrence_interval_count) || 1));
 
   // KEINE VORBELEGTE KATEGORIE (Re-Critique 2026-09-27, A5 P2-4). Die erste
   // Kategorie stand vorgewaehlt - "Wohnen / Zuhause" mit "Miete / Kreditrate":
@@ -3919,7 +3930,7 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
       ${[
         ['expense', 'budget.typeExpense'],
         ['income', 'budget.typeIncome'],
-        ...(isEdit ? [] : [['loan', 'budget.typeLoan'], ['transfer', 'budget.typeTransfer']]),
+        ...(isEdit ? [] : [['loan', 'budget.typeLoan'], ...(canTransfer ? [['transfer', 'budget.typeTransfer']] : [])]),
       ].map(([id, key]) => {
         const on = id === initialTypeId;
         return `<button class="segmented__item${on ? ' is-active' : ''}" id="type-${id}" type="button" role="radio"
@@ -4007,26 +4018,11 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
             * am Vorkommen bleibt das Feld weg (im DOM, versteckt, weil der
             * Speichern-Pfad es liest). */ ''}
         <div class="form-group" ${isEdit && entry.recurrence_parent_id ? 'hidden' : ''}>
-          <label class="toggle">
-            <input type="checkbox" id="bm-recurring" ${isEdit && entry.is_recurring ? 'checked' : ''}>
-            <span class="toggle__track"></span>
-            <span>${t('budget.recurringLabel')}</span>
-          </label>
+          ${budgetToggleHtml('bm-recurring', 'budget.recurringLabel', { checked: Boolean(isEdit && entry.is_recurring) })}
         </div>
 
         <div class="form-group" id="bm-recurrence-options" ${isEdit && entry.is_recurring ? '' : 'hidden'}>
-          <label class="form-label" for="bm-interval">${t('budget.recurringIntervalLabel')}</label>
-          <select class="form-input" id="bm-interval">
-            ${intervalOption('weekly', 'budget.intervalWeekly')}
-            ${intervalOption('monthly', 'budget.intervalMonthly')}
-            ${intervalOption('yearly', 'budget.intervalYearly')}
-          </select>
-          <div class="rrule-interval-wrap" style="margin-top:var(--space-3)">
-            <label class="form-label" for="bm-interval-count" style="margin:0">${t('rrule.labelEvery')}</label>
-            <input class="form-input" type="number" id="bm-interval-count" min="1" max="99"
-                   value="${curCount}" inputmode="numeric" style="width:64px;text-align:center">
-            <span class="rrule-interval-unit" id="bm-interval-unit">${intervalUnitLabel(curInterval, curCount)}</span>
-          </div>
+          ${budgetIntervalFieldsHtml('bm', curInterval, curCount)}
           <label class="toggle" style="margin-top:var(--space-3)">
             <input type="checkbox" id="bm-virtual" ${isEdit && entry.recurrence_virtual ? 'checked' : ''}>
             <span class="toggle__track"></span>
@@ -4258,17 +4254,7 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
 
       // „Alle 2 Wochen" muss beim Umschalten mitwandern (#636): das Wort hinter
       // der Zahl gehört zur Einheit, nicht zum Feld.
-      const intervalSel   = panel.querySelector('#bm-interval');
-      const intervalCount = panel.querySelector('#bm-interval-count');
-      const intervalUnit  = panel.querySelector('#bm-interval-unit');
-      const syncIntervalUnit = () => {
-        intervalUnit.textContent = intervalUnitLabel(
-          intervalSel.value,
-          parseInt(intervalCount.value, 10) || 1,
-        );
-      };
-      intervalSel.addEventListener('change', syncIntervalUnit);
-      intervalCount.addEventListener('input', syncIntervalUnit);
+      wireBudgetIntervalFields(panel, 'bm');
       panel.querySelector('#bm-add-category').addEventListener('click', addCategory);
       panel.querySelector('#bm-add-subcategory').addEventListener('click', addSubcategory);
       panel.querySelector('#bm-cancel').addEventListener('click', closeModal);
@@ -4301,7 +4287,7 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
         const date       = panel.querySelector('#bm-date').value;
         const recurring  = panel.querySelector('#bm-recurring').checked ? 1 : 0;
         const interval   = panel.querySelector('#bm-interval').value;
-        const intervalN  = Math.min(99, Math.max(1, parseInt(panel.querySelector('#bm-interval-count').value, 10) || 1));
+        const intervalN  = Math.min(MAX_INTERVAL_COUNT, Math.max(1, parseInt(panel.querySelector('#bm-interval-count').value, 10) || 1));
         const virtual    = recurring && panel.querySelector('#bm-virtual').checked ? 1 : 0;
         const confirmFirst = recurring && panel.querySelector('#bm-confirm-first').checked ? 1 : 0;
         const accountSel = panel.querySelector('#bm-account');
@@ -4455,7 +4441,7 @@ function transferDialogOptions() {
   return { accounts: state.accounts ?? [], categories: expenseCategories(), subcategories: state.meta.subcategories,
     month: state.month, currency: state.currency, budgetMode: state.budgetMode, readOnly,
     onSaved: async () => { await reloadMonth(); renderBody(); window.yuvomi?.showToast(t('budget.savedToast'), 'success'); },
-    onDelete: deleteEntry, onError: (err) => showBudgetError(err, { fallback: BUDGET_SAVE_FAILED }) };
+    onDelete: deleteEntry, onError: (err, panel = null) => showBudgetError(err, { panel, fallback: BUDGET_SAVE_FAILED }) };
 }
 
 function openBudgetTransfer(entry = null) {
@@ -5085,7 +5071,7 @@ const BUDGET_SAVE_FAILED = 'budget.saveFailed';
 const BUDGET_REFUSALS = new Map([
   // Buchung und Serie (server/routes/budget/entries.js)
   ['entry_title_invalid', ['#bm-title', 'common.titleRequired']],
-  ['entry_amount_invalid', ['#bm-amount, #cb-amount', 'budget.validAmountRequired']],
+  ['entry_amount_invalid', ['#bm-amount, #cb-amount, #bt-amount', 'budget.validAmountRequired']],
   ['entry_amount_exceeds_loan', ['#bm-amount', 'budget.amountExceedsLoanRemaining']],
   ['entry_category_invalid', ['#bm-category', 'budget.categoryRequired']],
   ['entry_subcategory_invalid', ['#bm-subcategory', 'budget.subcategoryRequired']],
@@ -5101,6 +5087,8 @@ const BUDGET_REFUSALS = new Map([
   ['entry_already_booked', [null, BUDGET_FAILED]],
   // Transfers (transfers.js and linked entry guards)
   ['transfer_invalid', [null, BUDGET_SAVE_FAILED]],
+  ['transfer_currency_mismatch', ['#bt-to, #bm-account', 'budget.transferCurrencyMismatch']],
+  ['transfer_account_archived', ['#bt-from, #bt-to, #bm-account', 'budget.transferAccountArchived']],
   ['transfer_series_required', [null, BUDGET_SAVE_FAILED]],
   // Konto (accounts.js)
   ['account_name_invalid', ['#am-name', 'common.titleRequired']],
@@ -5108,6 +5096,7 @@ const BUDGET_REFUSALS = new Map([
   ['account_credit_limit_invalid', ['#am-credit-limit', 'budget.validAmountRequired']],
   ['account_credit_bank_invalid', ['#am-credit-bank', BUDGET_SAVE_FAILED]],
   ['account_type_invalid', ['#am-type', BUDGET_SAVE_FAILED]],
+  ['account_has_transfers', [null, 'budget.accountHasTransfers']],
   ['account_color_invalid', [null, BUDGET_SAVE_FAILED]],
   // Kategorie aus dem Buchungsdialog (categories.js) - die Saetze der Verwaltung.
   ['category_name_invalid', [null, 'common.nameRequired']],
@@ -5508,6 +5497,7 @@ async function openConfirmBookingModal(id) {
   if (!entry) return;
 
   const absAmount = Math.abs(entry.amount);
+  const currency = entry.transfer_entry_id ? (state.accounts.find(account => account.id === entry.account_id)?.currency || state.currency) : state.currency;
   const content = `
     <div class="form-group">
       <p class="form-hint">${esc(t('budget.confirmHint'))}</p>
@@ -5515,8 +5505,8 @@ async function openConfirmBookingModal(id) {
     <div class="form-group">
       <label class="form-label" for="cb-amount">${t('budget.amountLabel')}</label>
       <input type="number" class="form-input" id="cb-amount" inputmode="decimal"
-             step="${amountStep(state.currency, absAmount)}"
-             min="${amountMin(state.currency)}" value="${absAmount}">
+             step="${amountStep(currency, absAmount)}"
+             min="${amountMin(currency)}" value="${absAmount}">
     </div>
     <div class="form-group">
       <label class="form-label" for="cb-date">${t('budget.dateLabel')}${REQUIRED_MARK}</label>
@@ -5541,7 +5531,7 @@ async function openConfirmBookingModal(id) {
           reportFieldError(amountEl, t('budget.validAmountRequired'));
           return;
         }
-        if (rejectOffGridAmount(amountEl, value, state.currency, { original: absAmount })) return;
+        if (rejectOffGridAmount(amountEl, value, currency, { original: absAmount })) return;
         const date = panel.querySelector('#cb-date').value;
         try {
           await api.patch(`/budget/${id}/confirm`, { amount: value, date: date || undefined });
@@ -5625,7 +5615,7 @@ async function deleteEntry(id) {
       if (scope === null) return;
       if (scope === 'series') route += '/series';
     }
-    const prompt = entry.is_recurring ? t('budget.recurringEntireSeries') : t('budget.transferDeleteConfirm');
+    const prompt = t(entry.is_recurring ? 'budget.transferDeleteSeriesConfirm' : 'budget.transferDeleteConfirm');
     if (!await confirmOverModal(prompt, { confirmLabel: t('common.delete'), danger: true, detail: t('budget.transferDeleteConfirmDetail') })) return;
     try { await api.delete(route); await reloadMonth(); renderBody(); refocusAfterRender(); }
     catch (err) { showBudgetError(err, { fallback: BUDGET_SAVE_FAILED }); }

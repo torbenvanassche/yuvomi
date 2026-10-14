@@ -5,8 +5,8 @@ import { str, num, date as validateDate, MAX_TITLE } from '../../middleware/vali
 import { normalizeBudgetVisibility } from '../../services/budget-visibility.js';
 import { todayKey } from '../../utils/timezone.js';
 import { createLogger } from '../../logger.js';
-import { createTransfer, transferPair, mirrorTransfer, TRANSFER_INCOME_CATEGORY, TRANSFER_SAVING_CATEGORY, TRANSFER_SAVING_SUBCATEGORY } from '../../services/budget-transfers.js';
-import { mayEdit, getBudgetMode, validExpenseCategoryKeys, validateSubcategory, validateAccountRef,
+import { createTransfer, transferPair, mirrorTransfer, transferIncomeCategory, TRANSFER_SAVING_CATEGORY, TRANSFER_SAVING_SUBCATEGORY } from '../../services/budget-transfers.js';
+import { mayEdit, getBudgetMode, defaultCategory, validExpenseCategoryKeys, validateSubcategory, validateAccountRef, transferCurrenciesMatch, isArchivedBudgetAccount, transferAmountFitsCurrency, budgetAccountCurrency,
   RECURRENCE_INTERVAL_KEYS, MAX_INTERVAL_COUNT, freezeSeriesPast, materializeSeriesStart } from './helpers.js';
 
 const router = express.Router();
@@ -16,21 +16,37 @@ function outgoing(entry) {
   const partner = transferPair(db.get(), entry);
   return entry.amount < 0 ? entry : partner;
 }
+function transferSeries(entry) {
+  const anchor = load(entry.recurrence_parent_id ?? entry.id);
+  const partner = transferPair(db.get(), anchor);
+  const definition = db.get().prepare('SELECT * FROM budget_series WHERE anchor_id = ?').get(anchor.id);
+  const otherDefinition = db.get().prepare('SELECT * FROM budget_series WHERE anchor_id = ?').get(partner.id);
+  if (!definition || !otherDefinition) return null;
+  return { anchor, partner, definition,
+    base: { ...anchor, ...definition, date: definition.start_date },
+    other: { ...partner, ...otherDefinition, date: otherDefinition.start_date } };
+}
 function response(entry) {
   const partner = transferPair(db.get(), entry);
-  return { ...entry, from_account_id: entry.account_id, to_account_id: partner.account_id };
+  const current = transferSeries(entry);
+  return { ...entry, from_account_id: entry.account_id, to_account_id: partner.account_id,
+    ...(current ? { series: { ...current.base, from_account_id: current.base.account_id, to_account_id: current.other.account_id } } : {}) };
 }
-function values(req, base = null) {
+function values(req, base = null, currentPartner = null) {
   const body = req.body;
-  const partner = base ? transferPair(db.get(), base) : null;
+  const partner = currentPartner ?? (base ? transferPair(db.get(), base) : null);
   const pick = (key, fallback) => body[key] === undefined ? fallback : body[key];
   const title = str(pick('title', base?.title), 'Title', { max: MAX_TITLE });
   const amount = num(pick('amount', base ? Math.abs(base.amount) : undefined), 'Amount', { required: true });
   const date = validateDate(pick('date', base?.date), 'Date', true);
   const from = validateAccountRef(pick('from_account_id', base?.account_id));
   const to = validateAccountRef(pick('to_account_id', partner?.account_id));
-  const category = pick('category', base?.category ?? TRANSFER_SAVING_CATEGORY);
-  const subcategory = validateSubcategory(category, pick('subcategory', base?.subcategory ?? (category === TRANSFER_SAVING_CATEGORY ? TRANSFER_SAVING_SUBCATEGORY : undefined)));
+  const defaultOutgoing = validExpenseCategoryKeys().includes(TRANSFER_SAVING_CATEGORY) ? TRANSFER_SAVING_CATEGORY : defaultCategory('expense');
+  const category = pick('category', base?.category ?? defaultOutgoing);
+  const saving = db.get().prepare(`SELECT key FROM budget_subcategories WHERE category_key = ?
+    AND (key = ? OR name = 'Savings') ORDER BY (key = ?) DESC LIMIT 1`)
+    .get(category, TRANSFER_SAVING_SUBCATEGORY, TRANSFER_SAVING_SUBCATEGORY)?.key;
+  const subcategory = validateSubcategory(category, pick('subcategory', base?.subcategory ?? saving));
   const interval = pick('recurrence_interval', base?.recurrence_interval ?? 'monthly');
   const count = Number(pick('recurrence_interval_count', base?.recurrence_interval_count ?? 1));
   const errors = [title.error, amount.error, date.error, from.error, to.error].filter(Boolean);
@@ -41,8 +57,20 @@ function values(req, base = null) {
   if (body.recurrence_virtual || body.recurrence_rule) errors.push('Transfers use actual payments and the interval schedule.');
   if (body.transfer_entry_id !== undefined) errors.push('transfer_entry_id is read-only.');
   if (errors.length) return { errors };
+  // Historical bookings stay editable; a new transfer or account assignment needs active accounts.
+  if ((from.value !== base?.account_id && isArchivedBudgetAccount(from.value))
+      || (to.value !== partner?.account_id && isArchivedBudgetAccount(to.value))) return {
+    errors: ['Choose active accounts for a transfer.'], reason: 'transfer_account_archived',
+  };
+  if (!transferCurrenciesMatch(from.value, to.value)) return {
+    errors: ['Transfer accounts must use the same currency.'], reason: 'transfer_currency_mismatch',
+  };
+  const unchangedCurrency = base && budgetAccountCurrency(from.value) === budgetAccountCurrency(base.account_id);
+  if ((amount.value !== Math.abs(base?.amount) || !unchangedCurrency) && !transferAmountFitsCurrency(amount.value, from.value)) return {
+    errors: ['Amount must match the account currency precision.'], reason: 'entry_amount_invalid',
+  };
   const me = req.authUserId || req.session.userId;
-  return { title: title.value, amount: Math.round(amount.value * 100) / 100, category, subcategory,
+  return { title: title.value, amount: amount.value, category, subcategory,
     date: date.value, from_account_id: from.value, to_account_id: to.value,
     is_recurring: pick('is_recurring', base?.is_recurring ?? false) ? 1 : 0,
     recurrence_interval: interval, recurrence_interval_count: count,
@@ -60,7 +88,7 @@ function access(req, res) {
 }
 function guard(res, v) {
   if (!v.errors) return true;
-  res.status(400).json({ error: v.errors.join(' '), reason: 'transfer_invalid', code: 400 }); return false;
+  res.status(400).json({ error: v.errors.join(' '), reason: v.reason ?? 'transfer_invalid', code: 400 }); return false;
 }
 function writeBooking(entry, v) {
   const database = db.get();
@@ -69,7 +97,7 @@ function writeBooking(entry, v) {
     date = ?, account_id = ?, visibility = ? WHERE id = ?`)
     .run(v.title, -v.amount, v.category, v.subcategory, v.date, v.from_account_id, v.visibility, entry.id);
   database.prepare(`UPDATE budget_entries SET account_id = ?, category = ?, subcategory = '' WHERE id = ?`)
-    .run(v.to_account_id, TRANSFER_INCOME_CATEGORY, partner.id);
+    .run(v.to_account_id, transferIncomeCategory(database), partner.id);
   mirrorTransfer(database, entry.id);
 }
 
@@ -88,7 +116,8 @@ router.put('/transfers/:id', (req, res) => {
   try {
     const entry = access(req, res); if (!entry) return;
     const v = values(req, entry); if (!guard(res, v)) return;
-    if (['is_recurring', 'recurrence_interval', 'recurrence_interval_count', 'recurrence_confirm'].some((k) => req.body[k] !== undefined && Number(v[k]) !== Number(entry[k]))) {
+    if (['is_recurring', 'recurrence_interval', 'recurrence_interval_count', 'recurrence_confirm'].some((k) => req.body[k] !== undefined
+      && (k === 'recurrence_interval' ? v[k] !== entry[k] : Number(v[k]) !== Number(entry[k])))) {
       return res.status(400).json({ error: 'Change the recurrence through the transfer series.', reason: 'transfer_series_required', code: 400 });
     }
     db.get().transaction(() => writeBooking(entry, v))();
@@ -98,11 +127,10 @@ router.put('/transfers/:id', (req, res) => {
 router.put('/transfers/:id/series', (req, res) => {
   try {
     const entry = access(req, res); if (!entry) return;
-    const anchor = load(entry.recurrence_parent_id ?? entry.id);
-    const partner = transferPair(db.get(), anchor);
-    const definition = db.get().prepare('SELECT * FROM budget_series WHERE anchor_id = ?').get(anchor.id);
-    if (!definition) return res.status(400).json({ error: 'Not a recurring transfer.', code: 400 });
-    const v = values(req, { ...anchor, ...definition, id: anchor.id, date: definition.start_date });
+    const current = transferSeries(entry);
+    if (!current) return res.status(400).json({ error: 'Not a recurring transfer.', code: 400 });
+    const { anchor, partner, definition } = current;
+    const v = values(req, current.base, current.other);
     if (!guard(res, v)) return;
     if (!v.is_recurring) return res.status(400).json({ error: 'Delete the series to end it.', code: 400 });
     const cutoff = todayKey(db.get());
@@ -112,7 +140,7 @@ router.put('/transfers/:id/series', (req, res) => {
       if (gridChanged) freezeSeriesPast(db.get(), anchor.id, cutoff);
       for (const [row, sign, account, category, subcategory] of [
         [anchor, -1, v.from_account_id, v.category, v.subcategory],
-        [partner, 1, v.to_account_id, TRANSFER_INCOME_CATEGORY, ''],
+        [partner, 1, v.to_account_id, transferIncomeCategory(db.get()), ''],
       ]) {
         db.get().prepare(`UPDATE budget_entries SET recurrence_interval = ?, recurrence_interval_count = ?, recurrence_confirm = ? WHERE id = ?`)
           .run(v.recurrence_interval, v.recurrence_interval_count, v.recurrence_confirm, row.id);

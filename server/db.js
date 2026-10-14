@@ -10872,12 +10872,10 @@ const MIGRATIONS = [
       ALTER TABLE budget_entries ADD COLUMN transfer_entry_id INTEGER NULL
         REFERENCES budget_entries(id) ON DELETE CASCADE;
       CREATE INDEX idx_budget_transfer ON budget_entries(transfer_entry_id);
-      INSERT OR IGNORE INTO budget_categories (key, name, type, sort_order)
-        VALUES ('financial_other', 'Financial Services and Other', 'expense', 7);
+      -- A deleted parent stays deleted; an existing household Savings name keeps its own key.
       INSERT OR IGNORE INTO budget_subcategories (key, category_key, name, sort_order)
-        VALUES ('saving', 'financial_other', 'Savings', 5);
-      INSERT OR IGNORE INTO budget_categories (key, name, type, sort_order)
-        VALUES ('Geschenke & Transfers', 'Geschenke & Transfers', 'income', 100);
+        SELECT 'saving', key, 'Savings', 5 FROM budget_categories
+        WHERE key = 'financial_other';
     `,
   },
 ];
