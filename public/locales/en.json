@@ -1152,6 +1152,8 @@
         "localCalendarDisableExport": "Disable export",
         "localCalendarExportCopied": "Export link copied",
         "localCalendarDeleteConfirm": "Delete \"{{name}}\"?",
+        "birthdayCalendarRemoveDetail": "Only this calendar grouping and its shared feed link are removed. Birthday records, existing events, reminders and external sync links stay unchanged. Birthdays return to the original birthday layer.",
+
         "localCalendarDeleteDetail": "Events from this calendar move to the default calendar, and its export link will stop working.",
         "localCalendarDeleteDetailIcloud": "Events from this calendar move to the default calendar and are then uploaded to iCloud through Apple Calendar. Its export link will stop working."
     },

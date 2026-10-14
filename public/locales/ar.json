@@ -1366,6 +1366,8 @@
         "localCalendarDisableExport": "إيقاف التصدير",
         "localCalendarExportCopied": "تم نسخ رابط التصدير",
         "localCalendarDeleteConfirm": "حذف \"{{name}}\"؟",
+        "birthdayCalendarRemoveDetail": "تُحذف مجموعة التقويم ورابطها المشترك فقط. تبقى أعياد الميلاد والأحداث والتذكيرات وروابط المزامنة الخارجية دون تغيير. تعود أعياد الميلاد إلى طبقتها الأصلية.",
+
         "localCalendarDeleteDetail": "ستنقل أحداث هذا التقويم إلى التقويم الافتراضي، وسيتوقف رابط التصدير الخاص به عن العمل.",
         "localCalendarDeleteDetailIcloud": "ستنقل أحداث هذا التقويم إلى التقويم الافتراضي، ثم ترفع إلى iCloud عبر تقويم Apple. وسيتوقف رابط التصدير الخاص به عن العمل.",
         "localCalendarEventCount_zero": "{{count}} أحداث",

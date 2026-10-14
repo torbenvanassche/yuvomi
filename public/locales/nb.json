@@ -1152,6 +1152,8 @@
         "localCalendarDisableExport": "Deaktiver eksport",
         "localCalendarExportCopied": "Eksportlenke kopiert",
         "localCalendarDeleteConfirm": "Slette \"{{name}}\"?",
+        "birthdayCalendarRemoveDetail": "Bare denne kalendergruppen og den delte abonnementslenken fjernes. Bursdager, hendelser, påminnelser og eksterne synklenker beholdes. Bursdagene går tilbake til det opprinnelige laget.",
+
         "localCalendarDeleteDetail": "Hendelsene flyttes til standardkalenderen, og eksportlenken slutter å virke.",
         "localCalendarDeleteDetailIcloud": "Hendelsene flyttes til standardkalenderen og lastes deretter opp til iCloud via Apple Kalender. Eksportlenken slutter å virke."
     },

@@ -2656,6 +2656,19 @@ person. No country- or name-based lookup is performed.
 
 ### Birthday ICS subscription
 
+Calendar → Manage calendars also offers Create calendar · Birthdays. This optional managed
+local calendar groups existing birthday and name-day events through their original source links.
+Enabling it stores `birthday_local_calendar_id` in `sync_config` and adopts existing events on
+read, without creating duplicates or rewriting event IDs, reminders, assignments or provider links.
+Future generated birthday events use the same resolver. Reminder-disabled birthdays keep the
+existing behaviour: they do not acquire calendar events. Existing per-user hidden birthday-layer
+preferences migrate to the managed calendar's source toggle. Authored event and import destination
+pickers exclude this collection; the API rejects it as an authored destination. Removing the
+collection removes its grouping and local-calendar feed link, restores the legacy layer and retains
+the birthday records, events, reminders and sync links. The manager's normal calendar feed exports
+the generated events in this collection; the independent subscription below still exports all saved
+birthdays, including those without reminders.
+
 Settings → Calendar → Birthday calendar export provides a separate subscription URL at
 `/feed/birthdays/:token.ics`. Every authenticated member manages their own link through
 `GET /api/v1/birthdays/feed`, `POST /api/v1/birthdays/feed/regenerate` and
@@ -2668,8 +2681,8 @@ February 29 recurs on leap years, following the yearly ICS rule. The URL can be 
 any calendar app or service that supports ICS. For example, in Home Assistant use
 [Remote Calendar](https://www.home-assistant.io/integrations/remote_calendar):
 Settings → Devices & services → Add Integration → Remote Calendar, then paste the HTTP(S) URL.
-The existing general calendar feed still includes generated birthday events; local-calendar feeds
-continue to exclude them.
+The existing general calendar feed still includes generated birthday events. Ordinary local-calendar
+feeds exclude them; the optional managed birthday calendar has its own feed as described above.
 
 ### API Tokens
 Named Bearer / X-API-Key tokens for non-interactive external integrations. Admin-only creation and revocation. Token values are SHA-256-hashed at rest; the plaintext is shown only once after creation.

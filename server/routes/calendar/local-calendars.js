@@ -5,6 +5,9 @@ import { requireAdmin } from '../../middleware/require-admin.js';
 import { mayWriteModule } from '../../permissions.js';
 import {
   clearCalendarFeedToken,
+  createBirthdayCalendar,
+  birthdayCalendarFlagSql,
+  removeBirthdayCalendarSetting,
   ensureDefaultCalendar,
   localCalendarById,
   localCalendarIdSql,
@@ -23,7 +26,7 @@ const router = express.Router();
 function loadCalendars(database, viewerId) {
   ensureDefaultCalendar(database);
   return database.prepare(`
-    SELECT lc.*,
+    SELECT lc.*, ${birthdayCalendarFlagSql()} AS is_birthday,
            (SELECT COUNT(*) FROM calendar_events e WHERE ${localCalendarIdSql()} = lc.id AND ${visibilityWhere('e', 'event_assignments', 'event_id', '@viewerId')}) AS event_count
     FROM local_calendars lc
     ORDER BY lc.sort_order ASC, lc.name COLLATE NOCASE ASC, lc.id ASC
@@ -44,6 +47,23 @@ router.get('/calendars', (req, res) => {
     })) });
   } catch (err) {
     log.error('GET /calendars', err);
+    res.status(500).json({ error: 'Interner Fehler', code: 500 });
+  }
+});
+
+router.post('/calendars/birthdays', (req, res) => {
+  if (!mayWriteModule(req, 'calendar')) {
+    return res.status(403).json({ error: 'Write access to the calendar is required.', code: 403, reason: 'cross_module_access' });
+  }
+  try {
+    const name = validateCalendarName(req.body?.name);
+    const color = validateCalendarColor(req.body?.color ?? '#FF2D55');
+    const errors = [name.error, color.error].filter(Boolean);
+    if (errors.length) return res.status(400).json({ error: errors.join(' '), code: 400 });
+    const row = createBirthdayCalendar(db.get(), { name: name.value, color: color.value, createdBy: getUserId(req) });
+    res.status(201).json({ data: serializeCalendar(req, row, feedUrl, { includeFeedToken: isAdminUser(req) }) });
+  } catch (err) {
+    log.error('POST /calendars/birthdays', err);
     res.status(500).json({ error: 'Interner Fehler', code: 500 });
   }
 });
@@ -159,7 +179,10 @@ router.delete('/calendars/:id', (req, res) => {
     if (row.feed_token && !isAdminUser(req)) {
       return res.status(403).json({ error: 'Admin access required.', code: 403 });
     }
-    database.prepare('DELETE FROM local_calendars WHERE id = ?').run(id);
+    database.transaction(() => {
+      removeBirthdayCalendarSetting(database, id);
+      database.prepare('DELETE FROM local_calendars WHERE id = ?').run(id);
+    })();
     res.status(204).end();
   } catch (err) {
     log.error('DELETE /calendars/:id', err);

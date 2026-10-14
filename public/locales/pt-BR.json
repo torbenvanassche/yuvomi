@@ -1152,6 +1152,8 @@
         "localCalendarDisableExport": "Desativar exportação",
         "localCalendarExportCopied": "Link de exportação copiado",
         "localCalendarDeleteConfirm": "Eliminar \"{{name}}\"?",
+        "birthdayCalendarRemoveDetail": "Somente este agrupamento e seu link compartilhado são removidos. Aniversários, eventos, lembretes e sincronizações externas permanecem inalterados. Os aniversários voltam à camada original.",
+
         "localCalendarDeleteDetail": "Os eventos deste calendário serão movidos para o calendário predefinido e a respetiva ligação de exportação deixará de funcionar.",
         "localCalendarDeleteDetailIcloud": "Os eventos deste calendário serão movidos para o calendário predefinido e depois enviados ao iCloud pelo Apple Calendar. A respetiva ligação de exportação deixará de funcionar."
     },

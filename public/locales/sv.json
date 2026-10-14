@@ -1152,6 +1152,8 @@
         "localCalendarDisableExport": "Inaktivera export",
         "localCalendarExportCopied": "Exportlänk kopierad",
         "localCalendarDeleteConfirm": "Radera \"{{name}}\"?",
+        "birthdayCalendarRemoveDetail": "Bara denna kalendergrupp och dess delade flödeslänk tas bort. Födelsedagar, händelser, påminnelser och externa synklänkar är oförändrade. Födelsedagar återgår till det ursprungliga lagret.",
+
         "localCalendarDeleteDetail": "Händelser från den här kalendern flyttas till standardkalendern och exportlänken slutar att fungera.",
         "localCalendarDeleteDetailIcloud": "Händelser från den här kalendern flyttas till standardkalendern och laddas sedan upp till iCloud via Apple Calendar. Exportlänken slutar att fungera."
     },

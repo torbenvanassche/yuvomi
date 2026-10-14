@@ -147,6 +147,11 @@ export function calendarPaths() {
         requestBody: jsonBody('#/components/schemas/LocalCalendarReorderInput'),
       }),
     },
+    '/api/v1/calendar/calendars/birthdays': {
+      post: op({ summary: 'Create or retrieve the managed birthday calendar', tag: 'Calendar', stateChanging: true,
+        description: 'Requires calendar write access. Idempotently groups existing birthday and name-day events without modifying their IDs, reminders or external sync links. Reminder-disabled birthdays remain hidden. This calendar cannot accept authored events or imports; deleting it restores the legacy birthday layer without deleting birthdays.',
+        requestBody: jsonBody('#/components/schemas/LocalCalendarCreateInput') }),
+    },
     '/api/v1/calendar/calendars/{id}': {
       put: op({
         summary: 'Update local calendar',

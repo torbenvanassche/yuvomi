@@ -1166,6 +1166,8 @@
         "localCalendarDisableExport": "غیرفعال کردن خروجی",
         "localCalendarExportCopied": "پیوند خروجی کپی شد",
         "localCalendarDeleteConfirm": "«{{name}}» حذف شود؟",
+        "birthdayCalendarRemoveDetail": "فقط این گروه تقویم و پیوند مشترک آن حذف می‌شود. تولدها، رویدادها، یادآوری‌ها و پیوندهای همگام‌سازی خارجی بدون تغییر می‌مانند. تولدها به لایه قبلی بازمی‌گردند.",
+
         "localCalendarDeleteDetail": "رویدادهای این تقویم به تقویم پیش‌فرض منتقل می‌شوند و پیوند خروجی آن دیگر کار نخواهد کرد.",
         "localCalendarDeleteDetailIcloud": "رویدادهای این تقویم به تقویم پیش‌فرض منتقل می‌شوند و سپس از طریق Apple Calendar در iCloud بارگذاری می‌شوند. پیوند خروجی آن دیگر کار نخواهد کرد."
     },

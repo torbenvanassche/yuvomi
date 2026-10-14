@@ -1152,6 +1152,8 @@
         "localCalendarDisableExport": "Export uitschakelen",
         "localCalendarExportCopied": "Exportlink gekopieerd",
         "localCalendarDeleteConfirm": "\"{{name}}\" verwijderen?",
+        "birthdayCalendarRemoveDetail": "Alleen deze kalendergroep en de gedeelde feedlink worden verwijderd. Verjaardagen, bestaande afspraken, herinneringen en externe synchronisatie blijven behouden. Verjaardagen keren terug naar de oorspronkelijke laag.",
+
         "localCalendarDeleteDetail": "Afspraken uit deze agenda worden naar de standaardagenda verplaatst en de exportlink werkt daarna niet meer.",
         "localCalendarDeleteDetailIcloud": "Afspraken uit deze agenda worden naar de standaardagenda verplaatst en daarna via Apple Agenda naar iCloud geüpload. De exportlink werkt daarna niet meer."
     },

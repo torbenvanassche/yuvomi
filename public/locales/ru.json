@@ -1294,6 +1294,8 @@
         "localCalendarDisableExport": "Отключить экспорт",
         "localCalendarExportCopied": "Ссылка экспорта скопирована",
         "localCalendarDeleteConfirm": "Удалить «{{name}}»?",
+        "birthdayCalendarRemoveDetail": "Удаляются только эта группа календаря и общая ссылка. Дни рождения, события, напоминания и внешняя синхронизация сохраняются. Дни рождения возвращаются в исходный слой.",
+
         "localCalendarDeleteDetail": "События этого календаря будут перенесены в календарь по умолчанию, а его ссылка экспорта перестанет работать.",
         "localCalendarDeleteDetailIcloud": "События этого календаря будут перенесены в календарь по умолчанию, а затем загружены в iCloud через Apple Calendar. Его ссылка экспорта перестанет работать.",
         "localCalendarEventCount_many": "{{count}} событий",

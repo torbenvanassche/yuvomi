@@ -543,7 +543,7 @@ export async function render(container, { user } = {}) {
     api.get('/calendar/calendars'),
   ]);
   if (res.status === 'fulfilled') subs = res.value.data || [];
-  if (calendarsRes.status === 'fulfilled') calendars = calendarsRes.value.data || [];
+  if (calendarsRes.status === 'fulfilled') calendars = (calendarsRes.value.data || []).filter(calendar => !calendar.is_birthday);
   populateCalendarImportTarget(container, calendars);
   renderIcsList(container, subs, user);
   bindIcsEvents(container, subs, user);

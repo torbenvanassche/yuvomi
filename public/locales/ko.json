@@ -1165,6 +1165,8 @@
         "localCalendarDisableExport": "내보내기 끄기",
         "localCalendarExportCopied": "내보내기 링크가 복사되었습니다",
         "localCalendarDeleteConfirm": "\"{{name}}\"을 삭제할까요?",
+        "birthdayCalendarRemoveDetail": "이 캘린더 그룹과 공유 링크만 삭제됩니다. 생일, 기존 일정, 알림, 외부 동기화 링크는 그대로 유지됩니다. 생일은 원래 레이어로 돌아갑니다.",
+
         "localCalendarDeleteDetail": "이 캘린더의 일정은 기본 캘린더로 이동하며 내보내기 링크는 더 이상 작동하지 않습니다.",
         "localCalendarDeleteDetailIcloud": "이 캘린더의 일정은 기본 캘린더로 이동한 뒤 Apple 캘린더를 통해 iCloud에 업로드됩니다. 내보내기 링크는 더 이상 작동하지 않습니다.",
         "localCalendarEventCount_one": "일정 {{count}}개"

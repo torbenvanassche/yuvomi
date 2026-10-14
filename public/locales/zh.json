@@ -1151,6 +1151,8 @@
         "localCalendarDisableExport": "停用导出",
         "localCalendarExportCopied": "导出链接已复制",
         "localCalendarDeleteConfirm": "删除“{{name}}”？",
+        "birthdayCalendarRemoveDetail": "仅移除此日历分组及其共享订阅链接。生日、现有事件、提醒和外部同步链接保持不变。生日将回到原来的图层。",
+
         "localCalendarDeleteDetail": "此日历中的事件将移至默认日历，其导出链接也将停止工作。",
         "localCalendarDeleteDetailIcloud": "此日历中的事件将移至默认日历，随后通过 Apple 日历上传到 iCloud。其导出链接也将停止工作。",
         "localCalendarEventCount_one": "{{count}} 个事件"

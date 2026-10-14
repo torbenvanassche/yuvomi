@@ -2013,6 +2013,8 @@ cdb.exec(`
   CREATE TABLE housekeeping_work_sessions (id INTEGER PRIMARY KEY, calendar_event_id INTEGER);
 `);
 cdb.exec(MIGRATIONS_SQL[245]);
+cdb.exec('ALTER TABLE calendar_events ADD COLUMN external_calendar_id TEXT');
+cdb.exec(MIGRATIONS_SQL[2]); // Birthday calendar grouping is stored in sync_config.
 
 const cu1 = cdb.prepare(`INSERT INTO users (username, display_name, password_hash, avatar_color)
   VALUES ('theodore', 'Theodore', 'x', '#34C759')`).run();

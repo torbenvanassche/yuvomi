@@ -1308,6 +1308,8 @@
         "localCalendarDisableExport": "Wyłącz eksport",
         "localCalendarExportCopied": "Link eksportu skopiowany",
         "localCalendarDeleteConfirm": "Usunąć „{{name}}”?",
+        "birthdayCalendarRemoveDetail": "Usunięte zostaną tylko ta grupa i jej udostępniony link. Urodziny, wydarzenia, przypomnienia i synchronizacja zewnętrzna pozostaną bez zmian. Urodziny wrócą do pierwotnej warstwy.",
+
         "localCalendarDeleteDetail": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a jego link eksportu przestanie działać.",
         "localCalendarDeleteDetailIcloud": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a następnie przesłane do iCloud przez Apple Calendar. Jego link eksportu przestanie działać.",
         "localCalendarEventCount_many": "{{count}} wydarzeń",

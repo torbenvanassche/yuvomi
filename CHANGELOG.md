@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   saved birthdays, including birthdays with reminders disabled. Subscribe using any calendar app
   or service that supports ICS. The feed uses yearly all-day events and can be rotated or disabled
   without changing other calendar subscriptions.
+  Calendar → Manage calendars can optionally create a managed birthday calendar for easy filtering.
+  Existing birthday and name-day events are adopted without duplication, and their reminders and
+  external sync links are preserved. Removing the grouping restores the original birthday layer.
 
 ## [2.77.0] - 2026-10-14
 

@@ -73,7 +73,7 @@ let LEGACY_DB_PATH; // null außer bei „managed" Layout
  */
 function migrateLegacyDbFile() {
   if (!LEGACY_DB_PATH) return;             // Custom-Pfad → keine Migration
-  if (existsSync(DB_PATH)) {npm
+  if (existsSync(DB_PATH)) {
     if (existsSync(LEGACY_DB_PATH)) {
       log.warn(
         `Both ${path.basename(DB_PATH)} and legacy ${path.basename(LEGACY_DB_PATH)} exist — ` +

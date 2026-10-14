@@ -1165,6 +1165,8 @@
         "localCalendarDisableExport": "Nonaktifkan ekspor",
         "localCalendarExportCopied": "Tautan ekspor disalin",
         "localCalendarDeleteConfirm": "Hapus \"{{name}}\"?",
+        "birthdayCalendarRemoveDetail": "Hanya kelompok kalender ini dan tautan bersama yang dihapus. Ulang tahun, acara, pengingat, dan sinkronisasi eksternal tetap sama. Ulang tahun kembali ke lapisan semula.",
+
         "localCalendarDeleteDetail": "Acara dari kalender ini dipindahkan ke kalender default, dan tautan ekspornya akan berhenti berfungsi.",
         "localCalendarDeleteDetailIcloud": "Acara dari kalender ini dipindahkan ke kalender default lalu diunggah ke iCloud melalui Apple Calendar. Tautan ekspornya akan berhenti berfungsi.",
         "localCalendarEventCount_one": "{{count}} acara"

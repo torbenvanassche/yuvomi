@@ -1152,6 +1152,8 @@
         "localCalendarDisableExport": "Dışa aktarımı kapat",
         "localCalendarExportCopied": "Dışa aktarım bağlantısı kopyalandı",
         "localCalendarDeleteConfirm": "\"{{name}}\" silinsin mi?",
+        "birthdayCalendarRemoveDetail": "Yalnızca bu takvim grubu ve paylaşılan bağlantısı kaldırılır. Doğum günleri, etkinlikler, hatırlatıcılar ve dış eşitleme bağlantıları değişmez. Doğum günleri önceki katmanına döner.",
+
         "localCalendarDeleteDetail": "Bu takvimdeki etkinlikler varsayılan takvime taşınır ve dışa aktarma bağlantısı artık çalışmaz.",
         "localCalendarDeleteDetailIcloud": "Bu takvimdeki etkinlikler varsayılan takvime taşınır ve ardından Apple Takvim üzerinden iCloud'a yüklenir. Dışa aktarma bağlantısı artık çalışmaz."
     },

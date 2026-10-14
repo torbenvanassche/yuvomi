@@ -1166,6 +1166,8 @@
         "localCalendarDisableExport": "Export deaktivieren",
         "localCalendarExportCopied": "Exportlink kopiert",
         "localCalendarDeleteConfirm": "\"{{name}}\" löschen?",
+        "birthdayCalendarRemoveDetail": "Nur diese Kalendergruppe und ihr gemeinsamer Feed-Link werden entfernt. Geburtstage, vorhandene Termine, Erinnerungen und externe Sync-Verknüpfungen bleiben unverändert. Geburtstage erscheinen wieder in der bisherigen Geburtstagsebene.",
+
         "localCalendarDeleteDetail": "Termine aus diesem Kalender werden in den Standardkalender verschoben, und sein Exportlink funktioniert danach nicht mehr.",
         "localCalendarDeleteDetailIcloud": "Termine aus diesem Kalender werden in den Standardkalender verschoben und danach über Apple Calendar zu iCloud hochgeladen. Sein Exportlink funktioniert danach nicht mehr."
     },

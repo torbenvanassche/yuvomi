@@ -1166,6 +1166,8 @@
         "localCalendarDisableExport": "I-disable ang export",
         "localCalendarExportCopied": "Nakopya ang link ng export",
         "localCalendarDeleteConfirm": "Tanggalin ang \"{{name}}\"?",
+        "birthdayCalendarRemoveDetail": "Ang pangkat ng kalendaryong ito at ang nakabahaging link lang ang aalisin. Hindi magbabago ang mga kaarawan, kaganapan, paalala at panlabas na sync. Babalik ang mga kaarawan sa dating layer.",
+
         "localCalendarDeleteDetail": "Ililipat ang mga kaganapan mula rito sa default na kalendaryo, at hindi na gagana ang export link nito.",
         "localCalendarDeleteDetailIcloud": "Ililipat ang mga kaganapan mula rito sa default na kalendaryo at pagkatapos ay ia-upload sa iCloud sa pamamagitan ng Apple Calendar. Hindi na gagana ang export link nito."
     },
