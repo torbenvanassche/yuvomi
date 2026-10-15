@@ -139,6 +139,66 @@ export const CASE_MESSAGES = new Map([
   ['health_cycle_import_too_large', 'health.errorCycleImportTooLarge'],
   ['health_cycle_import_no_rows', 'health.errorCycleImportNoRows'],
   ['health_cycle_import_too_many_rows', 'health.errorCycleImportTooManyRows'],
+  // Dokumente (#1909). Die "gibt es nicht mehr" stehen auch in GONE_REASONS.
+  // Die 404 eines Dokuments heisst auch "fuer dich nicht mehr sichtbar" (die
+  // Sichtbarkeit wurde geaendert); der Satz sagt deshalb "nicht mehr
+  // verfuegbar", und ein Loeschen mit diesem Grund ist kein Erfolg.
+  ['documents_folder_not_found', 'documents.errorFolderGone'],
+  // Nicht der Ordner, um den es geht, sondern der im Dialog oder in der
+  // Auswahl GEWAEHLTE (Elternordner, Zielordner): der Dialog bleibt offen und
+  // bietet die aktuellen Ordner an.
+  ['documents_selected_folder_not_found', 'documents.errorSelectedFolderGone'],
+  ['documents_folder_exists', 'documents.errorFolderExists'],
+  ['documents_folder_too_deep', 'documents.errorFolderTooDeep'],
+  // Aelter als die Regel und schon Teil der API: der Loeschdialog liest ihn
+  // selbst (utils/document-folder-delete.js), Anlegen, Umbenennen und
+  // Verschieben eines Ordners im selben Zweig erreichen ihn hier.
+  ['FOLDER_DELETE_IN_PROGRESS', 'documents.folderDeleteInProgressToast'],
+  ['documents_document_not_found', 'documents.errorDocumentGone'],
+  ['documents_file_type_not_allowed', 'documents.errorFileTypeNotAllowed'],
+  ['documents_file_content_mismatch', 'documents.errorFileContentMismatch'],
+  ['documents_file_empty', 'documents.errorFileEmpty'],
+  ['documents_storage_failed', 'documents.errorStorageFailed'],
+  // Ein DMS verknuepfen oder dorthin senden (server/routes/dms.js).
+  ['dms_account_not_found', 'documents.errorDmsAccountGone'],
+  ['dms_document_not_found', 'documents.errorDmsDocumentGone'],
+  ['dms_document_already_linked', 'documents.errorDmsAlreadyLinked'],
+  ['dms_document_already_stored', 'documents.errorDmsAlreadyStored'],
+  ['dms_unreachable', 'documents.dmsSearchError'],
+  // Rezepte (#1909). Alle drei stehen auch in GONE_REASONS. Rezepte haben
+  // keine Sichtbarkeit: die 404 heisst "geloescht" - von einem anderen
+  // Haushaltsmitglied oder vom Abgleich mit einer Rezeptquelle. Ein Loeschen
+  // mit diesem Grund ist deshalb ein Erfolg (isAlreadyDeleted).
+  ['recipes_recipe_not_found', 'recipes.errorRecipeGone'],
+  // Das Rezept steht, aber die Zutat nicht mehr darin (geaendert, oder der
+  // Abgleich hat die Zutaten ersetzt).
+  ['recipes_ingredient_not_found', 'recipes.errorIngredientGone'],
+  // Die im Zuordnungs-Dialog GEWAEHLTE Vorratszeile fehlt: der Dialog bleibt
+  // offen und bietet den aktuellen Vorrat an.
+  ['recipes_selected_pantry_item_not_found', 'recipes.errorSelectedPantryItemGone'],
+  // Eine Mahlzeit aus einem Rezept, das es nicht mehr gibt (server/routes/meals.js).
+  ['meals_selected_recipe_not_found', 'recipes.errorRecipeGone'],
+  // Abos (#1909). Die "gibt es nicht mehr" stehen auch in GONE_REASONS. Die
+  // 404 eines Abos heisst nur "geloescht": die Schreibrouten lesen es ohne
+  // Sichtbarkeitsfilter, ein fremdes privates Abo endet mit 403. Ein Loeschen
+  // mit diesem Grund ist deshalb ein Erfolg (isAlreadyDeleted).
+  ['subscriptions_subscription_not_found', 'subscriptions.errorSubscriptionGone'],
+  // Ein abgeschlossenes Abo laesst sich nicht als bezahlt markieren (#2011).
+  ['subscriptions_subscription_completed', 'subscriptions.errorSubscriptionCompleted'],
+  ['subscriptions_category_not_found', 'subscriptions.errorCategoryGone'],
+  ['subscriptions_payment_method_not_found', 'subscriptions.errorPaymentMethodGone'],
+  // Nicht die Kategorie, um die es geht, sondern die im Abo-Dialog GEWAEHLTE:
+  // der Dialog bleibt offen und bietet die aktuellen an.
+  ['subscriptions_selected_category_not_found', 'subscriptions.errorSelectedCategoryGone'],
+  ['subscriptions_selected_payment_method_not_found', 'subscriptions.errorSelectedPaymentMethodGone'],
+  ['subscriptions_category_exists', 'subscriptions.errorCategoryExists'],
+  ['subscriptions_payment_method_exists', 'subscriptions.errorPaymentMethodExists'],
+  // Eingaben, die der Abo-Dialog durchlaesst und erst der Server prueft.
+  ['subscriptions_end_before_next_payment', 'subscriptions.errorEndBeforeNextPayment'],
+  ['subscriptions_occurrence_count_too_low', 'subscriptions.errorOccurrenceCountTooLow'],
+  ['subscriptions_logo_content_mismatch', 'subscriptions.errorLogoContentMismatch'],
+  // Die Logo-Suche hat geantwortet, aber nichts Brauchbares gefunden.
+  ['subscriptions_no_logo_found', 'subscriptions.logoSearchEmpty'],
 ]);
 
 /**
@@ -162,6 +222,7 @@ export const CASE_PARAMS = new Map([
   ['waste_source_fetch_too_large', ['limit_mb']],
   ['health_cycle_import_too_large', ['limit_kb']],
   ['health_cycle_import_too_many_rows', ['limit']],
+  ['documents_folder_too_deep', ['limit']],
 ]);
 
 const PARAM_MAX = 1_000_000_000;
@@ -219,6 +280,20 @@ export const GONE_REASONS = new Set([
   'health_nutrition_entry_not_found',
   'health_cycle_period_not_found',
   'health_cycle_log_not_found',
+  'documents_folder_not_found',
+  'documents_selected_folder_not_found',
+  'documents_document_not_found',
+  'dms_account_not_found',
+  'dms_document_not_found',
+  'recipes_recipe_not_found',
+  'recipes_ingredient_not_found',
+  'recipes_selected_pantry_item_not_found',
+  'meals_selected_recipe_not_found',
+  'subscriptions_subscription_not_found',
+  'subscriptions_category_not_found',
+  'subscriptions_payment_method_not_found',
+  'subscriptions_selected_category_not_found',
+  'subscriptions_selected_payment_method_not_found',
 ]);
 
 /**

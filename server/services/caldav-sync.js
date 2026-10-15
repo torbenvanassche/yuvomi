@@ -24,7 +24,7 @@ import { processPendingDeletions, processPendingUpdates, flushAccount, ObjectInd
 import { detachAccountRows } from './caldav-todo-outbound.js';
 import { runSerialized } from '../utils/sync-lock.js';
 import { toICSDatetime, escapeICSText } from '../utils/ics-format.js';
-import { eventDateTimeFields } from '../utils/ics-datetime.js';
+import { eventDateTimeFields, rruleForDtstart } from '../utils/ics-datetime.js';
 import { vtimezoneFor } from '../utils/vtimezone.js';
 import { householdTimeZone } from '../utils/timezone.js';
 import { createCalDAVClient, supportsComponent, createUploadGate, withAccountOrigin } from '../utils/caldav-client.js';
@@ -57,7 +57,7 @@ function buildCalDAVICS(event, householdZone = null) {
   // sondern eine Uhrzeit ohne Uhr.
   // Start/Ende mit der eigenen Wiederholungsregel in Einklang (#986); ein
   // importiertes DTSTART bleibt unberuehrt (#756).
-  const when = eventDateTimeFields(outboundEvent(event), householdZone);
+  const when = eventDateTimeFields(outboundEvent(event, { householdZone }), householdZone);
   const lines = [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
@@ -82,8 +82,10 @@ function buildCalDAVICS(event, householdZone = null) {
   const colorName = nearestIcalColorName(event.color);
   if (colorName) lines.push(`COLOR:${colorName}`);
 
+  // Ein reines Datum als UNTIL wird neben einem getimten DTSTART zum Ende des
+  // Ortstags in UTC (#1974, utils/rrule-until.js).
   if (event.recurrence_rule) {
-    lines.push(rruleLine(event.recurrence_rule));
+    lines.push(rruleLine(rruleForDtstart(event.recurrence_rule, when)));
   }
 
   lines.push('END:VEVENT', 'END:VCALENDAR');
@@ -1571,7 +1573,7 @@ async function runSync({ createClient } = {}) {
           const booked = outbound.bookEventUpload(event, {
             source: 'caldav', uid, objectUrl, calRefId, adopted, accountId: account.id,
             calendarUrl: event.target_caldav_calendar_url,
-            snapshot: icsSnapshot(event, icsData, uid),
+            snapshot: icsSnapshot(event, icsData, uid, householdZone),
           });
           if (booked !== 'mirrored') continue;
 
