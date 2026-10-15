@@ -946,7 +946,7 @@ router.put('/:id', (req, res) => {
       const accountRef = validateAccountRef(req.body.account_id ?? entry.account_id);
       if (accountRef.error) return refuse(res, [refusal('entry_account_invalid', accountRef.error)]);
       if (accountRef.value !== entry.account_id && isArchivedBudgetAccount(accountRef.value)) return refuse(res, [refusal('transfer_account_archived', 'Choose active accounts for a transfer.')]);
-      if (!transferCurrenciesMatch(accountRef.value, partner.account_id)) return refuse(res, [refusal('transfer_currency_mismatch', 'Transfer accounts must use the same currency.')]);
+      if (accountRef.value !== entry.account_id && !transferCurrenciesMatch(accountRef.value, partner.account_id)) return refuse(res, [refusal('transfer_currency_mismatch', 'Transfer accounts must use the same currency.')]);
       if (req.body.amount !== undefined && Number(req.body.amount) !== entry.amount && !transferAmountFitsCurrency(req.body.amount, accountRef.value)) return refuse(res, [refusal('entry_amount_invalid', 'Amount must match the account currency precision.')]);
     }
     const checks = [];

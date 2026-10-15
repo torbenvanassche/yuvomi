@@ -99,6 +99,65 @@ test('transfer and generic entry edits cannot move a leg into a different curren
   }
 });
 
+for (const currencyChange of ['account', 'household']) {
+  test(`existing transfers remain editable after ${currencyChange === 'account' ? 'an account' : 'a household'} currency change`, async () => {
+    db.prepare("INSERT INTO sync_config (key, value) VALUES ('currency', 'EUR') ON CONFLICT(key) DO UPDATE SET value = excluded.value").run();
+    const entry = await create({ from_account_id: account('EUR'), to_account_id: account(), is_recurring: true });
+    if (currencyChange === 'account') {
+      const changed = await call('PUT', `/accounts/${entry.account_id}`, { currency: 'USD' });
+      assert.equal(changed.status, 200, JSON.stringify(changed.body));
+    } else {
+      db.prepare("UPDATE sync_config SET value = 'USD' WHERE key = 'currency'").run();
+    }
+    for (const path of [`/transfers/${entry.id}`, `/${entry.transfer_entry_id}`, `/transfers/${entry.id}/series`]) {
+      const title = `Renamed through ${path}`;
+      const edited = await call('PUT', path, { title });
+      assert.equal(edited.status, 200, JSON.stringify(edited.body));
+      assert.equal(row(entry.id).title, title);
+      assertPair(row(entry.id), row(entry.transfer_entry_id));
+      assert.equal(row(entry.id).account_id, entry.account_id);
+      assert.equal(row(entry.transfer_entry_id).account_id, entry.to_account_id);
+    }
+  });
+}
+
+test('a single transfer edit moves its incoming leg to the selected destination', async () => {
+  const entry = await create();
+  const destination = account();
+  const edited = await call('PUT', `/transfers/${entry.id}`, { to_account_id: destination });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  assert.equal(edited.body.data.to_account_id, destination);
+  assert.equal(row(entry.transfer_entry_id).account_id, destination);
+  assert.equal(row(entry.id).account_id, entry.account_id);
+  assertPair(row(entry.id), row(entry.transfer_entry_id));
+});
+
+test('series edits rewrite both legs of already materialised future instances', async () => {
+  const anchor = await create({ date: '2020-01-10', is_recurring: true });
+  const future = [...await instances(anchor), ...await instances(anchor, '2045-03')];
+  assert.equal(future.length, 4);
+  const source = account();
+  const destination = account();
+  const edited = await call('PUT', `/transfers/${anchor.id}/series`, {
+    title: 'Rewritten future', amount: 175, from_account_id: source, to_account_id: destination,
+    visibility: 'private', recurrence_confirm: true,
+  });
+  assert.equal(edited.status, 200, JSON.stringify(edited.body));
+  for (const original of future) {
+    const updated = row(original.id);
+    assert.ok(updated, 'existing occurrence keeps its ID');
+    assert.equal(updated.title, 'Rewritten future');
+    assert.equal(updated.amount, original.amount < 0 ? -175 : 175);
+    assert.equal(updated.account_id, original.amount < 0 ? source : destination);
+    assert.equal(updated.visibility, 'private');
+    assert.equal(updated.is_pending, 1);
+    assert.equal(updated.date, original.date);
+    assertPair(updated, row(updated.transfer_entry_id));
+  }
+  assert.equal(row(anchor.id).title, anchor.title, 'past booking retains its title');
+  assert.equal(row(anchor.id).amount, -100, 'past booking retains its amount');
+});
+
 test('PUT /:id mirrors a correction from either leg to its partner', async () => {
   const entry = await create();
   for (const [id, amount, date, visibility] of [

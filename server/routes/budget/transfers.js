@@ -62,7 +62,8 @@ function values(req, base = null, currentPartner = null) {
       || (to.value !== partner?.account_id && isArchivedBudgetAccount(to.value))) return {
     errors: ['Choose active accounts for a transfer.'], reason: 'transfer_account_archived',
   };
-  if (!transferCurrenciesMatch(from.value, to.value)) return {
+  if ((from.value !== base?.account_id || to.value !== partner?.account_id)
+      && !transferCurrenciesMatch(from.value, to.value)) return {
     errors: ['Transfer accounts must use the same currency.'], reason: 'transfer_currency_mismatch',
   };
   const unchangedCurrency = base && budgetAccountCurrency(from.value) === budgetAccountCurrency(base.account_id);

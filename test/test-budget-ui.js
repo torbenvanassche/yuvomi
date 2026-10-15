@@ -2991,7 +2991,8 @@ test('transfer ledger rows are marked and show source to destination with a neut
   const html = uebersicht({ entries: [zeile({ transfer_entry_id: 42, transfer_account_id: 2, account_id: 1 })],
     accounts: [{ id: 1, name: '<Checking>' }, { id: 2, name: 'Savings' }], summary: { ...summe, transfers: 950 } });
   assert.match(html, /budget-badge--transfer/);
-  assert.match(html, /&lt;Checking&gt; → Savings/);
+  assert.match(html, /<bdi>&lt;Checking&gt;<\/bdi> <span class="budget-transfer-route__arrow" aria-hidden="true">→<\/span> <bdi>Savings<\/bdi>/);
+  assert.match(html, /aria-label="[^"]*budget\.typeTransfer, /);
   assert.match(html, /budget-entry__amount--transfer/);
   assert.doesNotMatch(html, /budget-entry__amount--(?:income|expenses)/);
 });

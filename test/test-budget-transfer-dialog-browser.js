@@ -253,6 +253,17 @@ test('the balance keeps its mobile slot, the transfer card is conditional, and t
     const transferRow = `.budget-entry[data-id="${entry.id}"]`;
     assert.equal(await page.$eval(`${transferRow} .budget-badge--transfer`, el => el.textContent), 'Transfer');
     assert.equal(await page.$eval(`${transferRow} .budget-transfer-route`, el => el.textContent), 'Checking → Savings');
+    assert.match(await page.$eval(`${transferRow} .budget-entry__title`, el => el.getAttribute('aria-label')), /Transfer/);
+    const badge = await page.$eval(`${transferRow} .budget-badge--transfer`, el => {
+      const style = getComputedStyle(el);
+      return { display: style.display, gap: parseFloat(style.columnGap), radius: parseFloat(style.borderRadius) };
+    });
+    assert.equal(badge.display, 'inline-flex');
+    assert.ok(badge.gap > 0);
+    assert.ok(badge.radius > 0);
+    await page.evaluate(() => document.documentElement.setAttribute('dir', 'rtl'));
+    assert.equal(await page.$eval(`${transferRow} .budget-transfer-route__arrow`, el => getComputedStyle(el).transform), 'matrix(-1, 0, 0, 1, 0, 0)');
+    await page.evaluate(() => document.documentElement.setAttribute('dir', 'ltr'));
     assert.equal(await page.$(`${transferRow} .budget-entry__amount--expenses`), null);
     await page.$eval('.budget-bar-row[data-category-filter="__saving__"]', el => el.click());
     assert.ok(await page.$(transferRow), 'the Savings chart keeps its actual transfer visible');

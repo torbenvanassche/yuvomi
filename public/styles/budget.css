@@ -233,7 +233,8 @@
  * theme-übergreifend ≥4.5:1 (reiner Akzent ergab in Light nur ~4.1:1). Kein
  * hardcodierter Wert. */
 .budget-badge--shared,
-.budget-badge--masked {
+.budget-badge--masked,
+.budget-badge--transfer {
   display: inline-block;
   vertical-align: middle;
   margin-inline-start: var(--space-1);
@@ -245,6 +246,20 @@
   color: var(--color-text-secondary);
   background: var(--color-fill-well);
   white-space: nowrap;
+}
+
+.budget-badge--transfer {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.budget-transfer-route__arrow {
+  display: inline-block;
+}
+
+[dir="rtl"] .budget-transfer-route__arrow {
+  transform: scaleX(-1);
 }
 
 /* „Nur Betrag" an fremden Buchungen, die ihren Zweck verbergen (#659). Teilt

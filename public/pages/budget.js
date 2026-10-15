@@ -2490,7 +2490,7 @@ function entryRows(list, { fullDate = false, rowClass = '' } = {}) {
     const targetName = accountName(isIncome ? e.account_id : partnerAccount);
     const transferMark = isTransfer ? ` <span class="budget-badge budget-badge--transfer"><i data-lucide="arrow-left-right" class="icon-sm" aria-hidden="true"></i>${esc(t('budget.typeTransfer'))}</span>` : '';
     const transferRoute = isTransfer && !masked && sourceName && targetName
-      ? ` · <span class="budget-transfer-route">${esc(sourceName)} → ${esc(targetName)}</span>` : '';
+      ? ` · <span class="budget-transfer-route"><bdi>${esc(sourceName)}</bdi> <span class="budget-transfer-route__arrow" aria-hidden="true">→</span> <bdi>${esc(targetName)}</bdi></span>` : '';
     // Beleg-Marke (#583): zeigt an, dass zu dieser Buchung ein Nachweis liegt.
     // Zählt bewusst nicht mit - die Zahl beantwortet keine Frage, die man vor
     // dem Öffnen der Buchung hat.
@@ -2553,7 +2553,7 @@ function entryRows(list, { fullDate = false, rowClass = '' } = {}) {
     const titleCell = masked
       ? `<div class="list-row__name budget-entry__title">${esc(displayTitle)}${sharedBadge}${maskedBadge}${pendingBadge}${transferMark}</div>`
       : `<button class="list-row__name budget-entry__title" type="button"
-           aria-label="${titleAction}${esc(e.title)}, ${amountText}">${esc(displayTitle)}${sharedBadge}${maskedBadge}${pendingBadge}${transferMark}</button>`;
+           aria-label="${titleAction}${isTransfer ? `${esc(t('budget.typeTransfer'))}, ` : ''}${esc(e.title)}, ${amountText}">${esc(displayTitle)}${sharedBadge}${maskedBadge}${pendingBadge}${transferMark}</button>`;
     // ZUSTAENDIGE (#1057) als Avatar-Stapel in der Metazeile - dieselbe Sprache,
     // die Kalender und Aufgaben fuer "wer gehoert dazu" schon sprechen. Bei
     // einer maskierten Buchung faellt er weg: deren Zweck bleibt verborgen, und

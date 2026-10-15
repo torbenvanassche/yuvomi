@@ -2187,6 +2187,8 @@ Index: CREATE INDEX idx_carddav_addressbook_account ON carddav_addressbook_selec
 
 Account transfers are two entries linked by reciprocal `transfer_entry_id` values: an outgoing
 amount and the equal incoming amount on a different account with the same effective currency.
+Currency matching is required on creation and account reassignment. Existing bookings remain
+editable after account or household currency changes when their account assignments stay the same.
 Creation, corrections and confirmation mirror both legs in one transaction. Recurring instances
 are paired too; deleting an instance removes both legs and records a skip for each series anchor.
 Transfers affect account balances, but never income, expenses, budget-plan actuals or statistics.
@@ -2202,7 +2204,7 @@ including three-decimal currencies. The Savings chart bucket (`__saving__`) sele
 |--------|------|-----------|
 | title | TEXT | NOT NULL |
 | amount | REAL | NOT NULL (positive = income, negative = expense) |
-| transfer_entry_id | INTEGER | Nullable FK → Budget Entries(id), ON DELETE CASCADE; reciprocal partner ID for an account transfer, NULL for an ordinary entry (migration v247) |
+| transfer_entry_id | INTEGER | Nullable FK → Budget Entries(id), ON DELETE CASCADE; reciprocal partner ID for an account transfer, NULL for an ordinary entry (migration v250) |
 | category | TEXT | FK → Budget Categories (by key), NOT NULL |
 | subcategory | TEXT | FK → Budget Subcategories (by key), default '' |
 | date | TEXT | DATE, NOT NULL |
