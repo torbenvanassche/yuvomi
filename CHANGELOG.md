@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Extension modules can add a Settings sheet** (#1856). An optional manifest field places a module
+  under Settings -> Modules, with personal sections for members and household sections for
+  administrators. Disabled modules disappear from the list; module APIs remain responsible
+  for enforcing roles and permissions.
+
 - **Birthdays and name days have their own calendar feed.** Settings → Calendar includes an
   independent ICS subscription for all saved birthdays and name days, including records with reminders disabled. Subscribe using any calendar app
   or service that supports ICS. The feed uses yearly all-day events and can be rotated or disabled
