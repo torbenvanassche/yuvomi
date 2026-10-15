@@ -1,12 +1,12 @@
 import { op, jsonBody, idParam, stringPathParam, langParam, DOCUMENT_LINKS_READ_NOTE } from '../helpers.js';
 
 export function budgetPaths() {
-  return {
+  return withCaseReasons({
     '/api/v1/budget/transfers': {
       post: op({
         summary: 'Transfer money between two budget accounts', tag: 'Budget', stateChanging: true,
         requestBody: jsonBody(null, 'Required: title, positive amount matching the account currency precision (no silent rounding), date (YYYY-MM-DD), from_account_id and to_account_id (two different active accounts). Optional: outgoing expense category and subcategory (Financials / Savings when present, otherwise the first remaining expense category and its default subcategory), visibility, is_recurring, recurrence_interval, recurrence_interval_count and recurrence_confirm. Virtual recurrence and recurrence_rule are not supported; transfer_entry_id is read-only.'),
-        description: 'Creates linked outgoing and incoming entries atomically. New transfers and account changes require active accounts (400 transfer_account_archived); existing bookings on archived accounts remain editable. Both accounts must have the same effective currency (account currency or household currency); currency exchange is not supported. This also applies to transfer and generic entry updates, including series edits: a mismatch returns 400 with reason transfer_currency_mismatch. Returns the outgoing entry in data, including from_account_id, to_account_id and transfer_entry_id. Transfers affect account balances but are excluded from income and expense totals.',
+        description: 'Creates linked outgoing and incoming entries atomically. New transfers and account changes require active accounts (400 transfer_account_archived); existing bookings on archived accounts remain editable. Both accounts must have the same effective currency (account currency or household currency); currency exchange is not supported. This also applies when changing accounts through transfer, generic entry or series updates: a mismatch returns 400 with reason transfer_currency_mismatch. Existing bookings remain editable after account or household currency changes when their account assignments stay the same. Returns the outgoing entry in data, including from_account_id, to_account_id and transfer_entry_id. Transfers affect account balances but are excluded from income and expense totals.',
         responses: {
           201: { description: 'Transfer created' },
           400: { description: 'Different effective account currencies: transfer_currency_mismatch. Archived account assignment: transfer_account_archived. Off-grid amount: entry_amount_invalid. Other invalid transfer fields: transfer_invalid.' },
@@ -158,5 +158,44 @@ export function budgetPaths() {
       put: op({ summary: 'Update subscription', description: 'Optional boolean `reminder_enabled`: false removes the payment reminder; true schedules it using `reminder_days`. Omitting the field preserves its current value. Changing it does not pause the subscription or remove its budget expense.', tag: 'Budget', params: [idParam()], stateChanging: true, requestBody: jsonBody(null) }),
       delete: op({ summary: 'Delete subscription', tag: 'Budget', params: [idParam()], stateChanging: true }),
     },
-  };
+  });
+}
+
+// #1909: die Faelle, die ein Nutzer bei den Abos erreicht, tragen einen
+// `reason` neben dem englischen `error` - je Operation der Satz, der sie nennt.
+const SUBSCRIPTION_GONE = '`subscriptions_subscription_not_found` (404, the subscription does not exist)';
+const SELECTED_META_GONE = '`subscriptions_selected_category_not_found`, `subscriptions_selected_payment_method_not_found` (400, the chosen category or payment method does not exist)';
+const SUBSCRIPTION_CHECKS = '`subscriptions_end_before_next_payment`, `subscriptions_occurrence_count_too_low`, `subscriptions_logo_content_mismatch` (400, only when it is the single finding)';
+const CASE_REASONS = {
+  // Anlegen nennt den Fall auch: wird das neue Abo geloescht, waehrend seine
+  // Buchung den Kurs holt, antwortet es 404 statt eine Buchung ohne Abo zu hinterlassen.
+  '/api/v1/budget/subscriptions': { post: `${SELECTED_META_GONE}, ${SUBSCRIPTION_CHECKS}, ${SUBSCRIPTION_GONE}` },
+  '/api/v1/budget/subscriptions/{id}': {
+    put: `${SUBSCRIPTION_GONE}, ${SELECTED_META_GONE}, ${SUBSCRIPTION_CHECKS}`,
+    delete: SUBSCRIPTION_GONE,
+  },
+  '/api/v1/budget/subscriptions/{id}/renew': { post: `${SUBSCRIPTION_GONE}, \`subscriptions_subscription_completed\` (409, the subscription is completed; reactivate it first)` },
+  '/api/v1/budget/subscriptions/categories': { post: '`subscriptions_category_exists` (409)' },
+  '/api/v1/budget/subscriptions/categories/{id}': {
+    put: '`subscriptions_category_not_found` (404), `subscriptions_category_exists` (409)',
+    delete: '`subscriptions_category_not_found` (404)',
+  },
+  '/api/v1/budget/subscriptions/payment-methods': { post: '`subscriptions_payment_method_exists` (409)' },
+  '/api/v1/budget/subscriptions/payment-methods/{id}': {
+    put: '`subscriptions_payment_method_not_found` (404), `subscriptions_payment_method_exists` (409)',
+    delete: '`subscriptions_payment_method_not_found` (404)',
+  },
+  '/api/v1/budget/subscriptions/logo-search': { post: '`subscriptions_no_logo_found` (404, no supported logo was found)' },
+};
+
+function withCaseReasons(paths) {
+  for (const [path, operations] of Object.entries(CASE_REASONS)) {
+    for (const [method, reasons] of Object.entries(operations)) {
+      const operation = paths[path]?.[method];
+      if (!operation) throw new Error(`openapi budget: ${method} ${path} is not documented`);
+      const note = `A refusal a user can reach carries a \`reason\` next to \`error\` (#1909): ${reasons}.`;
+      operation.description = operation.description ? `${operation.description}\n\n${note}` : note;
+    }
+  }
+  return paths;
 }
