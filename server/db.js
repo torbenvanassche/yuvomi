@@ -10903,6 +10903,17 @@ const MIGRATIONS = [
     },
   },
   {
+    version: 249,
+    description: 'Birthdays: independently revocable ICS subscriptions',
+    up: `
+      ALTER TABLE users ADD COLUMN birthday_feed_token TEXT;
+      ALTER TABLE users ADD COLUMN calendar_feed_include_birthdays INTEGER NOT NULL DEFAULT 1
+        CHECK(calendar_feed_include_birthdays IN (0, 1));
+      CREATE UNIQUE INDEX idx_users_birthday_feed_token ON users(birthday_feed_token)
+        WHERE birthday_feed_token IS NOT NULL;
+    `,
+  },
+  {
     version: 250,
     description: 'Budget transfers: linked account entries (#781)',
     // NULL preserves every ordinary entry. The service creates and mirrors pairs

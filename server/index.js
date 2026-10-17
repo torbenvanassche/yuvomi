@@ -58,6 +58,7 @@ import quickLinksRouter from './routes/quick-links.js';
 import contactsRouter from './routes/contacts.js';
 import cardavRouter from './routes/cardav.js';
 import birthdaysRouter from './routes/birthdays.js';
+import * as birthdayIcs from './services/birthday-ics.js';
 import budgetRouter from './routes/budget.js';
 import subscriptionsRouter from './routes/subscriptions.js';
 import documentsRouter from './routes/documents.js';
@@ -497,6 +498,20 @@ app.get('/feed/calendar/:token.ics', feedLimiter, (req, res) => {
   }
 });
 
+app.get('/feed/birthdays/:token.ics', feedLimiter, (req, res) => {
+  try {
+    if (!birthdayIcs.findUserIdByFeedToken(db.get(), req.params.token)) {
+      return res.status(404).type('text/plain').send('Not found');
+    }
+    res.set('Cache-Control', 'private, no-store');
+    res.set('Content-Disposition', 'inline; filename="yuvomi-birthdays.ics"');
+    res.type('text/calendar; charset=utf-8').send(birthdayIcs.buildBirthdayFeed(db.get()));
+  } catch (err) {
+    log.error('Birthday feed', err);
+    res.status(500).type('text/plain').send('Internal error');
+  }
+});
+
 // Eigenständiger Feed für Inventar-Garantiefristen (Stufe 4) - getrennt vom
 // Haushaltskalender-Feed oben, siehe server/services/inventory-deadlines-ics.js.
 app.get('/feed/inventory-deadlines/:token.ics', feedLimiter, (req, res) => {
@@ -816,8 +831,10 @@ app.use(createErrorHandler(log));
 const SYNC_INTERVAL_MS = (parseInt(process.env.SYNC_INTERVAL_MINUTES, 10) || 15) * 60_000;
 
 async function runSync() {
-  const { connected: googleConnected } = googleCalendar.getStatus();
-  if (googleConnected) {
+  // Ein abgelehntes Token (#2019) steht auf der Karte; jeder Takt schriebe
+  // sonst denselben Fehler ins Log, ohne dass ein Lauf etwas ändern könnte.
+  const { connected: googleConnected, needsReauth: googleNeedsReauth } = googleCalendar.getStatus();
+  if (googleConnected && !googleNeedsReauth) {
     googleCalendar.sync().catch((e) => logSync.error('Google error:', e.message));
   }
 

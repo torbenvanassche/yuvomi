@@ -2197,18 +2197,23 @@ test('every write reloads through reloadAfterWrite(), which also refreshes the c
   assert.ok((schedulePage.match(/await reloadAfterWrite\(\);/g) || []).length >= 6, 'the save, delete and quick-start paths all go through it');
 });
 
-test('R17/E1: the first visit lands on the comparison view, whatever the data (replaces S-07)', () => {
+test('R17/E1 + D3: the first visit lands on the comparison view - an empty household on "Shift types" (Critique 2026-10-16)', () => {
   const schedulePage = readFileSync(new URL('../public/pages/schedule.js', import.meta.url), 'utf8');
   const renderFn = schedulePage.slice(schedulePage.indexOf('export async function render'), schedulePage.indexOf('export async function update'));
   const branchStart = renderFn.indexOf('} else if (!initialViewDecided) {');
   assert.ok(branchStart !== -1, 'the fallback branch must exist for a bare-root visit with no explicit deep link');
   const fallbackBranch = renderFn.slice(branchStart, renderFn.indexOf('initialViewDecided = true;', branchStart) + 30);
-  assert.match(fallbackBranch, /\n\s*activeView = 'overview';\n/);
-  assert.doesNotMatch(fallbackBranch, /state\.types\.length \?/, 'no data-dependent start tab any more: the comparison view carries its own empty state');
+  // An empty household (nothing to compare, nothing planned) starts where the
+  // FAB "+ Shift type" is the one way forward - the comparison view is a
+  // read-only tab without a FAB, and landed a first-time user on four equal
+  // buttons (Critique 2026-10-16, Jordan).
+  assert.match(fallbackBranch, /\n\s*activeView = planningNeedsShiftTypes\(\) \? 'shifts' : 'overview';\n/);
   assert.match(fallbackBranch, /initialViewDecided = true;/);
 
-  // The comparison view is the first tab; the tab addresses stay.
-  const shellFn = schedulePage.slice(schedulePage.indexOf('function renderShell()'), schedulePage.indexOf('scheduleTablist = wireTablist('));
+  // The comparison view is the first tab; the tab addresses stay. The tabs
+  // live in scheduleHeadHtml() since the load error builds the same head
+  // (re-critique 2026-10-17), so the slice starts there.
+  const shellFn = schedulePage.slice(schedulePage.indexOf('function scheduleHeadHtml('), schedulePage.indexOf('scheduleTablist = wireTablist('));
   const order = [...shellFn.matchAll(/^\s*\['(\w+)', t\('schedule\.\w+'\)\],$/gm)].map((m) => m[1]);
   assert.deepEqual(order, ['overview', 'shifts', 'patterns', 'statistics']);
   const tabsJs = readFileSync(new URL('../public/utils/schedule-tabs.js', import.meta.url), 'utf8');
@@ -2239,7 +2244,8 @@ test('R17/E1: without anything to compare the start tab leads to the first actio
   try {
     Object.assign(st, { types: [], patterns: [], overrides: [], extras: [] });
     const empty = __test.renderOverview();
-    assert.match(empty, /data-action="open-create"[^>]*data-view="shifts"|data-view="shifts"[^>]*data-action="open-create"/, 'empty household: the button adds a shift type');
+    assert.match(empty, /data-action="go-to-shift-types"/, 'empty household: ONE way, to the tab where the FAB adds a shift type');
+    assert.equal((empty.match(/empty-state__cta/g) || []).length, 1, 'one action instead of four equal pills (D5)');
     assert.doesNotMatch(empty, /schedule-overview__toolbar|data-action="overview-week"/, 'no person picker and no week stepper above nothing');
 
     st.types = [{ id: 1, name: 'Frueh', color: '#0891b2', start_time: '06:00', end_time: '14:00', fields: [] }];
@@ -2338,7 +2344,9 @@ test('switching tabs navigates through the router (URL + history entry), and the
 // (#budget-body) carries role="tabpanel" - .schedule-body did not.
 test('.schedule-body carries the same tabpanel ARIA wiring as budget.js\'s #budget-body', () => {
   const schedulePage = readFileSync(new URL('../public/pages/schedule.js', import.meta.url), 'utf8');
-  const shellFn = schedulePage.slice(schedulePage.indexOf('function renderShell()'), schedulePage.indexOf('scheduleTablist = wireTablist'));
+  // scheduleHeadHtml() (tabs) + renderShell() (panel): the head is shared
+  // with the load error since the re-critique 2026-10-17.
+  const shellFn = schedulePage.slice(schedulePage.indexOf('function scheduleHeadHtml('), schedulePage.indexOf('scheduleTablist = wireTablist'));
   assert.match(shellFn, /<div class="schedule-body" id="schedule-body" role="tabpanel" tabindex="0"><\/div>/);
   assert.match(shellFn, /id="schedule-tab-\$\{id\}"[\s\S]{0,80}aria-controls="schedule-body"/, 'each tab button must point at the panel it controls, like budget.js\'s tab buttons do at #budget-body');
 });
@@ -2409,7 +2417,8 @@ test('a read-only Schedule member can still save their own reminder offset and w
   assert.ok(!settingsPage.includes('readOnly') && !settingsPage.includes('isNavModuleReadOnly'), 'the settings sheet must not call the module read-only check');
   assert.ok(!fnBody.includes('const locked'), 'the old client-side lock variable must be fully removed, not just unused');
   // R11 S3: der Schalter (`control: 'switch'`) ist Kanon und kein Sperr-Flag.
-  assert.match(fnBody, /toggleRowHtml\(\{ label: t\('schedule\.reminderToggle'\), checked: active,(?: control: 'switch',)? attrs: \{ id: 'schedule-reminder-toggle' \} \}\)/, 'the toggle must no longer pass a disabled flag');
+  // R19: the switch is a row of the settings group (settingSwitchRowHtml).
+  assert.match(fnBody, /settingSwitchRowHtml\(\{ label: t\('schedule\.reminderToggle'\), checked: active, attrs: \{ id: 'schedule-reminder-toggle' \} \}\)/, 'the toggle must no longer pass a disabled flag');
 
   // Server side: the blanket module read-only/denied gate must lower the
   // REQUIRED ACCESS LEVEL to 'read' for exactly this path (review of #1099:
@@ -2483,7 +2492,8 @@ test('an "overtime tracking" toggle exists separate from the weekly-hours number
 
   // Seit R14 (A2 P2-3) im Modulblatt: settings/pages/personal-schedule.js.
   const settingsFn = readFileSync(new URL('../public/settings/pages/personal-schedule.js', import.meta.url), 'utf8');
-  assert.match(settingsFn, /toggleRowHtml\(\{ label: t\('schedule\.overtimeTrackingToggle'\), checked: overtimeEnabled, control: 'switch', attrs: \{ id: 'schedule-overtime-toggle' \} \}\)/);
+  // R19: a switch row of the settings group, its hint underneath.
+  assert.match(settingsFn, /settingSwitchRowHtml\(\{\s*label: t\('schedule\.overtimeTrackingToggle'\), checked: overtimeEnabled,[\s\S]*?attrs: \{ id: 'schedule-overtime-toggle' \},\s*\}\)/);
   assert.match(settingsFn, /id="schedule-weekly-hours" value="\$\{esc\(String\(weeklyHours\)\)\}"\$\{overtimeEnabled \? '' : ' disabled'\}/, 'the weekly-hours input must disable itself when overtime tracking is off, not just visually decorate around it');
 
   const statsFn = schedulePage.slice(schedulePage.indexOf('function renderStatistics()'), schedulePage.indexOf('function renderStatistics()') + 800);
@@ -2642,6 +2652,8 @@ test('statistics range: a narrow field shows a select with the same choices inst
 // Einstellungen waren einer zu viel, und der eine war versteckt.
 test('Auswertung oeffnet mit den Zahlen, und "Meine Einstellungen" stehen im Modulblatt statt im Tab', async () => {
   const { __test } = await import('../public/pages/schedule.js');
+  // Seit R19 zeigt ein leerer Zeitraum EINEN Leerzustand - die Zahlen brauchen einen Eintrag.
+  __test.setStatisticsEntries([{ date: '2026-10-01', shift_type: { id: 1, name: 'Frueh', short_code: 'F', color: '#0E7490', start_time: '06:00', end_time: '14:00' } }]);
   const html = __test.renderStatistics();
   const at = (needle) => html.indexOf(needle);
   assert.ok(at('schedule-stat-metrics') > 0, 'Vorbedingung: die Kennzahlen stehen im Markup');
@@ -2653,7 +2665,8 @@ test('Auswertung oeffnet mit den Zahlen, und "Meine Einstellungen" stehen im Mod
   const sheet = scheduleSettingsHtml({ reminderOffsetMinutes: null, weeklyHours: null, overtimeEnabled: false });
   assert.match(sheet, /role="switch"[^>]*id="schedule-reminder-toggle"|id="schedule-reminder-toggle"[^>]*role="switch"/,
     'eine Einstellung ist ein Schalter (Komponenten-Kanon)');
-  assert.match(sheet, /<label class="form-label" for="schedule-reminder-offset">/, 'die Vorlauf-Auswahl traegt einen Namen');
+  // R19: das Etikett der Zeile (settingRowHtml), Etikett links, Auswahl rechts.
+  assert.match(sheet, /<label class="settings-setting-row__label form-row__label" for="schedule-reminder-offset">/, 'die Vorlauf-Auswahl traegt einen Namen');
   assert.match(sheet, /<select[^>]*id="schedule-reminder-offset"[^>]*disabled/, 'Erinnerung aus: der Vorlauf ist gesperrt');
   assert.match(sheet, /id="schedule-weekly-hours" value="40" disabled/, 'Ueberstunden aus: das Feld ist gesperrt, Vorgabe 40');
 });
@@ -2673,6 +2686,10 @@ test('ein Primaerknopf je Tab: jeder Schichtplan-Leerzustand bietet seine Wege i
     assert.match(html, /empty-state__cta/, `Vorbedingung: ${name} bietet einen Weg an (der Stub rendert Knoepfe)`);
     assert.doesNotMatch(html, /btn--primary/, `${name}: der Primaerknopf des Tabs ist der FAB, nicht der Leerzustand`);
   }
+  // D5 (Critique 2026-10-16): auf „Schichtarten" legt der FAB an - der
+  // Leerzustand bietet nur die Vorlagen, klein, keinen zweiten Anlege-Knopf.
+  assert.doesNotMatch(states.shiftTypes, /data-action="open-create"/, 'kein zweites „Schichtart hinzufuegen" neben dem FAB');
+  assert.match(states.shiftTypes, /btn--sm[^"]*"[^>]*data-action="quick-start-shifts"|data-action="quick-start-shifts"[^>]*btn--sm/, 'die Vorlagen stehen leiser als der FAB');
 });
 
 test('eigene Felder erscheinen erst, wenn es eine Schichtart gibt', async () => {
@@ -2865,12 +2882,35 @@ test('P12: statistics show each total once, and the hours tile is named for the 
   const { installMiniDom } = await import('./mini-dom.js');
   installMiniDom();
   const { __test } = await import('../public/pages/schedule.js');
+  __test.setStatisticsEntries([{ date: '2026-10-01', shift_type: { id: 1, name: 'Frueh', short_code: 'F', color: '#0E7490', start_time: '06:00', end_time: '14:00' } }]);
   const html = __test.renderStatistics();
   assert.match(html, /schedule-stat-metrics/, 'Vorbedingung: die Kennzahlen stehen im Markup');
   assert.doesNotMatch(html, /schedule-stat-total/, 'keine zweite Summenzeile unter den Karten');
   const labels = [...html.matchAll(/class="metric-card__label">([^<]+)</g)].map((m) => m[1]);
   assert.ok(labels.includes('schedule.totalHours'), `die Stunden-Kachel heisst "Stunden gesamt" (${labels.join(', ')})`);
   assert.ok(!labels.includes('schedule.workedHours'), 'nicht "je Schichtart" ueber einer Summe');
+});
+
+// R19 (Critique 2026-10-16, Schichtplan-Auswertung): kein Anwenden-Knopf
+// (jede Aenderung rechnet neu), eine Grundlinie fuer nebeneinanderstehende
+// Karten, keine Karte in der Karte, und ein leerer Zeitraum ist EIN Zustand.
+test('R19: die Auswertung rechnet ohne Anwenden-Knopf, leer ist ein Zustand, Karten fluchten', async () => {
+  const { installMiniDom } = await import('./mini-dom.js');
+  installMiniDom();
+  const { __test } = await import('../public/pages/schedule.js');
+  __test.setStatisticsEntries([]);
+  const leer = __test.renderStatistics();
+  assert.doesNotMatch(leer, /schedule-stat-metrics|schedule-stat-card/, 'leer: keine Null-Kacheln und keine leeren Karten');
+  assert.match(leer, /class="empty-state/, 'leer: ein Leerzustand');
+  assert.doesNotMatch(leer, /schedule\.applyStatistics|<button class="btn btn--primary">/, 'kein Anwenden-Knopf');
+  const src = readFileSync(new URL('../public/pages/schedule.js', import.meta.url), 'utf8');
+  assert.match(src, /function applyStatistics\(\) \{\s*root\?\.querySelector\('form\[data-form="statistics"\]'\)\?\.requestSubmit\?\.\(\);/);
+  assert.match(src, /renderPage\(\);\s*applyStatistics\(\);\s*\}/, 'der Zeitraum-Wechsel rechnet sofort');
+  assert.match(src, /event\.target\.closest\('form\[data-form="statistics"\]'\)\) \{[\s\S]{0,120}applyStatistics\(\);/, 'Person und Daten ebenso');
+  const css = readFileSync(new URL('../public/styles/schedule.css', import.meta.url), 'utf8');
+  assert.match(css, /\.schedule-stat-card \{\s*align-content: start;/, 'die Zeilen stehen oben, nebeneinander auf einer Linie');
+  const list = css.match(/\.schedule-stat-list \{[^}]*\}/)?.[0] ?? '';
+  assert.doesNotMatch(list, /background|padding/, 'keine zweite Flaeche in der Karte');
 });
 
 // P12 (Re-Critique 2026-09-28, A2 P2-5): der Vergleich passte am Desktop nicht
@@ -3189,4 +3229,48 @@ test('#1777: die Meldung an "Bis" faellt, wenn "Von" den Zeitraum richtigstellt'
   // er nach dem Mitziehen nicht, also zaehlt hier nur die Stille.
   c.from.pick('2026-10-01');
   assert.deepEqual(heard, ['2026-10-10'], 'ein frueheres "Von" ohne Meldung meldet an "Bis" nichts');
+});
+
+// R19 (Critique 2026-10-16): unter 429 warf load() durch render() in den
+// Fehlerbildschirm des Routers. Jetzt fangt die Seite den Ladefehler selbst und
+// zeigt den geteilten Ladefehler mit "Erneut versuchen" (mountLoadError).
+test('R19: ein Ladefehler (429) bleibt in der Seite - Ladefehler mit Wiederholen, kein Wurf', async () => {
+  const { installMiniDom } = await import('./mini-dom.js');
+  const restore = installMiniDom();
+  const prevStub = globalThis.__apiStub;
+  let calls = 0;
+  globalThis.__apiStub = {
+    get: async () => {
+      calls += 1;
+      const err = new Error('Too many requests');
+      err.status = 429;
+      throw err;
+    },
+  };
+  try {
+    const page = await import('../public/pages/schedule.js');
+    const container = document.createElement('div');
+    await assert.doesNotReject(() => page.render(container, { user: { id: 1, role: 'admin' } }), 'render wirft nicht in den Router');
+    assert.ok(calls > 0, 'geladen wurde');
+    const html = container.innerHTML ?? container.outerHTML ?? '';
+    assert.ok(container.querySelector?.('.schedule-page') || /schedule-page/.test(html), 'die Seite traegt den Fehler selbst');
+    // Re-Kritik 2026-10-17: unter 1024px SIND die Reiter der Titel. Der Fehler
+    // ersetzte die ganze Seite, auf dem Telefon stand nur "Etwas ist
+    // schiefgelaufen". Kopf und Reiter bleiben, der Fehler steht im Inhalt.
+    // Die Mini-DOM kennt keine Selektoren (test/mini-dom.js) - gemessen wird
+    // das ausgegebene Markup, der Mount-Ort im Quelltext.
+    const out = container.outerHTML;
+    assert.match(out, /class="page-toolbar page-toolbar--tabs-title schedule-toolbar"[\s\S]*class="schedule-body"/,
+      'der Kopf mit Titel und Reitern steht ueber dem Inhalt');
+    assert.equal((out.match(/role="tab"/g) ?? []).length, 4, 'alle vier Reiter');
+    const src = readFileSync(new URL('../public/pages/schedule.js', import.meta.url), 'utf8');
+    const catchBlock = src.slice(src.indexOf('loadFailed = true;'), src.indexOf('return;', src.indexOf('loadFailed = true;')));
+    assert.match(catchBlock, /mountLoadError\(container\.querySelector\('\.schedule-body'\)/,
+      'der Ladefehler steht im Inhalt, nicht anstelle der Seite');
+    assert.equal(await page.update({ path: '/schedule/shifts' }), false,
+      'nach einem Ladefehler rendert ein Reiterwechsel die Seite neu (laedt erneut), statt leere Daten zu zeigen');
+  } finally {
+    if (prevStub === undefined) delete globalThis.__apiStub; else globalThis.__apiStub = prevStub;
+    restore();
+  }
 });

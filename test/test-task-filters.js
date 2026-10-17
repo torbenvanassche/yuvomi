@@ -333,15 +333,21 @@ test('das Blatt: Filter zuerst, Kategorie und Tag eingeklappt, „Ansicht" abges
     'tasks.filterGroupPerson', 'tasks.categoryLabel', 'tasks.filterGroupTag', 'tasks.viewToggleLabel',
   ]);
   const show = htmlOf('tasks.filterGroupShow');
-  assert.match(show, /type="checkbox"[^>]*data-filter-mine/, '„Mir zugewiesen" ist ein Schalter im Blatt');
+  assert.match(show, /role="switch"[^>]*data-filter-due-today/, '„Bis heute faellig" ist ein Schalter (D2), kein Haken');
   assert.doesNotMatch(show, /data-filter-future/, '„Geplante anzeigen" ist eine Ansichtsoption, kein Filter der ersten Gruppe');
+  // D2 (Critique 2026-10-16): „Mir zugewiesen" steht wie im Kalender als
+  // erster Schalter der Personengruppe, darueber nichts, darunter die Chips.
+  const person = htmlOf('tasks.filterGroupPerson');
+  assert.match(person, /role="switch"[^>]*data-filter-mine/, '„Mir zugewiesen" ist ein Schalter in der Personengruppe');
+  assert.ok(person.indexOf('data-filter-mine') < person.indexOf('data-filter="assigned_to"'), 'der Schalter steht vor den Personen-Chips');
+  assert.doesNotMatch(show, /data-filter-mine/, 'nicht mehr unter „Anzeigen"');
 
   // „Ansicht": Gruppierung und „Geplante anzeigen", abgesetzt.
   const view = groupOf('tasks.viewToggleLabel');
   assert.equal(view.variant, 'view');
   assert.match(view.html, /role="radiogroup"/, 'die Gruppierung ist EINE Wahl aus zwei, kein Paar von Schaltern');
   assert.match(view.html, /data-tab-id="category"[^>]*aria-checked="true"|aria-checked="true"[^>]*data-tab-id="category"/);
-  assert.match(view.html, /type="checkbox"[^>]*data-filter-future/);
+  assert.match(view.html, /role="switch"[^>]*data-filter-future/);
   assert.match(htmlOf('tasks.filterGroupStatus'), /data-filter="status" data-value="open" aria-pressed="true"/,
     'der gewaehlte Status traegt seinen Zustand als aria-pressed');
 
@@ -505,7 +511,11 @@ test('„Filter zuruecksetzen" stellt den Standard her, keinen dritten Zustand (
 test('das Werkzeugmenue: Verwalten nur mit Schreibrecht, Auswahl nur in der Liste', () => {
   baseState();
   const byAction = () => Object.fromEntries(tasks.toolsMenuItems().filter((i) => i.action).map((i) => [i.action, i]));
-  assert.deepEqual(Object.keys(byAction()), ['bulk-select', 'bulk-archive', 'bulk-tag-add', 'bulk-tag-remove', 'toggle-history', 'manage-categories', 'manage-tags'],
+  // R19: der Verlauf ist keine Schalter-Zeile mehr, sondern die dritte Wahl
+  // der Ansichtsgruppe (view-history, neben Liste und Kanban).
+  const views = () => Object.fromEntries(tasks.toolsMenuItems().find((i) => i.group)?.items.map((i) => [i.action, i]) ?? []);
+  assert.deepEqual(Object.keys(views()), ['view-list', 'view-kanban', 'view-history']);
+  assert.deepEqual(Object.keys(byAction()), ['bulk-select', 'bulk-archive', 'bulk-tag-add', 'bulk-tag-remove', 'manage-categories', 'manage-tags'],
     'alles, was vorher als loses Icon im Kopf stand, steht beschriftet im Menue');
   assert.equal(byAction()['bulk-select'].disabled, false);
   // Ablegen und die Tag-Sammelaktionen passen nicht in die einzeilige Pille
@@ -513,17 +523,19 @@ test('das Werkzeugmenue: Verwalten nur mit Schreibrecht, Auswahl nur in der List
   assert.equal(byAction()['bulk-archive'].disabled, true);
   assert.equal(byAction()['bulk-tag-add'].disabled, true);
   assert.equal(byAction()['bulk-tag-remove'].disabled, true);
-  assert.equal(byAction()['toggle-history'].checked, false);
+  assert.equal(views()['view-history'].checked, false);
 
   tasks.state.viewMode = 'kanban';
   assert.equal(byAction()['bulk-select'].disabled, true, 'im Brett gibt es keine Mehrfachauswahl');
   tasks.state.viewMode = 'history';
-  assert.equal(byAction()['toggle-history'].checked, true, 'der Verlauf ist ein Schalter mit Haken');
+  assert.equal(views()['view-history'].checked, true, 'der Verlauf ist die gewaehlte Ansicht');
+  assert.equal(views()['view-list'].checked, false);
 
   setPermissions({ admin: false, modules: { tasks: 'read' }, widgets: {}, capabilities: {} });
   try {
-    assert.deepEqual(Object.keys(byAction()), ['toggle-history'],
+    assert.deepEqual(Object.keys(byAction()), [],
       'bei Nur-lesen bleibt nur, was zeigt (#467) - Auswahl fuehrt nur zu schreibenden Sammelaktionen');
+    assert.deepEqual(Object.keys(views()), ['view-list', 'view-kanban', 'view-history'], 'die Ansichten bleiben');
   } finally {
     clearPermissions();
   }
@@ -1053,7 +1065,7 @@ test('am Display: kein Schalter „Mir zugewiesen", und ein gespeicherter Wert w
   // Liste bei fuenfzehn offenen Aufgaben.
   const KEY = 'yuvomi:taskAssignedToMe';
   const vorher = tasks.state.user;
-  const showHtml = () => tasks.filterSheetGroups().find((g) => g.heading === 'tasks.filterGroupShow')?.html ?? '';
+  const showHtml = () => tasks.filterSheetGroups().find((g) => g.heading === 'tasks.filterGroupPerson')?.html ?? '';
   try {
     // DER MENSCH ZUERST - sonst waeren beide Abwesenheiten unten auch dann
     // gruen, wenn der Schalter oder das Wiederherstellen ganz verschwunden ist.

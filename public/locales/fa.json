@@ -24,7 +24,6 @@
         "filtersOpen": "باز کردن فیلترها",
         "filtersActive": "{{count}} فیلتر فعال",
         "filtersActive_one": "{{count}} فیلتر فعال",
-        "filtersReset": "برداشتن همه فیلترها",
         "filtersResetDefault": "بازنشانی فیلترها",
         "close": "بستن",
         "add": "افزودن",
@@ -67,6 +66,7 @@
         "errorServer": "خطای سرور. لطفاً بعداً دوباره تلاش کنید.",
         "errorRestoreInProgress": "در حال بازیابی یک پشتیبان هستیم. تغییر شما ذخیره نشد، یک دقیقه دیگر دوباره تلاش کنید.",
         "errorTimeout": "اتصال بیش از حد طول کشید. لطفاً دوباره تلاش کنید.",
+        "errorRateLimited": "در حال حاضر درخواست‌های زیادی ارسال شده است. کمی صبر کنید و دوباره تلاش کنید.",
         "requiredFields": "لطفاً همه فیلدهای الزامی را پر کنید.",
         "invalidInput": "ورودی نامعتبر.",
         "togglePasswordVisibility": "نمایش/پنهان‌سازی رمز عبور",
@@ -83,7 +83,14 @@
             "privateAssignedHint": "این مورد را فقط کسی می‌بیند که آن را ایجاد کرده است - دیگر افراد واگذارشده آن را نمی‌بینند. اگر باید آن را ببینند، «فقط واگذارشده‌ها» را انتخاب کن."
         },
         "toShoppingListNamed": "افزودن {{title}} به فهرست خرید",
-        "emailInUse": "این نشانی ایمیل از قبل متعلق به حساب دیگری است."
+        "emailInUse": "این نشانی ایمیل از قبل متعلق به حساب دیگری است.",
+        "sessionUnreachableTitle": "اتصال قطع شد",
+        "sessionRetryHint": "همچنان وارد حساب هستید. تلاش دوباره تا {{seconds}} ثانیه دیگر.",
+        "sessionRetrying": "در حال تلاش دوباره…",
+        "searchNoResultsTitle": "نتیجه‌ای یافت نشد",
+        "searchNoResultsDescription": "چیزی با جستجوی شما مطابقت ندارد.",
+        "searchNoResultsFilteredDescription": "چیزی با جستجو و فیلترهای شما مطابقت ندارد.",
+        "searchReset": "بازنشانی جستجو"
     },
     "kitchen": {
         "noShoppingLists": "هنوز فهرست خریدی وجود ندارد.",
@@ -152,7 +159,8 @@
         "resultCountOne": "{{count}} نتیجه",
         "resultCountMany": "{{count}} نتیجه",
         "goTo": "رفتن به",
-        "newSection": "ساختن مورد تازه"
+        "newSection": "ساختن مورد تازه",
+        "recentLabel": "اخیراً باز شده"
     },
     "dashboard": {
         "title": "نمای کلی",
@@ -574,11 +582,9 @@
         "documentsCount": "{{count}} سند",
         "documentsCount_one": "{{count}} سند",
         "assignedToMe": "واگذارشده به من",
-        "noResultsTitle": "بدون نتیجه",
         "searchPlaceholder": "جستجوی وظایف…",
         "viewToggleLabel": "نما",
         "groupToggleLabel": "گروه‌بندی بر اساس",
-        "noResultsDescription": "هیچ وظیفه‌ای شامل «{{query}}» نیست.",
         "detailStart": "شروع",
         "detailFinish": "تکمیل",
         "detailReopen": "بازگشایی",
@@ -1131,7 +1137,6 @@
         "filtersPeople": "افراد",
         "filtersActive": "{{count}} فیلتر فعال",
         "filtersActive_one": "{{count}} فیلتر فعال",
-        "filtersReset": "برداشتن همه فیلترها",
         "filtersDisplay": "نمایش",
         "agendaDayEmpty": "چیزی برنامه‌ریزی نشده",
         "openInMap": "باز کردن در نقشه",
@@ -1167,7 +1172,10 @@
         "localCalendarExportCopied": "پیوند خروجی کپی شد",
         "localCalendarDeleteConfirm": "«{{name}}» حذف شود؟",
         "localCalendarDeleteDetail": "رویدادهای این تقویم به تقویم پیش‌فرض منتقل می‌شوند و پیوند خروجی آن دیگر کار نخواهد کرد.",
-        "localCalendarDeleteDetailIcloud": "رویدادهای این تقویم به تقویم پیش‌فرض منتقل می‌شوند و سپس از طریق Apple Calendar در iCloud بارگذاری می‌شوند. پیوند خروجی آن دیگر کار نخواهد کرد."
+        "localCalendarDeleteDetailIcloud": "رویدادهای این تقویم به تقویم پیش‌فرض منتقل می‌شوند و سپس از طریق Apple Calendar در iCloud بارگذاری می‌شوند. پیوند خروجی آن دیگر کار نخواهد کرد.",
+        "sidebarLabel": "نوار کناری تقویم",
+        "upNextTitle": "بعدی",
+        "upNextEmpty": "در سه هفته آینده چیزی نیست."
     },
     "noteCategories": {
         "categories": "دسته‌بندی‌ها",
@@ -1175,7 +1183,6 @@
         "empty": "هنوز دسته‌بندی‌ای وجود ندارد.",
         "personal": "شخصی",
         "household": "خانه",
-        "noResults": "هیچ یادداشتی در همهٔ دسته‌بندی‌های انتخاب‌شده نیست.",
         "deleteDetail": "این دسته‌بندی از همهٔ یادداشت‌ها و فیلترهای داشبورد حذف می‌شود. خود یادداشت‌ها بدون تغییر می‌مانند.",
         "widgetHint": "با انتخاب چند دسته‌بندی فقط یادداشت‌هایی نمایش داده می‌شوند که در همهٔ آن‌ها باشند. بدون انتخاب، همهٔ یادداشت‌ها نمایش داده می‌شوند.",
         "permissionLabel": "مدیریت دسته‌بندی‌های یادداشت خانوادگی",
@@ -1203,8 +1210,6 @@
         "emptyTitle": "هنوز یادداشتی نیست",
         "emptyDescription": "با دکمه + یادداشت جدید بسازید.",
         "emptyAction": "ایجاد یادداشت",
-        "noResultsTitle": "بدون نتیجه",
-        "noResultsDescription": "هیچ یادداشتی حاوی «{{query}}» نیست.",
         "titleLabel": "عنوان (اختیاری)",
         "titlePlaceholder": "بدون عنوان",
         "contentLabel": "محتوا",
@@ -1235,7 +1240,6 @@
         "groupPinned": "سنجاق‌شده",
         "groupOthers": "یادداشت‌های دیگر",
         "filterCreatorLabel": "ایجادشده توسط",
-        "noResultsCreatorDescription": "هیچ یادداشتی از {{name}} نیست.",
         "checklistToggle": "علامت‌زدن مورد",
         "checkConflict": "یادداشت در این میان تغییر کرده است. دوباره بارگذاری می‌شود.",
         "pinnedState": "سنجاق‌شده",
@@ -1351,8 +1355,6 @@
         "categoryOther": "متفرقه",
         "moreActions": "اقدامات بیشتر",
         "noResultsTitle": "بدون نتیجه",
-        "noResultsDescription": "هیچ مخاطبی با جستجو یا فیلتر مطابقت ندارد.",
-        "resetSearch": "بازنشانی جستجو و فیلتر",
         "countOne": "۱ مخاطب",
         "countMany": "{{count}} مخاطب",
         "detailPaneLabel": "جزئیات مخاطب",
@@ -1684,7 +1686,6 @@
         "planMonthlyAmount": "مبلغ ماهانه",
         "planSavedToast": "بودجه ذخیره شد",
         "planRemovedToast": "بودجه حذف شد",
-        "planTarget": "هدف: {{amount}}",
         "planEditAction": "ویرایش",
         "planDeleteConfirm": "بودجهٔ «{{category}}» حذف شود؟",
         "planSavingsDeleteConfirm": "هدف پس‌انداز حذف شود؟",
@@ -1804,15 +1805,22 @@
         "loanDueDayLabel": "روز سررسید",
         "loanDueDayHint": "اختیاری: روزی از ماه، از 1 تا 31. اقساطی که پرداخت‌شده علامت می‌خورند به جای امروز با این روز ثبت می‌شوند. در ماه‌های کوتاه‌تر آخرین روز ماه در نظر گرفته می‌شود.",
         "loanDueDayInvalid": "روزی از 1 تا 31 وارد کنید یا خالی بگذارید",
-        "loanPaymentAddedOnToast": "پرداخت با تاریخ {{date}} ثبت شد"
+        "loanPaymentAddedOnToast": "پرداخت با تاریخ {{date}} ثبت شد",
+        "planTargetOf": "از {{amount}}",
+        "planTargetSr": "هدف {{amount}}، {{percent}} مصرف شده",
+        "ledgerSortLabel": "مرتب‌سازی",
+        "ledgerSortDate": "بر اساس تاریخ",
+        "ledgerSortAmount": "بر اساس مبلغ",
+        "ledgerSortActive": "مرتب‌سازی: {{sort}}",
+        "ledgerAccountsAll": "همه حساب‌ها"
     },
     "settings": {
-        "healthCycleEnableLabel": "نمایش برگهٔ چرخه",
-        "healthCycleHint": "برگهٔ چرخه را در ماژول سلامت برای همهٔ اعضای خانواده نمایش می‌دهد یا پنهان می‌کند.",
+        "healthCycleEnableLabel": "ارائهٔ چرخه در خانوار",
+        "healthCycleHint": "بخش چرخه را در ماژول سلامت برای همهٔ اعضای خانواده نمایش می‌دهد یا پنهان می‌کند.",
         "healthCycleSaved": "تنظیم چرخه ذخیره شد.",
-        "healthCyclePersonalLabel": "نمایش زبانهٔ چرخه",
-        "healthCyclePersonalHint": "فقط بر نمای خودتان اثر دارد. با خاموش کردن آن، زبانه برای دیگر اعضای خانه همچنان دیده می‌شود.",
-        "healthCyclePersonalHouseholdOff": "چرخه در حال حاضر برای کل خانه خاموش است، بنابراین زبانه برای هیچ‌کس نمایش داده نمی‌شود.",
+        "healthCyclePersonalLabel": "نمایش چرخه",
+        "healthCyclePersonalHint": "فقط برای نمای خودتان اعمال می‌شود. اگر آن را خاموش کنید، چرخه برای بقیهٔ اعضای خانوار نمایان می‌ماند.",
+        "healthCyclePersonalHouseholdOff": "چرخه در حال حاضر برای کل خانوار خاموش است، بنابراین برای هیچ‌کس نمایش داده نمی‌شود.",
         "healthCyclePersonalSaved": "نمای چرخه ذخیره شد.",
         "pageRewardsModule": "پاداش‌ها",
         "pageHealthModule": "سلامت",
@@ -2097,7 +2105,8 @@
         "syncErrorGoogle": "اتصال به Google ناموفق بود. لطفاً دوباره تلاش کنید.",
         "syncErrorOutlook": "اتصال به Outlook ناموفق بود. لطفاً دوباره تلاش کنید.",
         "syncErrorApple": "اتصال به Apple ناموفق بود. لطفاً دوباره تلاش کنید.",
-        "addMember": "+ افزودن عضو",
+        "addMember": "افزودن عضو",
+        "memberYou": "من",
         "newMemberTitle": "عضو خانواده جدید",
         "usernameLabel": "نام کاربری",
         "displayNameLabel": "نام نمایشی",
@@ -2222,7 +2231,6 @@
         "apiTokenNeverExpires": "بدون تاریخ انقضا",
         "apiTokenLastUsed": "آخرین استفاده",
         "apiTokenNeverUsed": "هرگز استفاده نشده",
-        "apiTokenScopes": "دسترسی‌ها",
         "apiTokenScopeHint": "بدون انتخاب، توکن مانند حسابی که آن را ساخته دسترسی کامل دارد. برای محدود کردن آن - مثلاً برای یک کلاینت هوش مصنوعی/MCP - ماژول‌ها را به حوزه‌های مشخص و دسترسی خواندن یا نوشتن انتخاب کنید.",
         "apiTokenScopeFull": "دسترسی کامل (بدون محدودیت)",
         "apiTokenScopeLimit": "محدود کردن به ماژول‌های انتخاب‌شده",
@@ -2377,6 +2385,8 @@
         "backupWebdavSaved": "پیکربندی WebDAV ذخیره شد.",
         "backupWebdavEnvHint": "این پیکربندی از طریق متغیرهای محیطی کنترل می‌شود و در اینجا قابل ویرایش نیست.",
         "caldavTitle": "تقویم CalDAV",
+        "birthdayFeedTitle": "خروجی تقویم تولدها",
+        "birthdayFeedDescription": "همه تولدها و روزهای نام ذخیره‌شده به صورت رویدادهای سالانه تمام‌روز، حتی بدون یادآوری. قابل اشتراک در هر برنامه تقویم با پشتیبانی ICS.",
         "feedExportTitle": "برون‌ریزی خوراک تقویم",
         "feedExportDescription": "تقویم Yuvomi خود را به‌صورت فقط‌خواندنی در Apple Calendar، Google Calendar یا Thunderbird مشترک شوید.",
         "feedExportInactive": "خوراک برون‌ریزی غیرفعال است.",
@@ -2702,7 +2712,8 @@
         "pageAppearance": "ظاهر",
         "pageAppearanceDescription": "انتخاب پوسته، زبان، منطقه، واحد پول و قالب تاریخ و زمان.",
         "pageDevice": "این دستگاه",
-        "pageDeviceDescription": "نصب Yuvomi به‌عنوان برنامه روی این دستگاه.",
+        "pageDeviceDescription": "نصب Yuvomi، حالت دیواری و محافظ صفحه - هر آنچه فقط برای این دستگاه است.",
+        "sectionDeviceDisplay": "حالت دیواری و محافظ صفحه",
         "pageCalendarDefaults": "پیش‌فرض‌های رویداد",
         "pageCalendarDefaultsDescription": "یادآوری‌ها و واگذاری پیش‌فرض رویدادهای جدید خودتان را تعیین کنید.",
         "pageNavigation": "ناوبری",
@@ -2990,7 +3001,7 @@
         "invites": {
             "title": "دعوت‌ها",
             "intro": "اعضای جدید را با پیوند دعوت کنید. گذرواژه را خودشان تعیین می‌کنند.",
-            "add": "+ ایجاد دعوت",
+            "add": "ایجاد دعوت",
             "submit": "ایجاد دعوت",
             "usernameHint": "اختیاری. اگر خالی بماند، فرد دعوت‌شده نام خود را انتخاب می‌کند.",
             "sendEmail": "ارسال دعوت با ایمیل",
@@ -3106,7 +3117,7 @@
         "sheetWasteDescription": "جمع‌آوری‌های پیش رو را در برنامهٔ تقویم خودت دنبال کن.",
         "sheetHousekeepingDescription": "مدیریت کارهای پرداخت برای خدمتکار خانه.",
         "sheetRewardsDescription": "تعیین تأییدها و امتیاز پیش‌فرض برای کارهای جدید.",
-        "sheetHealthDescription": "نماهای شما، زبانهٔ چرخه و انواع پیشگیری.",
+        "sheetHealthDescription": "نماهای خودتان، چرخه و انواع پیشگیری.",
         "displaysTitle": "تبلت‌های دیواری",
         "displaysHint": "تبلت دیواری حساب مخصوص خودش را می‌گیرد که فقط همین دستگاه می‌تواند از آن استفاده کند. عضو خانواده نیست، وارد حساب نمی‌شود و فقط چیزی را می‌بیند که برای خانوار قابل مشاهده است. نمای کلی آن از پیش‌فرض خانواده پیروی می‌کند، یا اگر پیش‌فرضی تنظیم نشده باشد از چیدمان استاندارد. حالت دیواری از این پیش‌فرض پیروی نمی‌کند: همیشه ساعت، برنامهٔ روز، اینکه امروز نوبت چه کسی است و هوا را نشان می‌دهد.",
         "displaysAreasHint": "این موارد را نشان می‌دهد: {{areas}}.",
@@ -3197,7 +3208,10 @@
         "displayRemoveDevice": "حذف",
         "displayRemoveDeviceConfirm": "مورد مربوط به این دستگاه حذف شود؟",
         "displayRemoveDeviceDetail": "این مورد برای همیشه از فهرست حذف می‌شود. این کار برگشت‌پذیر نیست.",
-        "displayRemoveDeviceActive": "این دستگاه هنوز جفت است. ابتدا آن را باطل کنید."
+        "displayRemoveDeviceActive": "این دستگاه هنوز جفت است. ابتدا آن را باطل کنید.",
+        "feedExportIncludeBirthdays": "شامل کردن تولدها",
+        "feedExportIncludeBirthdaysHint": "هنگام اشتراک در خوراک جداگانه تولدها، این گزینه را خاموش کنید تا تولدها و روزهای نام تکرار نشوند.",
+        "birthdayFeedHint": "هر کسی با این پیوند می‌تواند همه تولدها و روزهای نام ذخیره‌شده در خانواده را ببیند، حتی بدون یادآوری. فقط در دستگاه‌های خودتان استفاده کنید."
     },
     "login": {
         "tagline": "دوباره به برنامه‌ریز خانوادگی‌تان خوش آمدید.",
@@ -3269,7 +3283,8 @@
         "unsavedChanges": "تغییرات نادیده گرفته شوند؟",
         "unsavedChangesDetail": "ورودی‌های تو در این فرم از بین می‌روند.",
         "discardChanges": "نادیده گرفتن",
-        "moreSettings": "تنظیمات بیشتر"
+        "moreSettings": "تنظیمات بیشتر",
+        "moreDetails": "جزئیات بیشتر"
     },
     "rrule": {
         "freqNone": "بدون تکرار",
@@ -3405,9 +3420,6 @@
         "createdToast": "تولد ذخیره شد.",
         "updatedToast": "تولد به‌روزرسانی شد.",
         "deletedToast": "تولد حذف شد.",
-        "ageNoteToday": "امروز {{age}} ساله می‌شود.",
-        "ageNoteTomorrow": "فردا {{age}} ساله می‌شود.",
-        "ageNoteDays": "در {{days}} روز {{age}} ساله می‌شود.",
         "importButton": "وارد کردن از مخاطبین",
         "importTitle": "وارد کردن تولدها از مخاطبین",
         "importIntro": "مخاطبینی را که تاریخ تولد ذخیره‌شده دارند برای افزودن انتخاب کنید.",
@@ -3450,8 +3462,6 @@
         "copySuffix": "کپی",
         "viewRecipe": "مشاهده دستور پخت",
         "searchPlaceholder": "جستجوی دستورها…",
-        "noResultsTitle": "چیزی یافت نشد",
-        "searchNoResults": "دستوری یافت نشد.",
         "railHint": "روی یک دستور پخت بزنید یا آن را روی یک روز بکشید تا برنامه‌ریزی شود.",
         "loadError": "دستورهای غذا بارگذاری نشدند.",
         "detailPaneLabel": "جزئیات دستور غذا",
@@ -3497,7 +3507,7 @@
         "done": "شروع",
         "skip": "رد کردن",
         "step2BodyDesktop": "نوار کناری سمت چپ تو را به همه بخش‌ها می‌برد - از تقویم و وظایف تا آشپزخانه، اسناد و تنظیمات.",
-        "step3BodyDesktop": "با دکمه + در گوشه پایین در همه‌جا مورد تازه می‌سازی.",
+        "step3BodyDesktop": "با دکمه + در بالای سمت راست سربرگ هر بخش مورد تازه می‌سازی.",
         "stepProgress": "مرحله {{current}} از {{total}}"
     },
     "offline": {
@@ -3695,8 +3705,6 @@
         "pushToDms": "بارگذاری در DMS",
         "pushToDmsQueued": "سند به DMS افزوده شد و در آنجا در حال پردازش است.",
         "dmsAccountLabel": "حساب DMS",
-        "emptySearchTitle": "نتیجه‌ای نیست",
-        "emptySearchDescription": "هیچ سندی در این نما با «{{query}}» مطابقت ندارد.",
         "emptyFilterTitle": "سندی در این انتخاب نیست",
         "emptyFilterDescription": "سند وجود دارد، اما هیچ‌کدام با این دسته و پوشه مطابقت ندارد.",
         "emptyArchivedTitle": "چیزی بایگانی نشده",
@@ -4028,7 +4036,6 @@
         "groups": "گروه‌ها",
         "searchGroups": "جستجوی گروه‌ها",
         "members": "اعضا",
-        "activeGroups": "گروه‌های فعال",
         "allGroups": "همه گروه‌ها",
         "youAreOwed": "طلب شما",
         "youOwe": "بدهی شما",
@@ -4194,7 +4201,9 @@
         "reversePaymentConfirm": "این پرداخت برگشت بخورد؟",
         "reversePaymentConfirmDetail": "{{payer}} به {{payee}}، {{amount}}. یک ثبت معکوس پرداخت را لغو می‌کند و مانده‌ها به حالت قبل برمی‌گردند. پرداخت با علامت برگشت‌خورده در فعالیت می‌ماند.",
         "loadMoreActivity": "بارگذاری بیشتر",
-        "expenseDeleted": "حذف‌شده"
+        "expenseDeleted": "حذف‌شده",
+        "youAreOwedInGroup": "طلب تو در {{group}}",
+        "youOweInGroup": "بدهی تو در {{group}}"
     },
     "wmo": {
         "0": "آسمان صاف",
@@ -4743,7 +4752,9 @@
                 "okay": "متوسط",
                 "good": "خوب",
                 "veryGood": "خیلی خوب"
-            }
+            },
+            "unusualHigh": "به‌طور غیرعادی بالاست. لطفاً مقدار را بررسی کنید؛ باز هم می‌توانید ذخیره‌اش کنید.",
+            "unusualLow": "به‌طور غیرعادی پایین است. لطفاً مقدار را بررسی کنید؛ باز هم می‌توانید ذخیره‌اش کنید."
         },
         "meds": {
             "doseQty": "{{count}}×",
@@ -5051,6 +5062,12 @@
             },
             "col": {
                 "day": "روز"
+            },
+            "intensity": {
+                "none": "مشخص نشده",
+                "low": "کم",
+                "moderate": "متوسط",
+                "high": "زیاد"
             }
         },
         "export": {
@@ -5486,7 +5503,9 @@
         "errorCycleDayGone": "رکورد این روز دیگر وجود ندارد.",
         "errorCycleImportTooLarge": "متن بزرگ‌تر از {{limit_kb}} کیلوبایت است. دوره‌ها را در بخش‌های کوچک‌تر درون‌ریزی کنید.",
         "errorCycleImportNoRows": "فایل فقط سطر عنوان دارد و هیچ دوره‌ای ندارد.",
-        "errorCycleImportTooManyRows": "هر درون‌ریزی حداکثر {{limit}} دوره می‌تواند داشته باشد. فایل را تقسیم کنید."
+        "errorCycleImportTooManyRows": "هر درون‌ریزی حداکثر {{limit}} دوره می‌تواند داشته باشد. فایل را تقسیم کنید.",
+        "errorVitalImpossible": "این مقدار ممکن نیست. لطفاً ورودی را بررسی کنید.",
+        "errorVitalBpOrder": "مقدار سیستولیک باید بیشتر از دیاستولیک باشد."
     },
     "waste": {
         "title": "جمع‌آوری زباله",
@@ -5717,7 +5736,7 @@
     },
     "rewards": {
         "title": "پاداش‌ها",
-        "tabOverview": "نمای کلی",
+        "tabPoints": "امتیازها",
         "tabCatalog": "جوایز",
         "tabLedger": "تاریخچه",
         "pointsUnit": "امتیاز",
@@ -5738,6 +5757,7 @@
         "redeemError": "دریافت ناموفق بود.",
         "pendingApprovals": "درخواست‌های در انتظار",
         "yourPending": "درخواست‌های در انتظار شما",
+        "yourPoints": "امتیازهای تو",
         "approve": "تأیید",
         "reject": "رد",
         "confirmReject": "این درخواست دریافت رد شود؟ امتیازها بازگردانده می‌شوند.",
@@ -5868,9 +5888,6 @@
         "searchPlaceholder": "جستجو در انبار",
         "searchNoResults": "کالایی یافت نشد.",
         "filterNoResults": "در این انتخاب کالایی وجود ندارد.",
-        "noResultsTitle": "چیزی یافت نشد",
-        "noResultsDescription": "هیچ کالایی با انتخاب شما مطابقت ندارد.",
-        "resetFilters": "بازنشانی جستجو و فیلترها",
         "resultCount": "{{count}} کالا یافت شد.",
         "resultCount_one": "{{count}} کالا یافت شد.",
         "emptyTitle": "انبار هنوز خالی است",
@@ -5992,9 +6009,6 @@
         "emptyTitle": "فهرست اموال شما هنوز خالی است",
         "emptyDescription": "آنچه دارید را ثبت کنید - با محل، دسته و قیمت خرید.",
         "loadErrorTitle": "بارگذاری اموال ممکن نشد",
-        "noResultsTitle": "چیزی پیدا نشد",
-        "noResultsDescription": "هیچ وسیله‌ای با جستجوی شما مطابقت ندارد.",
-        "resetSearch": "بازنشانی جستجو",
         "attentionEmptyTitle": "چیزی نیاز به توجه ندارد",
         "attentionEmptyDescription": "همه وسایل در حال حاضر مرتب هستند.",
         "clearAttentionFilter": "پاک‌کردن فیلتر",
@@ -6094,7 +6108,8 @@
         "odometerChartTitle": "کیلومتر شمار در طول زمان",
         "detailPaneLabel": "جزئیات وسیله",
         "pickOne": "یک وسیله انتخاب کنید",
-        "pickOneHint": "جزئیات، مهلت‌ها و سابقه اینجا نمایش داده می‌شوند."
+        "pickOneHint": "جزئیات، مهلت‌ها و سابقه اینجا نمایش داده می‌شوند.",
+        "moreDetailsHint": "خرید، ضمانت، عکس، اسناد"
     },
     "documentAttach": {
         "label": "پیوست‌ها",
@@ -6293,7 +6308,6 @@
         "customRange": "بازه سفارشی",
         "monthFrom": "از ماه",
         "monthTo": "تا ماه",
-        "applyStatistics": "نمایش آمار",
         "print": "چاپ",
         "shiftCounts": "تعداد شیفت‌ها",
         "shiftCountsDescription": "تعداد شیفت‌های برنامه‌ریزی‌شده بر اساس نوع.",

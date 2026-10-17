@@ -94,11 +94,49 @@ async function openTransferEditor(page, entry) {
     const meta = (await (await fetch('/api/v1/budget/meta')).json()).data;
     await openTransferDialog({ entry, accounts, categories: meta.expenseCategories, subcategories: meta.subcategories,
       month: '2045-01', currency: 'EUR', budgetMode: 'shared', readOnly: () => false,
-      onSaved() {}, onDelete() {}, onError(err) { throw err; } });
+      onSaved() { window.__transferSaved = (window.__transferSaved ?? 0) + 1; }, onDelete() {}, onError(err) { throw err; } });
   }, entry);
   await page.waitForSelector('#bt-save');
   await page.waitForFunction(() => document.querySelectorAll('#bt-title').length === 1 && document.querySelector('#bt-save'));
 }
+
+test('a transfer save finishing after another dialog opens leaves that dialog open', async () => {
+  const created = await request('POST', '/transfers', { title: 'Delayed save', amount: 10, date: '2045-01-10',
+    from_account_id: accounts[0], to_account_id: accounts[1] });
+  assert.equal(created.status, 201);
+  const page = await browser.newPage();
+  try {
+    await page.goto(`${baseUrl}/__budget-probe.html`);
+    await page.waitForFunction(() => window.__ready === true);
+    await openTransferEditor(page, created.body.data);
+    await page.evaluate(async () => {
+      const { api } = await import('/api.js');
+      const put = api.put.bind(api);
+      api.put = async (...args) => {
+        const result = await put(...args);
+        await new Promise(resolve => { window.__releaseTransferSave = resolve; });
+        return result;
+      };
+    });
+    await page.$eval('#bt-title', el => { el.value = 'Saved while replaced'; });
+    await page.$eval('#bt-save', el => el.click());
+    await page.waitForFunction(() => Boolean(window.__releaseTransferSave));
+    await page.evaluate(async () => {
+      const { openModal, closeModal } = await import('/components/modal.js');
+      await closeModal({ force: true });
+      openModal({ title: 'Another dialog', content: '<p id="replacement-dialog">Keep open</p>' });
+      window.__releaseTransferSave();
+    });
+    await page.waitForFunction(() => window.__transferSaved === 1);
+    assert.ok(await page.$('#replacement-dialog'), 'the completed save cannot close the replacement dialog');
+    assert.equal(await page.$eval('#replacement-dialog', el => el.closest('dialog').open), true,
+      'the replacement stays open rather than beginning its closing animation');
+    assert.equal(db.prepare('SELECT title FROM budget_entries WHERE id = ?').get(created.body.data.id).title, 'Saved while replaced');
+  } finally {
+    await page.close();
+    await request('DELETE', `/${created.body.data.id}`);
+  }
+});
 
 test('transfer stays in the entry dialog, loads categories, and switches back', async () => {
   await withTransfer(async page => {

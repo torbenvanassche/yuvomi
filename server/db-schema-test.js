@@ -1540,6 +1540,12 @@ const MIGRATIONS_SQL = {
       OR NEW.target_google_calendar_id IS NOT NULL OR NEW.target_caldav_account_id IS NOT NULL)
     BEGIN SELECT RAISE(ABORT, 'Local and sync calendars are mutually exclusive'); END;
   `,
+  249: `
+    ALTER TABLE users ADD COLUMN birthday_feed_token TEXT;
+    ALTER TABLE users ADD COLUMN calendar_feed_include_birthdays INTEGER NOT NULL DEFAULT 1 CHECK(calendar_feed_include_birthdays IN (0, 1));
+    CREATE UNIQUE INDEX idx_users_birthday_feed_token ON users(birthday_feed_token)
+      WHERE birthday_feed_token IS NOT NULL;
+  `,
   250: `
     ALTER TABLE budget_entries ADD COLUMN transfer_entry_id INTEGER NULL REFERENCES budget_entries(id) ON DELETE CASCADE;
     CREATE INDEX idx_budget_transfer ON budget_entries(transfer_entry_id);

@@ -24,7 +24,6 @@
         "filtersOpen": "Buka filter",
         "filtersActive": "{{count}} filter aktif",
         "filtersActive_one": "1 filter aktif",
-        "filtersReset": "Hapus semua filter",
         "filtersResetDefault": "Atur ulang filter",
         "close": "Tutup",
         "add": "Tambah",
@@ -67,6 +66,7 @@
         "errorServer": "Kesalahan server. Coba lagi nanti.",
         "errorRestoreInProgress": "Cadangan sedang dipulihkan saat ini. Perubahan Anda tidak disimpan, coba lagi dalam satu menit.",
         "errorTimeout": "Koneksi terlalu lama. Silakan coba lagi.",
+        "errorRateLimited": "Terlalu banyak permintaan saat ini. Tunggu sebentar, lalu coba lagi.",
         "requiredFields": "Harap isi semua bidang wajib.",
         "invalidInput": "Masukan tidak valid.",
         "togglePasswordVisibility": "Tampilkan/sembunyikan kata sandi",
@@ -83,7 +83,14 @@
             "privateAssignedHint": "Entri ini hanya terlihat oleh pembuatnya - orang lain yang ditugaskan tidak melihatnya. Pilih \"Hanya yang ditugaskan\" jika mereka perlu melihatnya."
         },
         "toShoppingListNamed": "Tambahkan {{title}} ke daftar belanja",
-        "emailInUse": "Alamat email ini sudah dimiliki akun lain."
+        "emailInUse": "Alamat email ini sudah dimiliki akun lain.",
+        "sessionUnreachableTitle": "Koneksi terputus",
+        "sessionRetryHint": "Kamu tetap masuk. Mencoba lagi dalam {{seconds}} dtk.",
+        "sessionRetrying": "Mencoba lagi…",
+        "searchNoResultsTitle": "Tidak ada hasil",
+        "searchNoResultsDescription": "Tidak ada yang cocok dengan pencarianmu.",
+        "searchNoResultsFilteredDescription": "Tidak ada yang cocok dengan pencarian dan filtermu.",
+        "searchReset": "Atur ulang pencarian"
     },
     "kitchen": {
         "noShoppingLists": "Belum ada daftar belanja.",
@@ -152,7 +159,8 @@
         "resultCountOne": "{{count}} hasil",
         "resultCountMany": "{{count}} hasil",
         "goTo": "Buka",
-        "newSection": "Buat baru"
+        "newSection": "Buat baru",
+        "recentLabel": "Baru dibuka"
     },
     "dashboard": {
         "title": "Ringkasan",
@@ -574,11 +582,9 @@
         "documentsCount": "{{count}} dokumen",
         "documentsCount_one": "{{count}} dokumen",
         "assignedToMe": "Ditugaskan ke saya",
-        "noResultsTitle": "Tidak ada kecocokan",
         "searchPlaceholder": "Cari tugas…",
         "viewToggleLabel": "Tampilan",
         "groupToggleLabel": "Kelompokkan menurut",
-        "noResultsDescription": "Tidak ada tugas yang berisi \"{{query}}\".",
         "detailStart": "Mulai",
         "detailFinish": "Selesaikan",
         "detailReopen": "Buka kembali",
@@ -1131,7 +1137,6 @@
         "filtersPeople": "Orang",
         "filtersActive": "{{count}} filter aktif",
         "filtersActive_one": "1 filter aktif",
-        "filtersReset": "Hapus semua filter",
         "filtersDisplay": "Tampilan",
         "agendaDayEmpty": "Tidak ada rencana",
         "openInMap": "Buka di Maps",
@@ -1167,7 +1172,10 @@
         "localCalendarDeleteConfirm": "Hapus \"{{name}}\"?",
         "localCalendarDeleteDetail": "Acara dari kalender ini dipindahkan ke kalender default, dan tautan ekspornya akan berhenti berfungsi.",
         "localCalendarDeleteDetailIcloud": "Acara dari kalender ini dipindahkan ke kalender default lalu diunggah ke iCloud melalui Apple Calendar. Tautan ekspornya akan berhenti berfungsi.",
-        "localCalendarEventCount_one": "{{count}} acara"
+        "localCalendarEventCount_one": "{{count}} acara",
+        "sidebarLabel": "Bilah sisi kalender",
+        "upNextTitle": "Berikutnya",
+        "upNextEmpty": "Tidak ada apa pun dalam tiga minggu ke depan."
     },
     "noteCategories": {
         "categories": "Kategori",
@@ -1175,7 +1183,6 @@
         "empty": "Belum ada kategori.",
         "personal": "Pribadi",
         "household": "Rumah tangga",
-        "noResults": "Tidak ada catatan yang termasuk dalam semua kategori terpilih.",
         "deleteDetail": "Kategori dihapus dari semua catatan dan filter dasbor. Catatan itu sendiri tidak berubah.",
         "widgetHint": "Jika beberapa kategori dipilih, hanya catatan yang termasuk dalam semuanya yang ditampilkan. Tanpa pilihan, semua catatan ditampilkan.",
         "permissionLabel": "Kelola kategori catatan rumah tangga",
@@ -1203,8 +1210,6 @@
         "emptyTitle": "Belum ada catatan",
         "emptyDescription": "Buat catatan baru dengan tombol +.",
         "emptyAction": "Buat catatan",
-        "noResultsTitle": "Tidak ada kecocokan",
-        "noResultsDescription": "Tidak ada catatan yang mengandung \"{{query}}\".",
         "titleLabel": "Judul (opsional)",
         "titlePlaceholder": "Tanpa judul",
         "contentLabel": "Konten",
@@ -1235,7 +1240,6 @@
         "groupPinned": "Disematkan",
         "groupOthers": "Catatan lainnya",
         "filterCreatorLabel": "Dibuat oleh",
-        "noResultsCreatorDescription": "Tidak ada catatan dari {{name}}.",
         "checklistToggle": "Centang item",
         "checkConflict": "Catatan telah berubah sementara itu. Catatan akan dimuat ulang.",
         "pinnedState": "Disematkan",
@@ -1351,8 +1355,6 @@
         "categoryOther": "Lainnya",
         "moreActions": "Tindakan lain",
         "noResultsTitle": "Tidak ada kecocokan",
-        "noResultsDescription": "Tidak ada kontak yang cocok dengan pencarian atau filter.",
-        "resetSearch": "Atur ulang pencarian & filter",
         "countOne": "1 kontak",
         "countMany": "{{count}} kontak",
         "detailPaneLabel": "Detail kontak",
@@ -1684,7 +1686,6 @@
         "planMonthlyAmount": "Jumlah bulanan",
         "planSavedToast": "Anggaran disimpan",
         "planRemovedToast": "Anggaran dihapus",
-        "planTarget": "Target: {{amount}}",
         "planEditAction": "Edit",
         "planDeleteConfirm": "Hapus anggaran untuk “{{category}}”?",
         "planSavingsDeleteConfirm": "Hapus target tabungan?",
@@ -1804,15 +1805,22 @@
         "loanDueDayLabel": "Hari jatuh tempo",
         "loanDueDayHint": "Opsional: tanggal dalam bulan, 1 sampai 31. Cicilan yang ditandai terbayar akan diberi tanggal ini, bukan hari ini. Pada bulan yang lebih pendek berlaku hari terakhir.",
         "loanDueDayInvalid": "Masukkan tanggal dari 1 sampai 31, atau kosongkan",
-        "loanPaymentAddedOnToast": "Pembayaran dicatat per {{date}}"
+        "loanPaymentAddedOnToast": "Pembayaran dicatat per {{date}}",
+        "planTargetOf": "dari {{amount}}",
+        "planTargetSr": "Target {{amount}}, terpakai {{percent}}",
+        "ledgerSortLabel": "Urutan",
+        "ledgerSortDate": "Menurut tanggal",
+        "ledgerSortAmount": "Menurut jumlah",
+        "ledgerSortActive": "Urutan: {{sort}}",
+        "ledgerAccountsAll": "Semua akun"
     },
     "settings": {
-        "healthCycleEnableLabel": "Tampilkan tab siklus",
-        "healthCycleHint": "Menampilkan atau menyembunyikan tab siklus di modul Kesehatan untuk semua anggota keluarga.",
+        "healthCycleEnableLabel": "Sediakan siklus untuk rumah tangga",
+        "healthCycleHint": "Menampilkan atau menyembunyikan bagian siklus di modul Kesehatan untuk semua anggota keluarga.",
         "healthCycleSaved": "Pengaturan siklus disimpan.",
-        "healthCyclePersonalLabel": "Tampilkan tab siklus",
-        "healthCyclePersonalHint": "Hanya berlaku untuk tampilan Anda sendiri. Jika dimatikan, tab tetap terlihat oleh anggota rumah lainnya.",
-        "healthCyclePersonalHouseholdOff": "Siklus saat ini dimatikan untuk seluruh rumah, jadi tab tidak muncul untuk siapa pun.",
+        "healthCyclePersonalLabel": "Tampilkan siklus",
+        "healthCyclePersonalHint": "Hanya berlaku untuk tampilanmu sendiri. Jika kamu mematikannya, siklus tetap terlihat oleh anggota rumah tangga lainnya.",
+        "healthCyclePersonalHouseholdOff": "Siklus saat ini dimatikan untuk seluruh rumah tangga, jadi tidak muncul untuk siapa pun.",
         "healthCyclePersonalSaved": "Tampilan siklus disimpan.",
         "pageRewardsModule": "Hadiah",
         "pageHealthModule": "Kesehatan",
@@ -2097,7 +2105,8 @@
         "syncErrorGoogle": "Koneksi dengan Google gagal. Silakan coba lagi.",
         "syncErrorOutlook": "Koneksi dengan Outlook gagal. Silakan coba lagi.",
         "syncErrorApple": "Koneksi dengan Apple gagal. Silakan coba lagi.",
-        "addMember": "+ Tambah anggota",
+        "addMember": "Tambah anggota",
+        "memberYou": "Saya",
         "newMemberTitle": "Anggota keluarga baru",
         "usernameLabel": "Nama pengguna",
         "displayNameLabel": "Nama tampilan",
@@ -2222,7 +2231,6 @@
         "apiTokenNeverExpires": "Tanpa tanggal kedaluwarsa",
         "apiTokenLastUsed": "Terakhir digunakan",
         "apiTokenNeverUsed": "Belum pernah digunakan",
-        "apiTokenScopes": "Izin",
         "apiTokenScopeHint": "Tanpa pilihan, token memiliki akses penuh, sama seperti akun yang membuatnya. Pilih modul untuk membatasinya - misalnya untuk klien AI/MCP - ke area tertentu dan akses baca atau tulis.",
         "apiTokenScopeFull": "Akses penuh (tanpa batasan)",
         "apiTokenScopeLimit": "Batasi ke modul terpilih",
@@ -2377,6 +2385,8 @@
         "backupWebdavSaved": "Konfigurasi WebDAV disimpan.",
         "backupWebdavEnvHint": "Konfigurasi dikendalikan melalui variabel lingkungan dan tidak dapat diubah di sini.",
         "caldavTitle": "Kalender CalDAV",
+        "birthdayFeedTitle": "Ekspor kalender ulang tahun",
+        "birthdayFeedDescription": "Semua ulang tahun dan hari nama tersimpan sebagai acara tahunan sepanjang hari, termasuk tanpa pengingat. Berlangganan melalui aplikasi kalender apa pun yang mendukung ICS.",
         "feedExportTitle": "Ekspor umpan kalender",
         "feedExportDescription": "Berlangganan kalender Yuvomi Anda hanya-baca di Apple Calendar, Google Calendar, atau Thunderbird.",
         "feedExportInactive": "Umpan ekspor dinonaktifkan.",
@@ -2702,7 +2712,8 @@
         "pageAppearance": "Tampilan",
         "pageAppearanceDescription": "Memilih tema, bahasa, wilayah, mata uang, serta format tanggal dan waktu.",
         "pageDevice": "Perangkat ini",
-        "pageDeviceDescription": "Pasang Yuvomi sebagai aplikasi di perangkat ini.",
+        "pageDeviceDescription": "Pasang Yuvomi, mode dinding, dan screensaver - semua yang hanya berlaku untuk perangkat ini.",
+        "sectionDeviceDisplay": "Mode dinding dan screensaver",
         "pageCalendarDefaults": "Default acara",
         "pageCalendarDefaultsDescription": "Tetapkan pengingat dan penugasan default untuk acara baru Anda sendiri.",
         "pageNavigation": "Navigasi",
@@ -2990,7 +3001,7 @@
         "invites": {
             "title": "Undangan",
             "intro": "Undang anggota baru lewat tautan. Kata sandi mereka tentukan sendiri.",
-            "add": "+ Buat undangan",
+            "add": "Buat undangan",
             "submit": "Buat undangan",
             "usernameHint": "Opsional. Jika dikosongkan, orang yang diundang memilih namanya sendiri.",
             "sendEmail": "Kirim undangan lewat email",
@@ -3106,7 +3117,7 @@
         "sheetWasteDescription": "Berlangganan jadwal pengangkutan mendatang di aplikasi kalendermu sendiri.",
         "sheetHousekeepingDescription": "Kelola tugas pembayaran untuk asisten rumah tangga.",
         "sheetRewardsDescription": "Atur persetujuan dan poin bawaan untuk tugas baru.",
-        "sheetHealthDescription": "Tampilanmu sendiri, tab siklus, dan jenis pencegahan.",
+        "sheetHealthDescription": "Tampilanmu sendiri, siklus, dan jenis pencegahan.",
         "displaysTitle": "Tablet dinding",
         "displaysHint": "Tablet dinding mendapat akun sendiri yang hanya bisa dipakai perangkat ini. Ia bukan anggota keluarga, tidak masuk log, dan hanya melihat apa yang terlihat oleh rumah tangga. Ikhtisarnya mengikuti bawaan rumah tangga, atau tata letak standar jika belum diatur. Mode dinding tidak mengikutinya: selalu menampilkan jam, program hari ini, siapa yang bertugas, dan cuaca.",
         "displaysAreasHint": "Yang ditampilkan: {{areas}}.",
@@ -3197,7 +3208,10 @@
         "displayRemoveDevice": "Hapus",
         "displayRemoveDeviceConfirm": "Hapus entri perangkat ini?",
         "displayRemoveDeviceDetail": "Entri hilang dari daftar untuk selamanya. Ini tidak bisa dibatalkan.",
-        "displayRemoveDeviceActive": "Perangkat ini masih dipasangkan. Cabut dulu."
+        "displayRemoveDeviceActive": "Perangkat ini masih dipasangkan. Cabut dulu.",
+        "feedExportIncludeBirthdays": "Sertakan ulang tahun",
+        "feedExportIncludeBirthdaysHint": "Nonaktifkan saat berlangganan feed ulang tahun terpisah agar ulang tahun dan hari nama tidak muncul dua kali.",
+        "birthdayFeedHint": "Siapa pun yang memiliki tautan ini dapat melihat semua ulang tahun dan hari nama tersimpan dalam rumah tangga, termasuk tanpa pengingat. Gunakan hanya di perangkat Anda sendiri."
     },
     "login": {
         "tagline": "Selamat datang kembali di perencana keluarga Anda.",
@@ -3269,7 +3283,8 @@
         "unsavedChanges": "Buang perubahan?",
         "unsavedChangesDetail": "Isian kamu di formulir ini akan hilang.",
         "discardChanges": "Buang",
-        "moreSettings": "Pengaturan lain"
+        "moreSettings": "Pengaturan lain",
+        "moreDetails": "Detail lainnya"
     },
     "rrule": {
         "freqNone": "Tanpa pengulangan",
@@ -3405,9 +3420,6 @@
         "createdToast": "Ulang tahun disimpan.",
         "updatedToast": "Ulang tahun diperbarui.",
         "deletedToast": "Ulang tahun dihapus.",
-        "ageNoteToday": "Berusia {{age}} tahun hari ini.",
-        "ageNoteTomorrow": "Berusia {{age}} tahun besok.",
-        "ageNoteDays": "Berusia {{age}} tahun dalam {{days}} hari.",
         "importButton": "Impor dari kontak",
         "importTitle": "Impor ulang tahun dari kontak",
         "importIntro": "Pilih kontak dengan tanggal ulang tahun tersimpan untuk menambahkannya.",
@@ -3450,8 +3462,6 @@
         "copySuffix": "Salinan",
         "viewRecipe": "Lihat resep",
         "searchPlaceholder": "Cari resep…",
-        "noResultsTitle": "Tidak ada hasil",
-        "searchNoResults": "Resep tidak ditemukan.",
         "railHint": "Ketuk resep atau seret ke suatu hari untuk merencanakannya.",
         "loadError": "Resep tidak dapat dimuat.",
         "detailPaneLabel": "Detail resep",
@@ -3497,7 +3507,7 @@
         "done": "Mulai",
         "skip": "Lewati",
         "step2BodyDesktop": "Bilah samping di kiri membawamu ke semua modul - dari kalender dan tugas hingga dapur, dokumen, dan pengaturan.",
-        "step3BodyDesktop": "Tombol + di sudut bawah membuat entri baru di mana saja.",
+        "step3BodyDesktop": "Tombol + di kanan atas kepala setiap modul membuat entri baru.",
         "stepProgress": "Langkah {{current}} dari {{total}}"
     },
     "offline": {
@@ -3695,8 +3705,6 @@
         "pushToDms": "Unggah ke DMS",
         "pushToDmsQueued": "Dokumen ditambahkan ke DMS dan sedang diproses di sana.",
         "dmsAccountLabel": "Akun DMS",
-        "emptySearchTitle": "Tidak ada hasil",
-        "emptySearchDescription": "Tidak ada dokumen di tampilan ini yang cocok dengan “{{query}}”.",
         "emptyFilterTitle": "Tidak ada dokumen pada pilihan ini",
         "emptyFilterDescription": "Dokumen tersedia, hanya saja tidak ada yang cocok dengan kategori dan folder ini.",
         "emptyArchivedTitle": "Tidak ada arsip",
@@ -4028,7 +4036,6 @@
         "groups": "Grup",
         "searchGroups": "Cari grup",
         "members": "Anggota",
-        "activeGroups": "Grup aktif",
         "allGroups": "Semua grup",
         "youAreOwed": "Anda menerima",
         "youOwe": "Anda berutang",
@@ -4194,7 +4201,9 @@
         "reversePaymentConfirm": "Batalkan pembayaran ini?",
         "reversePaymentConfirmDetail": "{{payer}} ke {{payee}}, {{amount}}. Entri balik membatalkan pembayaran dan saldo kembali seperti semula. Pembayaran tetap ada di aktivitas dengan tanda dibatalkan.",
         "loadMoreActivity": "Muat lebih banyak",
-        "expenseDeleted": "Dihapus"
+        "expenseDeleted": "Dihapus",
+        "youAreOwedInGroup": "Kamu dapat di {{group}}",
+        "youOweInGroup": "Kamu berutang di {{group}}"
     },
     "wmo": {
         "0": "Langit cerah",
@@ -4743,7 +4752,9 @@
                 "okay": "Biasa saja",
                 "good": "Baik",
                 "veryGood": "Sangat baik"
-            }
+            },
+            "unusualHigh": "Luar biasa tinggi. Periksa nilainya; kamu tetap bisa menyimpannya.",
+            "unusualLow": "Luar biasa rendah. Periksa nilainya; kamu tetap bisa menyimpannya."
         },
         "meds": {
             "doseQty": "{{count}}×",
@@ -5051,6 +5062,12 @@
             },
             "col": {
                 "day": "Hari"
+            },
+            "intensity": {
+                "none": "Tidak ditentukan",
+                "low": "Ringan",
+                "moderate": "Sedang",
+                "high": "Tinggi"
             }
         },
         "export": {
@@ -5486,7 +5503,9 @@
         "errorCycleDayGone": "Catatan hari ini sudah tidak ada.",
         "errorCycleImportTooLarge": "Teks lebih besar dari {{limit_kb}} KB. Impor menstruasi dalam bagian yang lebih kecil.",
         "errorCycleImportNoRows": "File hanya berisi baris judul tanpa menstruasi.",
-        "errorCycleImportTooManyRows": "Satu impor boleh berisi paling banyak {{limit}} menstruasi. Bagi file-nya."
+        "errorCycleImportTooManyRows": "Satu impor boleh berisi paling banyak {{limit}} menstruasi. Bagi file-nya.",
+        "errorVitalImpossible": "Nilai ini tidak mungkin. Periksa kembali isianmu.",
+        "errorVitalBpOrder": "Nilai sistolik harus lebih tinggi daripada diastolik."
     },
     "waste": {
         "title": "Pengumpulan sampah",
@@ -5717,7 +5736,7 @@
     },
     "rewards": {
         "title": "Hadiah",
-        "tabOverview": "Ringkasan",
+        "tabPoints": "Poin",
         "tabCatalog": "Hadiah",
         "tabLedger": "Riwayat",
         "pointsUnit": "poin",
@@ -5738,6 +5757,7 @@
         "redeemError": "Penukaran gagal.",
         "pendingApprovals": "Permintaan tertunda",
         "yourPending": "Permintaan tertunda Anda",
+        "yourPoints": "Poinmu",
         "approve": "Setujui",
         "reject": "Tolak",
         "confirmReject": "Tolak permintaan penukaran ini? Poin akan dikembalikan.",
@@ -5868,9 +5888,6 @@
         "searchPlaceholder": "Cari di persediaan",
         "searchNoResults": "Barang tidak ditemukan.",
         "filterNoResults": "Tidak ada barang dalam pilihan ini.",
-        "noResultsTitle": "Tidak ada hasil",
-        "noResultsDescription": "Tidak ada barang yang cocok dengan pilihan Anda.",
-        "resetFilters": "Atur ulang pencarian dan filter",
         "resultCount": "{{count}} barang ditemukan.",
         "resultCount_one": "{{count}} barang ditemukan.",
         "emptyTitle": "Persediaan masih kosong",
@@ -5992,9 +6009,6 @@
         "emptyTitle": "Inventaris Anda masih kosong",
         "emptyDescription": "Catat apa yang Anda miliki - dengan lokasi, kategori, dan harga pembelian.",
         "loadErrorTitle": "Inventaris tidak dapat dimuat",
-        "noResultsTitle": "Tidak ada yang ditemukan",
-        "noResultsDescription": "Tidak ada barang yang cocok dengan pencarian Anda.",
-        "resetSearch": "Atur ulang pencarian",
         "attentionEmptyTitle": "Tidak ada yang perlu perhatian",
         "attentionEmptyDescription": "Semua barang saat ini dalam keadaan baik.",
         "clearAttentionFilter": "Hapus filter",
@@ -6094,7 +6108,8 @@
         "odometerChartTitle": "Odometer dari waktu ke waktu",
         "detailPaneLabel": "Detail barang",
         "pickOne": "Pilih barang",
-        "pickOneHint": "Detail, tenggat, dan riwayat muncul di sini."
+        "pickOneHint": "Detail, tenggat, dan riwayat muncul di sini.",
+        "moreDetailsHint": "Pembelian, garansi, foto, dokumen"
     },
     "documentAttach": {
         "label": "Lampiran",
@@ -6293,7 +6308,6 @@
         "customRange": "Rentang kustom",
         "monthFrom": "Dari bulan",
         "monthTo": "Sampai bulan",
-        "applyStatistics": "Tampilkan statistik",
         "print": "Cetak",
         "shiftCounts": "Jumlah shift",
         "shiftCountsDescription": "Jumlah shift terjadwal menurut jenis.",

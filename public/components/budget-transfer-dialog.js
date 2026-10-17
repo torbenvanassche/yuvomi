@@ -2,7 +2,7 @@
 import { api } from '/api.js';
 import { t } from '/i18n.js';
 import { esc, REQUIRED_MARK } from '/utils/html.js';
-import { openModal, closeModal, reportFieldError, refocusAfterRender } from '/components/modal.js';
+import { openModal, closeModal, reportFieldError, refocusAfterRender, captureModalContext } from '/components/modal.js';
 import { budgetCategoryLabel } from '/utils/category-labels.js';
 import { todayKey, monthPeriodKeys, defaultDateInPeriod } from '/utils/date.js';
 import { amountStep, amountMin, amountIsSavable, smallestUnitLabel } from '/utils/money.js';
@@ -111,11 +111,12 @@ export function wireTransferForm(panel, { transfer = null, accounts = [], curren
     if (!transfer || suffix) Object.assign(body, { is_recurring: panel.querySelector('#bt-recurring').checked,
       recurrence_interval: value('interval'), recurrence_interval_count: Number(value('interval-count')),
       recurrence_confirm: panel.querySelector('#bt-confirm').checked });
+    const context = captureModalContext();
     button.disabled = true;
     try {
       if (transfer) await api.put(`/budget/transfers/${transfer.id}${suffix}`, body);
       else await api.post('/budget/transfers', body);
-      await closeModal({ force: true }); await onSaved(); refocusAfterRender();
+      await closeModal({ force: true, context }); await onSaved(); refocusAfterRender();
     } catch (err) { onError(err, panel); button.disabled = false; }
   };
 }

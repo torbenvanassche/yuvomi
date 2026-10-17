@@ -26,7 +26,6 @@
         "filtersActive_one": "1 aktywny filtr",
         "filtersActive_few": "{{count}} aktywne filtry",
         "filtersActive_many": "Aktywne filtry: {{count}}",
-        "filtersReset": "Wyczyść wszystkie filtry",
         "filtersResetDefault": "Wyczyść filtry",
         "close": "Zamknij",
         "add": "Dodaj",
@@ -69,6 +68,7 @@
         "errorServer": "Błąd serwera. Spróbuj ponownie później.",
         "errorRestoreInProgress": "Trwa właśnie przywracanie kopii zapasowej. Twoja zmiana nie została zapisana, spróbuj ponownie za minutę.",
         "errorTimeout": "Połączenie trwało zbyt długo. Spróbuj ponownie.",
+        "errorRateLimited": "Zbyt wiele żądań w tej chwili. Poczekaj chwilę i spróbuj ponownie.",
         "requiredFields": "Wypełnij wszystkie wymagane pola.",
         "invalidInput": "Nieprawidłowe dane.",
         "togglePasswordVisibility": "Pokaż/ukryj hasło",
@@ -85,7 +85,14 @@
             "privateAssignedHint": "Ten wpis widzi tylko osoba, która go utworzyła - pozostałe przypisane osoby nie. Wybierz „Tylko przypisani”, jeśli mają go widzieć."
         },
         "toShoppingListNamed": "Dodaj {{title}} na listę zakupów",
-        "emailInUse": "Ten adres e-mail należy już do innego konta."
+        "emailInUse": "Ten adres e-mail należy już do innego konta.",
+        "sessionUnreachableTitle": "Połączenie przerwane",
+        "sessionRetryHint": "Sesja pozostaje aktywna. Kolejna próba za {{seconds}} s.",
+        "sessionRetrying": "Ponawianie…",
+        "searchNoResultsTitle": "Brak wyników",
+        "searchNoResultsDescription": "Nic nie pasuje do wyszukiwania.",
+        "searchNoResultsFilteredDescription": "Nic nie pasuje do wyszukiwania i filtrów.",
+        "searchReset": "Resetuj wyszukiwanie"
     },
     "kitchen": {
         "noShoppingLists": "Nie ma jeszcze listy zakupów.",
@@ -160,7 +167,8 @@
         "resultCountOne": "{{count}} wynik",
         "resultCountMany": "{{count}} wyników",
         "goTo": "Przejdź do",
-        "newSection": "Utwórz nowe"
+        "newSection": "Utwórz nowe",
+        "recentLabel": "Ostatnio otwierane"
     },
     "dashboard": {
         "title": "Pulpit",
@@ -672,11 +680,9 @@
         "documentsCount_few": "Dokumenty: {{count}}",
         "documentsCount_many": "Dokumenty: {{count}}",
         "assignedToMe": "Przypisane do mnie",
-        "noResultsTitle": "Brak wyników",
         "searchPlaceholder": "Szukaj zadań…",
         "viewToggleLabel": "Widok",
         "groupToggleLabel": "Grupuj według",
-        "noResultsDescription": "Żadne zadanie nie zawiera „{{query}}”.",
         "detailStart": "Rozpocznij",
         "detailFinish": "Zakończ",
         "detailReopen": "Otwórz ponownie",
@@ -1271,7 +1277,6 @@
         "filtersActive_one": "1 aktywny filtr",
         "filtersActive_few": "{{count}} aktywne filtry",
         "filtersActive_many": "Aktywne filtry: {{count}}",
-        "filtersReset": "Wyczyść wszystkie filtry",
         "filtersDisplay": "Wyświetlanie",
         "agendaDayEmpty": "Nic zaplanowane",
         "openInMap": "Otwórz w mapach",
@@ -1311,7 +1316,10 @@
         "localCalendarDeleteDetail": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a jego link eksportu przestanie działać.",
         "localCalendarDeleteDetailIcloud": "Wydarzenia z tego kalendarza zostaną przeniesione do kalendarza domyślnego, a następnie przesłane do iCloud przez Apple Calendar. Jego link eksportu przestanie działać.",
         "localCalendarEventCount_many": "{{count}} wydarzeń",
-        "localCalendarEventCount_other": "{{count}} wydarzeń"
+        "localCalendarEventCount_other": "{{count}} wydarzeń",
+        "sidebarLabel": "Pasek boczny kalendarza",
+        "upNextTitle": "Następne",
+        "upNextEmpty": "Nic w ciągu najbliższych trzech tygodni."
     },
     "noteCategories": {
         "categories": "Kategorie",
@@ -1319,7 +1327,6 @@
         "empty": "Brak kategorii.",
         "personal": "Osobiste",
         "household": "Domowe",
-        "noResults": "Żadna notatka nie należy do wszystkich wybranych kategorii.",
         "deleteDetail": "Kategoria zostanie usunięta ze wszystkich notatek i filtrów pulpitu. Same notatki pozostaną bez zmian.",
         "widgetHint": "Po wybraniu wielu kategorii wyświetlane są tylko notatki należące do wszystkich z nich. Bez wyboru wyświetlane są wszystkie notatki.",
         "permissionLabel": "Zarządzaj domowymi kategoriami notatek",
@@ -1349,8 +1356,6 @@
         "emptyTitle": "Brak notatek",
         "emptyDescription": "Utwórz nową notatkę przyciskiem +.",
         "emptyAction": "Utwórz notatkę",
-        "noResultsTitle": "Brak wyników",
-        "noResultsDescription": "Żadna notatka nie zawiera \"{{query}}\".",
         "titleLabel": "Tytuł (opcjonalnie)",
         "titlePlaceholder": "Bez tytułu",
         "contentLabel": "Treść",
@@ -1381,7 +1386,6 @@
         "groupPinned": "Przypięte",
         "groupOthers": "Pozostałe notatki",
         "filterCreatorLabel": "Utworzone przez",
-        "noResultsCreatorDescription": "Brak notatek od {{name}}.",
         "checklistToggle": "Odhacz pozycję",
         "checkConflict": "Notatka została w międzyczasie zmieniona. Zostanie ponownie wczytana.",
         "pinnedState": "Przypięta",
@@ -1497,8 +1501,6 @@
         "categoryOther": "Inne",
         "moreActions": "Więcej działań",
         "noResultsTitle": "Brak wyników",
-        "noResultsDescription": "Żaden kontakt nie pasuje do wyszukiwania ani filtra.",
-        "resetSearch": "Wyczyść wyszukiwanie i filtr",
         "countOne": "1 kontakt",
         "countMany": "{{count}} kontaktów",
         "detailPaneLabel": "Szczegóły kontaktu",
@@ -1838,7 +1840,6 @@
         "planMonthlyAmount": "Kwota miesięczna",
         "planSavedToast": "Budżet zapisany",
         "planRemovedToast": "Budżet usunięty",
-        "planTarget": "Cel: {{amount}}",
         "planEditAction": "Edytuj",
         "planDeleteConfirm": "Usunąć budżet dla „{{category}}”?",
         "planSavingsDeleteConfirm": "Usunąć cel oszczędności?",
@@ -1960,15 +1961,22 @@
         "loanDueDayLabel": "Dzień płatności",
         "loanDueDayHint": "Opcjonalnie: dzień miesiąca, od 1 do 31. Raty oznaczone jako zapłacone otrzymują wtedy datę tego dnia zamiast dzisiejszej. W krótszych miesiącach obowiązuje ostatni dzień.",
         "loanDueDayInvalid": "Podaj dzień od 1 do 31 albo zostaw pole puste",
-        "loanPaymentAddedOnToast": "Płatność zarejestrowana z datą {{date}}"
+        "loanPaymentAddedOnToast": "Płatność zarejestrowana z datą {{date}}",
+        "planTargetOf": "z {{amount}}",
+        "planTargetSr": "Cel {{amount}}, wykorzystano {{percent}}",
+        "ledgerSortLabel": "Sortowanie",
+        "ledgerSortDate": "Według daty",
+        "ledgerSortAmount": "Według kwoty",
+        "ledgerSortActive": "Sortowanie: {{sort}}",
+        "ledgerAccountsAll": "Wszystkie konta"
     },
     "settings": {
-        "healthCycleEnableLabel": "Pokaż kartę cyklu",
-        "healthCycleHint": "Pokazuje lub ukrywa kartę cyklu w module Zdrowie dla wszystkich członków rodziny.",
+        "healthCycleEnableLabel": "Udostępnij cykl w gospodarstwie",
+        "healthCycleHint": "Pokazuje lub ukrywa sekcję cyklu w module Zdrowie dla wszystkich członków rodziny.",
         "healthCycleSaved": "Zapisano ustawienie cyklu.",
-        "healthCyclePersonalLabel": "Pokaż kartę cyklu",
-        "healthCyclePersonalHint": "Dotyczy tylko Twojego widoku. Po wyłączeniu karta pozostaje widoczna dla pozostałych domowników.",
-        "healthCyclePersonalHouseholdOff": "Cykl jest obecnie wyłączony dla całego gospodarstwa, więc karta nie pojawia się u nikogo.",
+        "healthCyclePersonalLabel": "Pokaż cykl",
+        "healthCyclePersonalHint": "Dotyczy tylko Twojego widoku. Jeśli go wyłączysz, cykl pozostanie widoczny dla pozostałych domowników.",
+        "healthCyclePersonalHouseholdOff": "Cykl jest obecnie wyłączony dla całego gospodarstwa, więc nie pojawia się u nikogo.",
         "healthCyclePersonalSaved": "Widok cyklu zapisany.",
         "pageRewardsModule": "Nagrody",
         "pageHealthModule": "Zdrowie",
@@ -2259,7 +2267,8 @@
         "syncErrorGoogle": "Połączenie z Google nie powiodło się. Spróbuj ponownie.",
         "syncErrorOutlook": "Połączenie z Outlook nie powiodło się. Spróbuj ponownie.",
         "syncErrorApple": "Połączenie z Apple nie powiodło się. Spróbuj ponownie.",
-        "addMember": "+ Dodaj członka",
+        "addMember": "Dodaj członka",
+        "memberYou": "Ja",
         "newMemberTitle": "Nowy członek rodziny",
         "usernameLabel": "Nazwa użytkownika",
         "displayNameLabel": "Wyświetlana nazwa",
@@ -2384,7 +2393,6 @@
         "apiTokenNeverExpires": "Bez daty wygaśnięcia",
         "apiTokenLastUsed": "Ostatnio użyty",
         "apiTokenNeverUsed": "Nigdy nie użyty",
-        "apiTokenScopes": "Uprawnienia",
         "apiTokenScopeHint": "Bez wyboru token ma pełny dostęp, tak jak konto, które go utworzyło. Wybierz moduły, aby ograniczyć go - np. dla klienta AI/MCP - do poszczególnych obszarów oraz prawa odczytu lub zapisu.",
         "apiTokenScopeFull": "Pełny dostęp (bez ograniczeń)",
         "apiTokenScopeLimit": "Ogranicz do wybranych modułów",
@@ -2549,6 +2557,8 @@
         "backupWebdavSaved": "Konfiguracja WebDAV zapisana.",
         "backupWebdavEnvHint": "Konfiguracja jest kontrolowana przez zmienne środowiskowe i nie można jej tu edytować.",
         "caldavTitle": "Kalendarze CalDAV",
+        "birthdayFeedTitle": "Eksportuj kalendarz urodzin",
+        "birthdayFeedDescription": "Wszystkie zapisane urodziny i imieniny jako coroczne wydarzenia całodniowe, także bez przypomnień. Subskrybuj w dowolnej aplikacji kalendarza obsługującej ICS.",
         "feedExportTitle": "Eksportuj kanał kalendarza",
         "feedExportDescription": "Subskrybuj swój kalendarz Yuvomi w trybie tylko do odczytu w Kalendarzu Apple, Kalendarzu Google lub Thunderbird.",
         "feedExportInactive": "Kanał eksportu jest wyłączony.",
@@ -2884,7 +2894,8 @@
         "pageAppearance": "Wygląd",
         "pageAppearanceDescription": "Wybrać motyw, język, region, walutę oraz format daty i godziny.",
         "pageDevice": "To urządzenie",
-        "pageDeviceDescription": "Zainstaluj Yuvomi jako aplikację na tym urządzeniu.",
+        "pageDeviceDescription": "Instalacja Yuvomi, tryb ścienny i wygaszacz ekranu - wszystko, co dotyczy tylko tego urządzenia.",
+        "sectionDeviceDisplay": "Tryb ścienny i wygaszacz ekranu",
         "pageCalendarDefaults": "Domyślne dla wydarzeń",
         "pageCalendarDefaultsDescription": "Ustaw domyślne przypomnienia i przypisanie własnych nowych wydarzeń.",
         "pageNavigation": "Nawigacja",
@@ -3182,7 +3193,7 @@
         "invites": {
             "title": "Zaproszenia",
             "intro": "Zapraszaj nowych członków linkiem. Hasło ustalają sami.",
-            "add": "+ Utwórz zaproszenie",
+            "add": "Utwórz zaproszenie",
             "submit": "Utwórz zaproszenie",
             "usernameHint": "Opcjonalne. Jeśli zostawisz puste, zaproszona osoba sama wybierze nazwę.",
             "sendEmail": "Wyślij zaproszenie e-mailem",
@@ -3302,7 +3313,7 @@
         "sheetWasteDescription": "Subskrybuj nadchodzące odbiory we własnej aplikacji kalendarza.",
         "sheetHousekeepingDescription": "Zarządzaj zadaniami płatności za sprzątanie.",
         "sheetRewardsDescription": "Ustaw zatwierdzanie i domyślne punkty dla nowych zadań.",
-        "sheetHealthDescription": "Twoje widoki, karta cyklu i rodzaje profilaktyki.",
+        "sheetHealthDescription": "Własne widoki, cykl i rodzaje profilaktyki.",
         "displaysTitle": "Tablety ścienne",
         "displaysHint": "Tablet ścienny otrzymuje własne konto, z którego może korzystać tylko to urządzenie. Nie jest członkiem rodziny, nie loguje się i widzi tylko to, co jest widoczne dla gospodarstwa domowego. Jego przegląd korzysta z domyślnego układu domu, a gdy go nie ustawiono, z układu standardowego. Tryb ścienny z niego nie korzysta: zawsze pokazuje godzinę, plan dnia, kto dziś ma dyżur i pogodę.",
         "displaysAreasHint": "Pokazuje: {{areas}}.",
@@ -3399,7 +3410,10 @@
         "displayRemoveDevice": "Usuń",
         "displayRemoveDeviceConfirm": "Usunąć wpis tego urządzenia?",
         "displayRemoveDeviceDetail": "Wpis zniknie z listy na stałe. Tego nie można cofnąć.",
-        "displayRemoveDeviceActive": "To urządzenie jest nadal sparowane. Najpierw je unieważnij."
+        "displayRemoveDeviceActive": "To urządzenie jest nadal sparowane. Najpierw je unieważnij.",
+        "feedExportIncludeBirthdays": "Uwzględniaj urodziny",
+        "feedExportIncludeBirthdaysHint": "Wyłącz przy osobnej subskrypcji urodzin, aby uniknąć podwójnych urodzin i imienin.",
+        "birthdayFeedHint": "Każdy, kto ma ten link, może zobaczyć wszystkie urodziny i imieniny zapisane w gospodarstwie domowym, także bez przypomnień. Używaj go tylko na własnych urządzeniach."
     },
     "login": {
         "tagline": "Witaj ponownie w swoim planerze rodzinnym.",
@@ -3471,7 +3485,8 @@
         "unsavedChanges": "Odrzucić zmiany?",
         "unsavedChangesDetail": "Twoje wpisy w tym formularzu zostaną utracone.",
         "discardChanges": "Odrzuć",
-        "moreSettings": "Więcej ustawień"
+        "moreSettings": "Więcej ustawień",
+        "moreDetails": "Więcej informacji"
     },
     "rrule": {
         "freqNone": "Bez powtarzania",
@@ -3611,9 +3626,6 @@
         "createdToast": "Urodziny zapisane.",
         "updatedToast": "Urodziny zaktualizowane.",
         "deletedToast": "Urodziny usunięte.",
-        "ageNoteToday": "Kończy dzisiaj {{age}} lat.",
-        "ageNoteTomorrow": "Kończy jutro {{age}} lat.",
-        "ageNoteDays": "Kończy {{age}} lat za {{days}} dni.",
         "importButton": "Importuj z kontaktów",
         "importTitle": "Importuj urodziny z kontaktów",
         "importIntro": "Wybierz kontakty z zapisaną datą urodzin, aby je dodać.",
@@ -3658,8 +3670,6 @@
         "copySuffix": "Kopia",
         "viewRecipe": "Zobacz przepis",
         "searchPlaceholder": "Szukaj przepisów…",
-        "noResultsTitle": "Nic nie znaleziono",
-        "searchNoResults": "Nie znaleziono przepisów.",
         "railHint": "Stuknij przepis lub przeciągnij go na dzień, aby go zaplanować.",
         "loadError": "Nie udało się załadować przepisów.",
         "detailPaneLabel": "Szczegóły przepisu",
@@ -3707,7 +3717,7 @@
         "done": "Zaczynamy",
         "skip": "Pomiń",
         "step2BodyDesktop": "Pasek boczny po lewej prowadzi do wszystkich modułów - od kalendarza i zadań po kuchnię, dokumenty i ustawienia.",
-        "step3BodyDesktop": "Przycisk + w dolnym rogu tworzy nowe wpisy w każdym miejscu.",
+        "step3BodyDesktop": "Przycisk + w prawym górnym rogu każdego modułu tworzy nowe wpisy.",
         "stepProgress": "Krok {{current}} z {{total}}"
     },
     "offline": {
@@ -3911,8 +3921,6 @@
         "pushToDms": "Prześlij do DMS",
         "pushToDmsQueued": "Dokument został dodany do DMS i jest tam przetwarzany.",
         "dmsAccountLabel": "Konto DMS",
-        "emptySearchTitle": "Brak wyników",
-        "emptySearchDescription": "Żaden dokument w tym widoku nie pasuje do „{{query}}”.",
         "emptyFilterTitle": "Brak dokumentów w tym wyborze",
         "emptyFilterDescription": "Dokumenty istnieją, ale żaden nie pasuje do tej kategorii i folderu.",
         "emptyArchivedTitle": "Nic nie zarchiwizowano",
@@ -4256,7 +4264,6 @@
         "groups": "Grupy",
         "searchGroups": "Szukaj grup",
         "members": "członkowie",
-        "activeGroups": "Aktywne grupy",
         "allGroups": "Wszystkie grupy",
         "youAreOwed": "Należy ci się",
         "youOwe": "Jesteś winny",
@@ -4428,7 +4435,9 @@
         "reversePaymentConfirm": "Stornować tę płatność?",
         "reversePaymentConfirmDetail": "{{payer}} dla {{payee}}, {{amount}}. Zapis przeciwny anuluje płatność, a salda wracają do poprzedniego stanu. Płatność pozostaje w aktywności oznaczona jako stornowana.",
         "loadMoreActivity": "Wczytaj więcej",
-        "expenseDeleted": "Usunięto"
+        "expenseDeleted": "Usunięto",
+        "youAreOwedInGroup": "Należy ci się w {{group}}",
+        "youOweInGroup": "Jesteś winien w {{group}}"
     },
     "wmo": {
         "0": "Bezchmurnie",
@@ -4989,7 +4998,9 @@
                 "okay": "Tak sobie",
                 "good": "Dobrze",
                 "veryGood": "Bardzo dobrze"
-            }
+            },
+            "unusualHigh": "Nietypowo wysoka. Sprawdź wartość; nadal możesz ją zapisać.",
+            "unusualLow": "Nietypowo niska. Sprawdź wartość; nadal możesz ją zapisać."
         },
         "meds": {
             "doseQty": "{{count}}×",
@@ -5301,6 +5312,12 @@
             },
             "col": {
                 "day": "Dzień"
+            },
+            "intensity": {
+                "none": "Nie podano",
+                "low": "Niska",
+                "moderate": "Umiarkowana",
+                "high": "Wysoka"
             }
         },
         "export": {
@@ -5744,7 +5761,9 @@
         "errorCycleDayGone": "Ten wpis dnia już nie istnieje.",
         "errorCycleImportTooLarge": "Tekst jest większy niż {{limit_kb}} KB. Importuj miesiączki w mniejszych częściach.",
         "errorCycleImportNoRows": "Plik zawiera tylko wiersz nagłówka i żadnej miesiączki.",
-        "errorCycleImportTooManyRows": "Jeden import może zawierać najwyżej {{limit}} miesiączek. Podziel plik."
+        "errorCycleImportTooManyRows": "Jeden import może zawierać najwyżej {{limit}} miesiączek. Podziel plik.",
+        "errorVitalImpossible": "Ta wartość jest niemożliwa. Sprawdź wprowadzone dane.",
+        "errorVitalBpOrder": "Wartość skurczowa musi być wyższa niż rozkurczowa."
     },
     "waste": {
         "title": "Odbiór odpadów",
@@ -5987,7 +6006,7 @@
     },
     "rewards": {
         "title": "Nagrody",
-        "tabOverview": "Przegląd",
+        "tabPoints": "Punkty",
         "tabCatalog": "Nagrody",
         "tabLedger": "Historia",
         "pointsUnit": "pkt",
@@ -6008,6 +6027,7 @@
         "redeemError": "Nie udało się wymienić.",
         "pendingApprovals": "Oczekujące prośby",
         "yourPending": "Twoje oczekujące prośby",
+        "yourPoints": "Twoje punkty",
         "approve": "Zatwierdź",
         "reject": "Odrzuć",
         "confirmReject": "Odrzucić tę prośbę o wymianę? Punkty zostaną zwrócone.",
@@ -6143,9 +6163,6 @@
         "searchPlaceholder": "Szukaj w spiżarni",
         "searchNoResults": "Nie znaleziono produktu.",
         "filterNoResults": "Brak produktów w tym wyborze.",
-        "noResultsTitle": "Nic nie znaleziono",
-        "noResultsDescription": "Żaden produkt nie pasuje do wyboru.",
-        "resetFilters": "Wyczyść wyszukiwanie i filtry",
         "resultCount": "Znaleziono {{count}} produktów.",
         "resultCount_one": "Znaleziono {{count}} produkt.",
         "resultCount_many": "Znaleziono {{count}} produktów.",
@@ -6286,9 +6303,6 @@
         "emptyTitle": "Twój inwentarz jest jeszcze pusty",
         "emptyDescription": "Zapisz, co posiadasz - z miejscem, kategorią i ceną zakupu.",
         "loadErrorTitle": "Nie udało się wczytać inwentarza",
-        "noResultsTitle": "Nic nie znaleziono",
-        "noResultsDescription": "Żaden przedmiot nie pasuje do Twojego wyszukiwania.",
-        "resetSearch": "Wyczyść wyszukiwanie",
         "attentionEmptyTitle": "Nic nie wymaga uwagi",
         "attentionEmptyDescription": "Wszystkie przedmioty są obecnie w porządku.",
         "clearAttentionFilter": "Wyczyść filtr",
@@ -6398,7 +6412,8 @@
         "odometerChartTitle": "Przebieg w czasie",
         "detailPaneLabel": "Szczegóły przedmiotu",
         "pickOne": "Wybierz przedmiot",
-        "pickOneHint": "Tutaj pojawią się szczegóły, terminy i historia."
+        "pickOneHint": "Tutaj pojawią się szczegóły, terminy i historia.",
+        "moreDetailsHint": "Zakup, gwarancja, zdjęcie, dokumenty"
     },
     "documentAttach": {
         "label": "Załączniki",
@@ -6605,7 +6620,6 @@
         "customRange": "Własny okres",
         "monthFrom": "Od miesiąca",
         "monthTo": "Do miesiąca",
-        "applyStatistics": "Pokaż statystyki",
         "print": "Drukuj",
         "shiftCounts": "Liczba zmian",
         "shiftCountsDescription": "Liczba zaplanowanych zmian według rodzaju.",

@@ -703,6 +703,7 @@ const NOT_HEAD_SEARCH = new Map([
   ['doc-attach-picker__search', 'Dokument-Auswahldialog'],
   ['settings-shell__navigation-search', 'Seitenleiste der Einstellungen'],
   ['page-toolbar__center', 'der Slot der Shell selbst'],
+  ['page-search--field', 'Modifier der Shell (R19): die Kopfsuche bleibt mobil ein Feld; Geometrie EINMAL in layout.css'],
 ]);
 export function headSearchClasses(jsFiles) {
   const out = new Set();
@@ -1178,15 +1179,14 @@ const PENDING = {
   // (Kategorien, Etiketten, Abo-Kategorien), Formularzeilen (Zutat entfernen),
   // Kommentare, Einstellungslisten. Wer eine anfasst, zieht sie auf
   // `rowMenuHtml()` um und senkt die Zahl.
+  // 2026-10-16 (Critique D6): Notizen und Haushaltshilfe-Besuche loeschen
+  // ueber ihren Mehr-Knopf. R19 Schritt 4: der Kategorien-Verwalter auch.
   'row-danger-visible': {
-    'public/components/category-manager.js': 1,
     'public/components/tag-manager.js': 1,
     'public/components/task-detail.js': 1,
     'public/pages/contacts.js': 1,
     'public/pages/health-fasting.js': 1,
     'public/pages/health.js': 2,
-    'public/pages/housekeeping.js': 1,
-    'public/pages/notes.js': 1,
     'public/pages/subscriptions.js': 1,
     'public/pages/tasks.js': 1,
     'public/settings/pages/admin-api.js': 1,
