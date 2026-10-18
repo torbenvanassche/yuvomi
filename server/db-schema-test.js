@@ -34,6 +34,7 @@ const MIGRATIONS_SQL = {
       password_hash TEXT    NOT NULL,
       avatar_color  TEXT    NOT NULL DEFAULT '#007AFF',
       avatar_data   TEXT,
+      avatar_key    TEXT,
       role          TEXT    NOT NULL DEFAULT 'member'
                             CHECK(role IN ('admin', 'member')),
       family_role   TEXT    NOT NULL DEFAULT 'other'
@@ -241,6 +242,20 @@ const MIGRATIONS_SQL = {
     CREATE TRIGGER IF NOT EXISTS trg_users_updated_at
       AFTER UPDATE ON users FOR EACH ROW
       BEGIN UPDATE users SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = OLD.id; END;
+    -- avatar_key + Trigger stammen aus v251 (Profilbild-Adressen in Listen).
+    CREATE TRIGGER IF NOT EXISTS trg_users_avatar_key_update
+      AFTER UPDATE OF avatar_data ON users FOR EACH ROW
+      WHEN NEW.avatar_data IS NOT OLD.avatar_data
+      BEGIN
+        UPDATE users SET avatar_key = CASE
+          WHEN NEW.avatar_data IS NULL OR NEW.avatar_data = '' THEN NULL
+          ELSE lower(hex(randomblob(16))) END
+        WHERE id = OLD.id;
+      END;
+    CREATE TRIGGER IF NOT EXISTS trg_users_avatar_key_insert
+      AFTER INSERT ON users FOR EACH ROW
+      WHEN NEW.avatar_data IS NOT NULL AND NEW.avatar_data <> ''
+      BEGIN UPDATE users SET avatar_key = lower(hex(randomblob(16))) WHERE id = NEW.id; END;
     CREATE TRIGGER IF NOT EXISTS trg_tasks_updated_at
       AFTER UPDATE ON tasks FOR EACH ROW
       BEGIN UPDATE tasks SET updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now') WHERE id = OLD.id; END;
@@ -1546,7 +1561,7 @@ const MIGRATIONS_SQL = {
     CREATE UNIQUE INDEX idx_users_birthday_feed_token ON users(birthday_feed_token)
       WHERE birthday_feed_token IS NOT NULL;
   `,
-  250: `
+  252: `
     ALTER TABLE budget_entries ADD COLUMN transfer_entry_id INTEGER NULL REFERENCES budget_entries(id) ON DELETE CASCADE;
     CREATE INDEX idx_budget_transfer ON budget_entries(transfer_entry_id);
     INSERT OR IGNORE INTO budget_subcategories (key, category_key, name, sort_order)

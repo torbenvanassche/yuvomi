@@ -178,6 +178,40 @@ test('salary and an account transfer keep income, spending, and account balances
   const accounts = (await call('GET', '/accounts')).body.data.accounts;
   assert.equal(accounts.find(a => a.id === from.id).projected_balance, 990);
   assert.equal(accounts.find(a => a.id === to.id).projected_balance, 10);
+  for (const [account, income, transfers] of [[from, 1000, 10], [to, 0, 0]]) {
+    const filtered = await call('GET', `/summary?month=2042-03&account_id=${account.id}`);
+    assert.equal(filtered.status, 200);
+    assert.equal(filtered.body.data.income, income);
+    assert.equal(filtered.body.data.expenses, 0, 'a transfer is not account spending');
+    assert.equal(filtered.body.data.balance, income, 'a transfer is not account income');
+    assert.equal(filtered.body.data.transfers, transfers, 'only outflows from the selected account count');
+    assert.equal(filtered.body.data.byCategory.reduce((sum, row) => sum + (row.transfers ?? 0), 0), transfers);
+  }
+});
+
+test('GET /summary?account_id: Bilanz und Kategorien folgen dem Kontofilter der Liste', async () => {
+  // Re-Critique 2026-10-17: das Hauptbuch zeigte Konto "Visa", die Seitenleiste
+  // daneben weiter Saldo und Kategorien des ganzen Haushalts.
+  const visa = db.prepare("INSERT INTO budget_accounts (name, created_by) VALUES ('Visa', ?)").run(A).lastInsertRowid;
+  const giro = db.prepare("INSERT INTO budget_accounts (name, created_by) VALUES ('Giro-Summe', ?)").run(A).lastInsertRowid;
+  insertEntry({ title: 'Gehalt', amount: 3000, category: 'income_salary', date: '2047-04-01', account_id: giro });
+  insertEntry({ title: 'Tanken', amount: -60, category: 'transport', date: '2047-04-02', account_id: visa });
+  insertEntry({ title: 'Kino', amount: -25, category: 'leisure', date: '2047-04-03', account_id: visa });
+  insertEntry({ title: 'Offen', amount: -40, category: 'leisure', date: '2047-04-04', account_id: visa, is_pending: 1 });
+  insertEntry({ title: 'Bar', amount: -10, category: 'food', date: '2047-04-05' });
+
+  const r = await call('GET', `/summary?month=2047-04&account_id=${visa}`);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.data.income, 0, 'das Gehalt lief ueber ein anderes Konto');
+  assert.equal(r.body.data.expenses, -85);
+  assert.equal(r.body.data.balance, -85);
+  assert.deepEqual(r.body.data.byCategory.map((c) => c.category).sort(), ['leisure', 'transport']);
+  assert.equal(r.body.data.pending.count, 1, 'Offenes zaehlt nur, was ueber das Konto laeuft');
+
+  const alle = await call('GET', '/summary?month=2047-04');
+  assert.equal(alle.body.data.balance, 2905, 'ohne Filter bleibt es der ganze Haushalt');
+  const unsinn = await call('GET', '/summary?month=2047-04&account_id=abc');
+  assert.equal(unsinn.body.data.balance, 2905, 'ein unbrauchbarer Filter filtert nicht, wie in der Liste');
 });
 
 // ── GET /export ─────────────────────────────────────────────────────────────────
