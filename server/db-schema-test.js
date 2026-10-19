@@ -1562,6 +1562,9 @@ const MIGRATIONS_SQL = {
       WHERE birthday_feed_token IS NOT NULL;
   `,
   252: `
+    ALTER TABLE task_completions ADD COLUMN source TEXT;
+  `,
+  253: `
     ALTER TABLE budget_entries ADD COLUMN transfer_entry_id INTEGER NULL REFERENCES budget_entries(id) ON DELETE CASCADE;
     CREATE INDEX idx_budget_transfer ON budget_entries(transfer_entry_id);
     INSERT OR IGNORE INTO budget_subcategories (key, category_key, name, sort_order)
