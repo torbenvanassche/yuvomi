@@ -11063,7 +11063,7 @@ const MIGRATIONS = [
     `,
   },
   {
-    version: 253,
+    version: 255,
     description: 'Budget transfers: linked account entries (#781)',
     // NULL preserves every ordinary entry. The service creates and mirrors pairs
     // in one transaction; no trigger writes the other financial fact.
