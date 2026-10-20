@@ -10,7 +10,7 @@ import { openTransferDialog, transferFieldsHtml, wireTransferForm } from '/compo
 import { budgetToggleHtml, budgetIntervalFieldsHtml, wireBudgetIntervalFields } from '/components/budget-recurrence-fields.js';
 import { MAX_INTERVAL_COUNT } from '/utils/budget-recurrence.js';
 import { SAVINGS_CHART_CATEGORY, budgetChartCategory } from '/utils/budget-chart-category.js';
-import { openModal as openSharedModal, closeModal, confirmOverModal, advancedSection, wireBlurValidation, reportFieldError, reportFieldErrors, refocusAfterRender } from '/components/modal.js';
+import { openModal as openSharedModal, closeModal, captureModalContext, confirmOverModal, advancedSection, wireBlurValidation, reportFieldError, reportFieldErrors, refocusAfterRender } from '/components/modal.js';
 import { renderDocumentAttachField, bindDocumentAttachField, attachmentLinksNode } from '/components/document-attach.js';
 import { openDetailView } from '/components/detail-view.js';
 import { stagger, vibrate, scheduleUndoableDelete, growBars, isImeComposing } from '/utils/ux.js';
@@ -22,7 +22,7 @@ import { periodStepperHtml, syncPeriodReset, swapPeriod } from '/utils/period-st
 import { swapContent } from '/utils/content-swap.js';
 import { wirePeriodSwipe } from '/utils/period-swipe.js';
 import { redrawList, collapseRow } from '/utils/list-motion.js';
-import { friendlyError } from '/utils/friendly-error.js';
+import { errorSentence, loadErrorSentence } from '/utils/friendly-error.js';
 import { renderSkeletonList } from '/utils/skeleton.js';
 import { render as renderSplitExpenses, prefillSplitExpense, canAddSplitExpense, openNewSplitExpense } from '/pages/split-expenses.js';
 import { openSubscriptionModal, clearSubscriptionFilters, render as renderSubscriptions } from '/pages/subscriptions.js';
@@ -2086,8 +2086,8 @@ function renderCategoryBars(byCategory) {
               aria-pressed="${selected ? 'true' : 'false'}"
               >
               <span class="budget-bar-row__label" title="${label}">${label}</span>
-              <span class="budget-bar-row__track" style="--bar-visible:${r.amount !== 0 ? 1 : 0}">
-                <span class="budget-bar-row__fill budget-bar-row__fill--${kind}" style="--bar-scale:${scale.toFixed(4)}${kind === 'expenses' && categoryColor(colors, r.category) ? `;--bar-fill:${categoryColor(colors, r.category)}` : ''}"${kind === 'expenses' && categoryTexture(colors, r.category) ? ` data-texture="${categoryTexture(colors, r.category)}"` : ''} data-bar-key="${kind}:${esc(String(r.category))}"></span>
+              <span class="budget-bar-row__track" style="--bar-visible:${r.amount !== 0 ? 1 : 0}${kind === 'expenses' && categoryColor(colors, r.category) ? `;--bar-fill:${categoryColor(colors, r.category)}` : ''}">
+                <span class="budget-bar-row__fill budget-bar-row__fill--${kind}" style="--bar-scale:${scale.toFixed(4)}"${kind === 'expenses' && categoryTexture(colors, r.category) ? ` data-texture="${categoryTexture(colors, r.category)}"` : ''} data-bar-key="${kind}:${esc(String(r.category))}"></span>
               </span>
               <span class="budget-bar-row__amount">${amountByRole(r.amount, 'flow').text}${kind === 'expenses' ? shareHtml(r.amount, total) : ''}</span>
             </button>`;
@@ -2151,9 +2151,9 @@ function subcategoryRows(category, entries) {
               data-subcategory-filter="${esc(row.key)}"
               aria-pressed="${selected ? 'true' : 'false'}">
         <span class="budget-bar-row__label">${esc(row.label)}</span>
-        <span class="budget-bar-row__track">
+        <span class="budget-bar-row__track"${parentFill ? ` style="--bar-fill:${parentFill}"` : ''}>
           <span class="budget-bar-row__fill budget-bar-row__fill--${kind}"
-                style="--bar-scale:${scale}${parentFill ? `;--bar-fill:${parentFill}` : ''}"${parentTexture ? ` data-texture="${parentTexture}"` : ''}></span>
+                style="--bar-scale:${scale}"${parentTexture ? ` data-texture="${parentTexture}"` : ''}></span>
         </span>
         <span class="budget-bar-row__amount">
           ${amountByRole(row.amount, 'flow').text}${kind === 'expenses' && row.amount !== 0 ? shareHtml(row.amount, categoryTotal) : ''}
@@ -3014,9 +3014,10 @@ function openAccountModal(account = null) {
       panel.querySelector('#am-archive')?.addEventListener('click', async () => {
         if (readOnly()) return;
         const nextArchived = !account.archived;
+        const modalContext = captureModalContext();
         try {
           await api.put(`/budget/accounts/${account.id}`, { archived: nextArchived });
-          closeModal({ force: true });
+          closeModal({ force: true, context: modalContext });
           await reloadAfterSave(() => loadAccounts());
           renderBody();
           refocusAfterRender();
@@ -3073,6 +3074,7 @@ function openAccountModal(account = null) {
             && [panel.querySelector('#am-credit-limit'), t('budget.validAmountRequired')],
         ])) return;
 
+        const modalContext = captureModalContext();
         saveBtn.disabled = true;
         saveBtn.textContent = '…';
         try {
@@ -3086,7 +3088,7 @@ function openAccountModal(account = null) {
           } else {
             await api.post('/budget/accounts', body);
           }
-          closeModal({ force: true });
+          closeModal({ force: true, context: modalContext });
           await reloadAfterSave(() => loadAccounts());
           renderBody();
           refocusAfterRender();
@@ -4577,6 +4579,9 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
 
         const amount = currentType === 'expense' ? -absVal : absVal;
 
+        // Der Dialog, aus dem gespeichert wird: nur ihn duerfen die Wege unten
+        // schliessen, nicht einen, der waehrend der Anfrage offen ist (#1997).
+        const modalContext = captureModalContext();
         saveBtn.disabled    = true;
         saveBtn.textContent = '…';
 
@@ -4612,7 +4617,7 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
             const res = await api.post('/budget', await withReceipts());
             state.entries.unshift(res.data);
             await reloadAfterSave(() => reloadMonth());
-            closeModal({ force: true });
+            closeModal({ force: true, context: modalContext });
             redrawEntries();
             window.yuvomi?.showToast(t('budget.addedToast'), 'success');
           } else if (entry.recurrence_parent_id || (entry.is_recurring && recurring)) {
@@ -4631,7 +4636,7 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
             // Serie liefe mit Erfolgs-Toast still weiter.
             saveBtn.disabled = false;
             saveBtn.textContent = t('common.save');
-            closeModal({ force: true });
+            closeModal({ force: true, context: modalContext });
             const scope = await recurringChoiceModal({
               title: t('budget.recurringSeriesScope'),
               thisLabel: t('budget.recurringThisOnly'),
@@ -4678,7 +4683,7 @@ function openBudgetModal({ mode, entry = null, initialType = '', period = null }
             const idx = state.entries.findIndex((e) => e.id === entry.id);
             if (idx !== -1) state.entries[idx] = res.data;
             await reloadAfterSave(() => reloadMonth());
-            closeModal({ force: true });
+            closeModal({ force: true, context: modalContext });
             renderBody();
             window.yuvomi?.showToast(t('budget.savedToast'), 'success');
           }
@@ -5287,7 +5292,7 @@ const LOAN_REFUSALS = new Map([
 /**
  * Was der Darlehens-Dialog zu einem fehlgeschlagenen Speichern sagt (#1656).
  * Nie der Satz des Servers: eine 400 bekommt den Satz ihres Grundes oder den
- * allgemeinen des Dialogs, alles andere den Satz der App (friendlyError).
+ * allgemeinen des Dialogs, alles andere den Satz der App (errorSentence).
  *
  * @param {unknown} err
  * @returns {{ fields: string|null, message: string }}
@@ -5330,11 +5335,13 @@ function refusalSentence(err, { refusals, statuses, fallback }) {
       ? { fields: entry[0], message: refusalText(entry, err.data?.max) }
       : { fields: null, message: t(fallback) };
   }
-  // friendlyError reicht bei einem Status ohne eigenen Satz den Text des Servers
-  // durch (Uebergang, #1909) - hier nur dort fragen, wo es einen eigenen hat,
-  // sonst gilt der Satz dieser Stelle.
-  const known = status === 0 || status === 403 || status === 404 || status >= 500 || !navigator.onLine;
-  return { fields: null, message: known ? friendlyError(err) : t(fallback) };
+  // Der Satz der App, nie der des Servers (#1909): offline und eine Absage
+  // (403) ueber errorSentence, "nicht gefunden", Serverfehler und kein Netz
+  // ueber dieselbe Zuordnung wie ein Ladefehler. Jeder andere Status (409 ohne
+  // Grund, 429, ein Wurf ohne Antwort) bekommt den Satz dieser Stelle.
+  if (status === 0 || status === 403) return { fields: null, message: errorSentence(err, fallback) };
+  const known = status === 404 || status >= 500 || !navigator.onLine;
+  return { fields: null, message: (known && loadErrorSentence(err)) || t(fallback) };
 }
 
 const BUDGET_FAILED = 'common.errorOccurred';
@@ -5613,6 +5620,8 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
   if (accountSel) body.account_id = accountSel.value === '' ? null : parseInt(accountSel.value, 10);
 
   const saveLabel = isEdit ? t('common.save') : t('common.add');
+  // Vor der ersten Anfrage: geschlossen wird nur dieser Dialog (#1997).
+  const modalContext = captureModalContext();
   saveBtn.disabled = true;
   saveBtn.textContent = '…';
   // Gezahlte Raten gegen die abgeleitete Laufzeit (#1656) - nur wo es etwas zu
@@ -5633,7 +5642,7 @@ async function saveLoanFromPanel(panel, saveBtn, { loan = null, closeAfterSave =
       await api.post('/budget/loans', body);
     }
     await reloadAfterSave(() => reloadMonth());
-    if (closeAfterSave) closeModal({ force: true });
+    if (closeAfterSave) closeModal({ force: true, context: modalContext });
     renderBody();
     window.yuvomi?.showToast(isEdit ? t('budget.loanSavedToast') : t('budget.loanAddedToast'), 'success');
   } catch (err) {
@@ -5820,9 +5829,10 @@ async function openConfirmBookingModal(id) {
         }
         if (rejectOffGridAmount(amountEl, value, currency, { original: absAmount })) return;
         const date = panel.querySelector('#cb-date').value;
+        const modalContext = captureModalContext();
         try {
           await api.patch(`/budget/${id}/confirm`, { amount: value, date: date || undefined });
-          closeModal({ force: true });
+          closeModal({ force: true, context: modalContext });
           await reloadAfterSave(() => reloadMonth());
           renderBody();
           refocusAfterRender();
@@ -6235,6 +6245,8 @@ export const __test = {
   // den er mit Schreibrecht zeigt, im Bericht steht (P6-Muster).
   openLoanModal,
   openAccountModal,
+  // #1997: das Buchen einer vorgemerkten Buchung, bis in seinen Speichern-Weg.
+  openConfirmBookingModal,
   // renderBody() schreibt in den Seitencontainer statt Markup zurueckzugeben;
   // derselbe Griff wie updateTabsForTest oben laesst den ECHTEN Render-Pfad
   // des Buchungs-Tabs laufen, statt seinen Quelltext zu lesen.
