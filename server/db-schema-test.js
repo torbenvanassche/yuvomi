@@ -1564,7 +1564,11 @@ const MIGRATIONS_SQL = {
   252: `
     ALTER TABLE task_completions ADD COLUMN source TEXT;
   `,
-  255: `
+  254: `
+    ALTER TABLE birthdays ADD COLUMN year_unknown INTEGER NOT NULL DEFAULT 0 CHECK(year_unknown IN (0, 1));
+    ALTER TABLE contacts ADD COLUMN birthday_year_unknown INTEGER NOT NULL DEFAULT 0 CHECK(birthday_year_unknown IN (0, 1));
+  `,
+  256: `
     ALTER TABLE budget_entries ADD COLUMN transfer_entry_id INTEGER NULL REFERENCES budget_entries(id) ON DELETE CASCADE;
     CREATE INDEX idx_budget_transfer ON budget_entries(transfer_entry_id);
     INSERT OR IGNORE INTO budget_subcategories (key, category_key, name, sort_order)
