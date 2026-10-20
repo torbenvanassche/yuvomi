@@ -2248,7 +2248,7 @@ including three-decimal currencies. The Savings chart bucket (`__saving__`) sele
 |--------|------|-----------|
 | title | TEXT | NOT NULL |
 | amount | REAL | NOT NULL (positive = income, negative = expense) |
-| transfer_entry_id | INTEGER | Nullable FK → Budget Entries(id), ON DELETE CASCADE; reciprocal partner ID for an account transfer, NULL for an ordinary entry (migration v256) |
+| transfer_entry_id | INTEGER | Nullable FK → Budget Entries(id), ON DELETE CASCADE; reciprocal partner ID for an account transfer, NULL for an ordinary entry (migration v257) |
 | category | TEXT | FK → Budget Categories (by key), NOT NULL |
 | subcategory | TEXT | FK → Budget Subcategories (by key), default '' |
 | date | TEXT | DATE, NOT NULL |
