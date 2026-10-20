@@ -234,6 +234,32 @@ export const CASE_MESSAGES = new Map([
   // Die im Kontaktformular GEWAEHLTE Kategorie gibt es nicht mehr: das
   // Formular bleibt offen und bietet die aktuellen Kategorien an.
   ['contacts_selected_category_not_found', 'contacts.errorSelectedCategoryGone'],
+  // Ein Feld, das der Server abweist (#1909): je Feld ein ganzer Satz, die
+  // Grenze als Zahl (CASE_PARAMS). Erreicht vor allem der vCard-Import, dessen
+  // Toast bis dahin den englischen Servertext zeigte, weil der das Feld nannte.
+  // Das Formular begrenzt seine Felder nicht alle selbst und trifft sie auch.
+  ['contacts_name_too_long', 'contacts.errorNameTooLong'],
+  ['contacts_phone_too_long', 'contacts.errorPhoneTooLong'],
+  ['contacts_email_too_long', 'contacts.errorEmailTooLong'],
+  ['contacts_address_too_long', 'contacts.errorAddressTooLong'],
+  ['contacts_notes_too_long', 'contacts.errorNotesTooLong'],
+  ['contacts_birthday_invalid', 'contacts.errorBirthdayInvalid'],
+  // Die Mehrfachfelder des Formulars (phones, emails, addresses): je Fall ein
+  // ganzer Satz, der das Feld selbst nennt - nie ein eingesetztes Nomen. Eine
+  // zu lange Nummer oder Adresse in der Liste ist derselbe Satz wie im
+  // Einzelfeld oben, nur mit der Grenze der Liste. `*_entry_invalid` deckt,
+  // was nur ein API-Client falsch schicken kann (server/routes/contacts.js).
+  ['contacts_phone_entry_invalid', 'contacts.errorPhoneEntryInvalid'],
+  ['contacts_phones_too_many', 'contacts.errorPhonesTooMany'],
+  ['contacts_phone_label_too_long', 'contacts.errorPhoneLabelTooLong'],
+  ['contacts_email_entry_invalid', 'contacts.errorEmailEntryInvalid'],
+  ['contacts_email_invalid', 'contacts.errorEmailInvalid'],
+  ['contacts_emails_too_many', 'contacts.errorEmailsTooMany'],
+  ['contacts_email_label_too_long', 'contacts.errorEmailLabelTooLong'],
+  ['contacts_address_entry_invalid', 'contacts.errorAddressEntryInvalid'],
+  ['contacts_addresses_too_many', 'contacts.errorAddressesTooMany'],
+  ['contacts_address_label_too_long', 'contacts.errorAddressLabelTooLong'],
+  ['contacts_address_part_too_long', 'contacts.errorAddressPartTooLong'],
   // Orte und Kategorien des Inventars (#1909). Den Namen gibt es auf dieser
   // Ebene schon (`category_exists` deckt die Kategorien, oben); ein Ort oder
   // eine Kategorie, die inzwischen geloescht wurde, ist ein "gibt es nicht
@@ -341,6 +367,18 @@ export const CASE_PARAMS = new Map([
   ['health_cycle_import_too_many_rows', ['limit']],
   ['documents_folder_too_deep', ['limit']],
   ['quick_links_limit_reached', ['limit']],
+  ['contacts_name_too_long', ['limit']],
+  ['contacts_phone_too_long', ['limit']],
+  ['contacts_email_too_long', ['limit']],
+  ['contacts_address_too_long', ['limit']],
+  ['contacts_notes_too_long', ['limit']],
+  ['contacts_phones_too_many', ['limit']],
+  ['contacts_phone_label_too_long', ['limit']],
+  ['contacts_emails_too_many', ['limit']],
+  ['contacts_email_label_too_long', ['limit']],
+  ['contacts_addresses_too_many', ['limit']],
+  ['contacts_address_label_too_long', ['limit']],
+  ['contacts_address_part_too_long', ['limit']],
   ['recipe_providers_sync_http_status', ['status']],
 ]);
 

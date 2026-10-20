@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are not supported. The amount field follows the source account's currency. Existing transfers
   remain editable after account or household currency changes when their accounts stay the same.
 
+- **A device showing the wall display gets no personal push notifications** (#1904). Reminders,
+  task-comment mentions, and medication doses are personal and would disturb a tablet mounted in
+  the kitchen. While the wall is up, the device reports its state to the server and delivery is
+  paused for it. The pause expires after 12 hours so a device that was switched off with the wall
+  up heals on its own; a device that comes back alive renews it automatically.
+
 - **Wall display shows today's meals, shopping count, housekeeping status, waste pickups, and
   expiring pantry items** (#1903). Paired wall displays previously showed only the calendar,
   tasks, rewards, and weather sections of the today sheet. The dashboard now delivers the five
@@ -300,6 +306,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `recipe_providers_url_invalid`, `recipe_providers_external_url_invalid`,
   `recipe_providers_private_network`, `recipe_providers_connection_failed`,
   `recipe_providers_account_exists`), and the status codes and texts are unchanged.
+- **Contacts and housekeeping: error messages in your language** (#1909). When every contact of a
+  vCard import failed, the message named the rejected field in the server's English text, for
+  example "Telefon may be at most 100 characters long." It now says the sentence of the app, which
+  still names the field and its maximum length, or that the birthday is not a valid date; saving
+  the contact form says the same. Opening a housekeeping visit from a calendar link that no longer
+  works now names a deleted visit as such and says to wait a moment when the server asks
+  to wait, instead of a general error. For API clients: creating or editing a contact with a field
+  that is too long or an invalid birthday carries a `reason` next to `error`
+  (`contacts_name_too_long`, `contacts_phone_too_long`, `contacts_email_too_long`,
+  `contacts_address_too_long`, `contacts_notes_too_long` with `params.limit`, and
+  `contacts_birthday_invalid`), and the status codes and texts are unchanged.
+- **Contacts: the form says which phone number or email address it refused** (#1909). Saving a
+  contact with an email address without an @, or a phone number that was too long, said only that
+  an error occurred. It now says what is wrong: that the email address needs the form
+  name@example.com, or how long a phone number may be, and likewise for too many entries or a label
+  that is too long. For API clients: every refusal of `phones`, `emails` and `addresses` carries a
+  `reason` next to `error` (`contacts_phones_too_many`, `contacts_emails_too_many`,
+  `contacts_addresses_too_many`, `contacts_phone_label_too_long`, `contacts_email_label_too_long`,
+  `contacts_address_label_too_long`, `contacts_address_part_too_long`, `contacts_phone_too_long` and
+  `contacts_email_too_long` with `params.limit`, `contacts_email_invalid`, and
+  `contacts_phone_entry_invalid`, `contacts_email_entry_invalid`, `contacts_address_entry_invalid`
+  for an entry that is incomplete or malformed), and the status codes and texts are unchanged.
+- **Contacts: a phone number may be 100 characters long everywhere** (#1909). The form sends the
+  first number twice, as `phone` and as the first entry of `phones`, and the two had different
+  limits: a number of 101 characters was refused with "at most 100", and after shortening it to 60
+  with "at most 50". The list `phones` now accepts 100 characters like the single field, so a number
+  between 51 and 100 characters - for example one written with an extension or a note - saves, and
+  the phone fields of the form stop at the same 100 characters. One limit for the server and the
+  form lives in `public/utils/contact-limits.js`.
 - **Recurring events on the day the clocks change are no longer an hour off (#2034).**
   A series with its own time zone, for example a daily 01:30 event in Berlin, showed the occurrence
   on the day of the clock change one hour early or late, both in the calendar and in subscribed
