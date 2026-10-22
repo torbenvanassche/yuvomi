@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   refreshed; retrying reports the total across successful batches.
 
 ### Fixed
+- **Budget entries accept the comma on an iPhone's decimal keyboard.** (#2170) Income,
+  expenses, transfers and pending-entry confirmations accept comma or point decimals without
+  losing cents, including when the device and household use different number formats. Existing
+  amounts use the household's number format when edited. Currency precision checks still apply;
+  malformed amounts and ambiguous thousands grouping are rejected before saving.
+
 - **A new event appears at its time in the calendar right away.** After adding an event, the
   agenda (and every other day list) showed it below all other events of that day until the next
   reload, whatever its start time. The same happened when an edit moved an event to another time
