@@ -36,6 +36,29 @@ function um(locale, eingabe, erwartet) {
   });
 }
 
+test('decimal-keyboard amounts accept comma and point across device/household locales (#2170)', () => {
+  for (const locale of ['en-US', 'de', 'nl-BE', 'de-CH', 'ar-EG', 'fa']) {
+    withFormatLocale(locale, () => {
+      for (const input of ['12,50', '12.50', ' 12,50 ', '12', '0,01', ',50', '.50']) {
+        assert.equal(parseAmountInput(input), Number(input.trim().replace(',', '.')), `${locale}: ${input}`);
+        assert.equal(amountInputProblem(input, 'EUR', { decimalComma: true }), null, `${locale}: validate ${input}`);
+      }
+      for (const input of ['12,50 EUR', '12.50oops', '12,50.00', '1,2,3', '1e3', 'Infinity', '1 234,50']) {
+        assert.ok(Number.isNaN(parseAmountInput(input)), `${locale}: reject ${input}`);
+      }
+      assert.equal(parseAmountInput(''), null);
+      assert.equal(parseAmountInput(' '), null);
+      for (const currency of ['EUR', 'JPY', 'KWD']) {
+        for (const amount of [12.5, 1.234, 0.001, 12.5555]) {
+          assert.equal(parseAmountInput(amountToInput(amount, currency)), amount, `${locale}/${currency}: edit ${amount}`);
+        }
+      }
+    });
+  }
+  withFormatLocale('en-US', () => assert.ok(Number.isNaN(parseAmountInput('1,234'))));
+  withFormatLocale('de', () => assert.ok(Number.isNaN(parseAmountInput('1.234'))));
+});
+
 test('toDecimalString: Ziffern und Trenner kommen aus der eingestellten Region', () => {
   um('de', '12,50', '12.50');
   um('en-US', '12.50', '12.50');
