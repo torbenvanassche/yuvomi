@@ -140,12 +140,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `scopes` stay optional for integrations that create tokens themselves.
 
 ### Fixed
-- **Budget entries accept the comma on an iPhone's decimal keyboard.** (#2170) Income,
-  expenses, transfers and pending-entry confirmations accept comma or point decimals without
-  losing cents, including when the device and household use different number formats. Existing
-  amounts use the household's number format when edited. Currency precision checks still apply;
-  malformed amounts and ambiguous thousands grouping are rejected before saving.
-
+- **Amount fields accept comma or point decimals across devices.** (#2170) Budget entries,
+  transfers, confirmations, plans, subscriptions, shopping prices, inventory, housekeeping,
+  rewards and shared expenses preserve cents even when the keyboard and household number
+  formats differ. Existing amounts use the household's number format when edited. Currency
+  precision checks still apply; malformed amounts and ambiguous thousands grouping are
+  rejected before saving.
 - **A long reminder list name no longer squeezes the module picker in the sync settings** (#2284).
   The picker keeps the width of its value; next to a long name on a phone it moves below the name,
   and a long name wraps instead of running past the row.
