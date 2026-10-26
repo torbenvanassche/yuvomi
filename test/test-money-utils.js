@@ -15,7 +15,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toDecimalString, amountInputToCents, centsToAmountInput, amountToInput, breaksOffAtSeparator, toStoredNumber, amountInputProblem, amountExample, currencyFractionDigits, parseAmountInput, smallestUnitLabel } from '../public/utils/money.js';
+import { toDecimalString, toAmountDecimalString, amountInputToCents, centsToAmountInput, amountToInput, breaksOffAtSeparator, toStoredNumber, amountInputProblem, amountExample, currencyFractionDigits, parseAmountInput, smallestUnitLabel } from '../public/utils/money.js';
 import { parseQuantity } from '../server/services/shopping-import.js';
 
 /**
@@ -182,6 +182,26 @@ test('toDecimalString: positionstreu in CODEPOINTS, nicht in UTF-16-Einheiten', 
   // Ziffer eben NICHT, und das ist der Grund fuer die Codepoint-Zaehlung.
   withFormatLocale('de', () => {
     assert.notEqual(toDecimalString('𞥒 kg').length, '𞥒 kg'.length);
+  });
+});
+
+test('shopping prices accepted with a keyboard comma retain their cents (#2170)', () => {
+  withFormatLocale('en-US', () => {
+    for (const [text, cents] of [['1,99', 199], ['1.99', 199], [',99', 99], ['0,00', 0]]) {
+      assert.equal(amountInputProblem(text, 'EUR', { decimalComma: true, sign: 'nonNegative' }), null);
+      assert.equal(amountInputToCents(text, 'EUR'), cents, `${text}: an accepted price must not become null`);
+    }
+    for (const text of ['1,000', '1,99oops', '1,99.00', '']) assert.equal(amountInputToCents(text, 'EUR'), null);
+  });
+});
+
+test('comma-aware decimal strings preserve exact digits and precision (#2170)', () => {
+  withFormatLocale('en-US', () => {
+    assert.equal(toAmountDecimalString('12,50'), '12.50');
+    assert.equal(toAmountDecimalString('90071992547409,91'), '90071992547409.91');
+    assert.equal(toAmountDecimalString('12,5000'), '12.5000');
+    assert.equal(amountInputProblem('12,5000', 'EUR', { decimalComma: true }), 'precision');
+    assert.equal(toAmountDecimalString('1,000'), '', 'grouping remains rejected');
   });
 });
 
