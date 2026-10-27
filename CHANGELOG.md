@@ -187,6 +187,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The quick links API refuses in English** (#1695). `/api/v1/quick-links` still answered
   "Schnellzugriff nicht gefunden", "Keine Berechtigung", "ids muss ein Array sein" and "Interner
   Fehler"; every `error` there is English now, with the same status codes and reasons.
+- **The inventory API refuses in English and names its reason in the API description** (#1695,
+  #2267). `/api/v1/inventory/items` and its tracked dates, service log and booking links still
+  answered in German or with German field names ("Kilometerstand darf nicht negativ sein.",
+  "Kategorie must be one of: ...", "Maximal 10 Fristen je Gegenstand."); every `error` there is
+  English now and names the request field (`odometer`, `category`, `interval_months` ...), with the
+  same status codes. The OpenAPI description now lists `inventory_item_not_found` (404) at the
+  history and service log routes, where they already sent it.
+- **The contacts API refuses in English and names its reasons in the API description** (#1695,
+  #2267). `/api/v1/contacts` still answered "Interner Fehler", "Familienmitglieder können nicht aus
+  der Kontaktliste gelöscht werden." and sentences with German field names ("Telefon may be at most
+  100 characters long.", "Geburtstag must be in YYYY-MM-DD format."); every `error` there is English
+  now and names the request field (`phone`, `birthday`, `firstName` ...), with the same status codes
+  and reasons. The OpenAPI description now lists `category_exists`, `category_in_use`,
+  `category_last`, `contact_email_protected` and `family_member_contact` at the contact routes, and
+  `contacts_contact_not_found` at the vCard download, where they already sent them.
+- **The health API refuses in English** (#1695, #2267). `/api/v1/health` still answered "Ungültige
+  ID.", "Ungültige Person.", "Person nicht gefunden.", "caregiver_ids muss eine Liste sein.",
+  "value_num kann nicht geleert werden." and two German 403 sentences; every `error` there is English
+  now, with the same status codes. The OpenAPI description of `PUT /health/caregivers/{subjectId}`
+  now names `account_deactivated`, which it already sent.
+- **Calendar subscriptions, the Apple connection and event targets refuse in English** (#1695).
+  `/api/v1/calendar` still answered "Abonnement nicht gefunden.", "name: Pflichtfeld, max. 100
+  Zeichen.", "from/to müssen YYYY-MM-DD sein", "target_caldav_account_id: ungültige Konto-ID." and
+  "Interner Fehler" for subscriptions, the Apple connection, reading a range, the holiday feed and
+  the sync target of an event; every `error` there is English now, with the same status codes.
+- **The shopping, tasks, push and weather APIs refuse in English** (#1695). They still answered
+  "order muss ein nicht-leeres Array von IDs sein.", "Menge may be at most 100 characters long.",
+  "sync_target: erwartet ...", "Maximal 2 Verschachtelungsebenen erlaubt.", "endpoint ist
+  erforderlich." or "Ungültiger Icon-Code."; every `error` there is English now and names the request
+  field (`quantity`, `notes`, `category`, `name`), with the same status codes and reasons.
+- **The meal plan, pantry and recipes APIs refuse in English** (#1695, #2267). They still answered
+  "Mahlzeit nicht gefunden", "Mindestens eine Mahlzeit ist erforderlich.", "Menge darf nicht negativ
+  sein.", "Lagerort nicht gefunden." and sentences with German field names ("Titel is required.",
+  "Mahlzeit-Typ must be one of: ..."); every `error` there is English now and names the request field
+  (`title`, `meal_type`, `quantity` ...), with the same status codes and reasons. The meal plan and
+  the pantry no longer show the server's sentence in a toast but their own, in your language. The
+  OpenAPI description now lists `recipe_mirrored` and `cross_module_access` at the recipe, meal and
+  pantry routes that already sent them.
+- **The API description names every reason a route sends** (#2267). The OpenAPI spec now lists
+  the `reason` values of the sign-in and account routes (`invalid_code`, `not_enabled`,
+  `account_cannot_sign_in`, `password_login_disabled`, `browser_session_required`,
+  `setup_completed`, `account_deactivated`), the category and subcategory management of budget and
+  tasks, the shopping lists (`shopping_list_not_found`, `nothing_open`, `recipient_no_email`,
+  `smtp_unconfigured`), `display_only` and `display_action` for paired displays, and
+  `cross_module_access` where a route needs a second module. A failed SSO link names its
+  `oidc_link_error` values.
 - **A new API token now starts with an expiry and a module limit.** Until now a token created with
   only a name never expired and could do everything the selected person may do. The form now offers
   30 days, 90 days (preselected), 1 year, a custom date or no expiration, and shows the end date; the
@@ -201,6 +247,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   formats differ. Existing amounts use the household's number format when edited. Currency
   precision checks still apply; malformed amounts and ambiguous thousands grouping are
   rejected before saving.
+- **A subscription or loan payment booked to an account in another currency is in that account's
+  currency** (#2302). An account in US dollars got its subscription payments and loan installments
+  in the household currency, so its balance added dollars and euros as if they were one. A
+  subscription now converts its payment into the account's currency with the cached exchange rate;
+  a loan installment books unconverted when the loan is in the account's currency, with the loan's
+  fixed rate when the account is in the household currency, and through both rates for a third
+  currency - without a known rate the installment is refused instead of booked with a wrong
+  amount. Archiving, deleting or switching the currency of an account converts the subscription
+  payment still waiting on it. Bookings made before this update stay as they are and count as the
+  account's currency: payments a subscription or loan booked earlier on such an account are still
+  in the household currency and can be corrected by hand.
+- **Accounts in another currency show their own currency** (#2302). The accounts page wrote every
+  balance, starting balance and available credit with the household currency sign, so 5,000 yen
+  read as 5,000 euros. Each account now shows its amounts in its currency, and the amount field
+  of a budget entry follows the account you pick, with its sign and decimal places. Net worth over
+  accounts in several currencies is converted with the cached exchange rates and marked as an
+  approximation (≈, with the date of the rates); without a rate it shows the total per currency
+  instead of adding dollars and euros.
+- **Filtered to one account, the budget overview is in that account's currency** (#2302). The
+  balance, income, expenses, transfers, pending amount and category chart of an account in
+  dollars still showed euros, so the numbers next to the statement were not the statement's. All
+  of them now switch together to the account's currency while the filter is set, and each entry
+  in the list shows its own account's currency. Without a filter the overview stays in the
+  household currency as before.
+- **Settings - Wall tablets names the pairing address before a code exists** (#2294). A tablet
+  pairs at your instance's `/pair` address, not through the sign-in page, but the page only said
+  so next to a freshly generated code. It now shows the two steps and the full address up front,
+  so an admin who opens the page first - or whose instance signs in through OIDC only - knows
+  where the tablet goes.
 - **A recurring event from a one-time calendar import keeps its time zone** (#2306). An imported
   weekly appointment at 17:00 in Vienna moved to 16:00 after the clocks changed, and an occurrence
   the file had cancelled after the change could show up again or take its neighbour with it. The
@@ -371,6 +446,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   checks that each of them opens the dialog.
 
 ### Security
+- **An account's currency must be a real currency code** (#2302). The budget API stored any text up
+  to eight characters as an account currency, and a code like "XYZ1" stopped the whole budget page
+  from rendering for everyone in the household. Accounts now take only the supported ISO 4217
+  codes, and the app shows an unusable stored code in the household currency instead of failing.
 - **The Docker image runs on Node.js 24.22.1, which fixes CVE-2026-111497** (#2286). The Brotli
   decoder built into Node.js could write past its buffer on a crafted compressed stream, which can
   crash the server or, in the worst case, run code. The image was pinned to an earlier Node.js 24
