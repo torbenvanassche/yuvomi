@@ -13,7 +13,8 @@ import {
   legacyColorSnapshotKey, forgetLegacyColorSnapshot, legacyColorChosenIds,
   legacyColorHealKey, legacyColorHealEnded, legacyColorCutoff,
 } from './legacy-color-snapshot.js';
-import { assignNewOverride, reassignDefaultOnCalendarMove } from './sync-assignment.js';
+import { assignNewOverride, calendarDefaultAssignees, reassignDefaultOnCalendarMove } from './sync-assignment.js';
+import { assigneeFields, readAllDefaultAssignees } from './default-assignees.js';
 import {
   pruneDeletedEvents, countMirroredEvents, deleteMirroredEvents,
   countAccountEvents as countEventsOfAccount, deleteAccountEvents,
@@ -39,6 +40,7 @@ import { normalizeCalColor, calendarDisplayName } from '../utils/calendar-meta.j
 import { authoredAfterInbound, outboundEvent, outboundRecurrenceRule } from './outbound-dtstart.js';
 import { icsReading, icsSnapshot, isEcho } from './outbound-echo.js';
 import { followInboundStartChange } from './calendar-occurrence-overrides.js';
+import { storeImportedExceptions } from './imported-occurrence-key.js';
 
 // Reused functions from apple-calendar.js
 import {
@@ -717,10 +719,12 @@ async function getCalendars(accountId, { refresh = false, createClient } = {}) {
       ORDER BY calendar_name
     `).all(accountId);
 
-    // Standard-Zuweisung je Kalender (#459) aus der geteilten external_calendars-Tabelle.
+    // Standard-Personen je Kalender (#459, #1897) aus der geteilten
+    // external_calendars-Tabelle und ihrer Join-Tabelle.
+    const sets = readAllDefaultAssignees(db.get(), 'calendar');
     const assigneeMap = new Map(
-      db.get().prepare(`SELECT external_id, default_assignee_user_id FROM external_calendars WHERE source = 'caldav'`)
-        .all().map((r) => [r.external_id, r.default_assignee_user_id])
+      db.get().prepare(`SELECT id, external_id FROM external_calendars WHERE source = 'caldav'`)
+        .all().map((r) => [r.external_id, sets.get(Number(r.id)) ?? []])
     );
 
     return calendars.map(cal => ({
@@ -733,7 +737,7 @@ async function getCalendars(accountId, { refresh = false, createClient } = {}) {
       // einem nur lesbaren Kalender sind das die, die nie ankommen.
       writable: writableFromColumn(cal.writable),
       waitingUploads: countWaitingUploads(accountId, cal.calendar_url),
-      default_assignee_user_id: assigneeMap.get(cal.calendar_url) ?? null,
+      ...assigneeFields(assigneeMap.get(cal.calendar_url) ?? []),
       synced: assigneeMap.has(cal.calendar_url),
       // Die Zahl reist mit der Liste, damit die Rückfrage beim Abwählen sie
       // sofort nennen kann (#732). Ein eigener Endpunkt dafür wäre ein zweiter
@@ -1152,11 +1156,6 @@ async function runSync({ createClient } = {}) {
     WHERE external_calendar_id = ? AND external_source = 'caldav' AND caldav_account_id IS ?
     ORDER BY id LIMIT 1
   `);
-  // EXDATE-Ausnahmen der Serie (#489/#549). Additiv (INSERT OR IGNORE): entfernt
-  // keine lokal vom Nutzer ausgenommenen Einzeltermine.
-  const insException = conn.prepare(
-    'INSERT OR IGNORE INTO calendar_event_exceptions (event_id, exception_date) VALUES (?, ?)'
-  );
   // Besitzer (created_by-Fallback) einmal auflösen — konstant über den ganzen Sync.
   const ownerRow = conn.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get();
   const createdBy = ownerRow ? ownerRow.id : 1;
@@ -1307,10 +1306,8 @@ async function runSync({ createClient } = {}) {
 
         // Upsert external calendar metadata
         const calRefId = upsertExternalCalendar('caldav', selCal.calendar_url, selCal.calendar_name, selCal.calendar_color);
-        // Standard-Zuweisung dieses Kalenders (#459) einmal auflösen, nicht pro Event.
-        const calDefaultAssignee = db.get()
-          .prepare('SELECT default_assignee_user_id FROM external_calendars WHERE id = ?')
-          .get(calRefId)?.default_assignee_user_id ?? null;
+        // Standard-Personen dieses Kalenders (#459, #1897) einmal auflösen, nicht pro Event.
+        const calDefaultAssignees = calendarDefaultAssignees(db.get(), calRefId);
 
         // Parse and upsert events
         const calendarUids = new Set();
@@ -1469,7 +1466,7 @@ async function runSync({ createClient } = {}) {
                 reassignDefaultOnCalendarMove(db.get(), eventId, {
                   fromCalRefId: existing.calendar_ref_id,
                   toCalRefId: calRefId,
-                  toDefaultUserId: calDefaultAssignee,
+                  toDefaultUserIds: calDefaultAssignees,
                 });
               } else {
                 // Insert
@@ -1483,17 +1480,17 @@ async function runSync({ createClient } = {}) {
                 // Standard-Zuweisung dieses Kalenders (#459) auf den neuen
                 // Termin; eine Ausnahme einer Serie erbt deren Zuweisung (#2202).
                 const seriesId = ev.seriesUid ? selSeriesRow.get(ev.seriesUid, account.id)?.id ?? null : null;
-                assignNewOverride(db.get(), eventId, seriesId, calDefaultAssignee);
+                assignNewOverride(db.get(), eventId, seriesId, calDefaultAssignees);
               }
 
               // EXDATE + ersetzte Override-Termine als Instanz-Ausnahmen ablegen,
               // damit die Expansion diese Vorkommen überspringt (#489/#549).
               // INSERT OR IGNORE meldet changes = 0, wenn die Ausnahme schon
               // steht, sodass auch hier nur echter Zuwachs als Änderung zählt.
+              // Schluessel in Format A, die alte Zeile desselben Rohwerts heilt
+              // (#2000, #2034 Schritt 5).
               if (ev.rrule && Array.isArray(ev.exdates)) {
-                for (const exDate of ev.exdates) {
-                  if (insException.run(eventId, exDate).changes > 0) changed = true;
-                }
+                if (storeImportedExceptions(conn, eventId, ev) > 0) changed = true;
               }
 
               accountEventCount++;
@@ -1560,6 +1557,11 @@ async function runSync({ createClient } = {}) {
         }
       }
 
+      // Ein Stoppsignal für jede schreibende Phase dieses Kontos (#1863,
+      // #2135): Aufräumen, Löschen, Ändern und Uploads. Nach der ersten
+      // kontoweiten Absage geht in diesem Lauf nichts mehr an das Konto.
+      const stop = outbound.createRefusalStop();
+
       // Ausgehende Löschungen und Änderungen (#593). Nach dem Inbound, weil der
       // Weg zum Objekt für Bestandstermine erst aus dessen Abruf bekannt wird;
       // der Inbound überspringt dafür alles, was hier noch aussteht.
@@ -1569,10 +1571,8 @@ async function runSync({ createClient } = {}) {
         // Die Reste nie bestätigter Uploads entfernen (#1882), in den
         // Kalendern, die dieser Lauf abgerufen hat.
         await outbound.releaseLeftoverUploads(client, {
-          source: 'caldav', accountId: account.id, calendarUrls: ownCalendarUrls,
+          source: 'caldav', accountId: account.id, calendarUrls: ownCalendarUrls, stop,
         });
-        // Ein Stoppsignal für Löschen und Ändern dieses Kontos (#1863).
-        const stop = outbound.createRefusalStop();
         await processPendingDeletions(client, 'caldav', objectIndex, ownCalendarUrls, {
           accountId: account.id, complete: fetchedEveryCalendar, outcome: deletions,
           isSelected: selectionOf(account.id), stop,
@@ -1593,7 +1593,7 @@ async function runSync({ createClient } = {}) {
       // Einmal je Lauf: die Zone, an der naive Zeiten haengen (#938).
       const householdZone = householdTimeZone(db.get());
 
-      const uploadGate = createUploadGate();
+      const uploadGate = createUploadGate(stop);
       const readOnlyWaiting = new Map();
       for (const listed of localEvents) {
         // Frisch lesen (#1862): die Liste stammt von vor der Schleife, und

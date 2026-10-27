@@ -8,6 +8,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **One entry of a waste calendar can fill several bins** (#2273). Some cities name two bins in
+  one entry when they share a day - Dresden writes "Leerung Bio-Tonne, Blaue Tonne". In the import
+  and in a source's mappings, each label now shows your waste types as chips: pick every bin the
+  entry names, and each gets its own pickup on that day, with its own colour and reminder. No chip
+  picked means the label is not imported. Existing mappings carry over (migration 267). API
+  clients send and read `type_ids`; the single `type_id` is still accepted and returned.
+- **A synced calendar can bring its events in for several people** (#1897). The default
+  assignee of a Google or CalDAV calendar and of a calendar subscription is now a set: a shared
+  "Together" calendar assigns its events to both of you, your own calendars stay with one person
+  each. The field in each calendar row opens a menu with one switch per member; the first person
+  chosen gives an event its colour. The other rules follow the set: an event moved between two
+  calendars takes the new calendar's people while its assignment is still exactly the old
+  calendar's, "Apply to existing appointments" fills in all of them, and a new event assigned to
+  exactly the people of one calendar is created there. Existing single assignments carry over
+  (migration 265). API clients send `default_assignee_user_ids`; the single
+  `default_assignee_user_id` is still accepted and returned.
+- **A reminder list mapped to Tasks can assign its new tasks** (#1221). Next to the list in the
+  reminder sync settings, choose who gets the tasks the sync brings in from it. Only new tasks get
+  them; an assignment you change or clear later stays.
+- **A calendar import can assign its events** (#1940). Choose people in the import form: every
+  new event of the run is assigned to them, and an event you imported before - the same
+  appointment in a second family member's link - is not created again but gets them added. So two
+  children's feeds leave a shared dentist appointment as one event with both, and running an
+  earlier import again with a person assigns what it brought in. Without a person the import works
+  as before.
+- **A recurring shared expense that keeps failing says so on its row** (#1746). When the hourly
+  run cannot book a series for an unexpected reason, the series keeps running and is retried
+  every hour, as before - so a fault on our side never stops a household's rent - but its row,
+  read view and edit dialog now say "Booking failed - retrying every hour" instead of the error
+  living only in the server log. A booking, an edit or a pause for a known reason clears it. API
+  clients see `failed_at` on each recurring expense (migration 263).
+- **A subscription books to an account, and can be shared or private** (#1277, #1701). The
+  subscription dialog has an Account field once the budget has accounts: every payment the
+  subscription books goes to it, the next one as soon as you save. A payment already booked is an
+  ordinary entry - change its account in the budget for a month someone else paid, and a later
+  edit of the subscription leaves it alone. When the chosen account is archived, the subscription
+  books without an account and says so quietly on its row and under the field; restoring the
+  account books to it again, and deleting it clears the choice. In the personal budget mode the
+  dialog also has Visibility, as on a budget entry: a new subscription starts shared, a private one
+  and its payments are seen only by you. For API clients `account_id` is new on
+  `/api/v1/budget/subscriptions`, with `account_name` and `account_archived` in the answer;
+  `/meta` adds `budget_mode` and `accounts`, and an unknown account answers `400` with reason
+  `subscriptions_account_not_found` (migration 264).
+- **A recurring shared expense with a start date in the past asks before booking the gap**
+  (#1748). Creating one, or moving its next date, to a day before today used to book one missed
+  date per hour until it had caught up. The dialog now asks, as resuming does: start from the next
+  date (the default) or book the missed dates. API clients send `missed: "skip"` or `"book"` on
+  `POST` and `PUT`; without it the date stays as before.
 - **A note can be private, and a note can be locked to its author** (#1514, #1602). The note
   editor has Visibility - "All family members" or "Only me" - and "Lock editing", next to colour
   and pin. A private note is gone for everybody else, administrators included: from Notes, the
@@ -89,6 +137,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   batches.
 
 ### Changed
+- **The calendar head names the period, not the module** (#1797, #1462). On a computer
+  "October 2026" (in the agenda its span) is now the title of the head, the year in grey, the
+  arrows right in front of it and "Today" behind it; the arrows no longer stand 300px apart, and
+  nothing behind the title moves when the month changes. "Calendar" stays the page heading for
+  screen readers. Overlapping shift schedules no longer add a row to the head on phones and
+  tablets: a warning sign sits in the title row, and tapping it shows every overlap with a link
+  to the schedule (on a computer the short text stays and opens the same list).
 - **A dialog sheet lightens its backdrop as you drag it, and sheets rise from the bottom edge** (#1801,
   #1802). On a phone, pulling a dialog down now fades the dimmed, blurred page behind it with your
   finger, like the "More" sheet already did; the sheet itself stays solid, and released early both
@@ -146,6 +201,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   formats differ. Existing amounts use the household's number format when edited. Currency
   precision checks still apply; malformed amounts and ambiguous thousands grouping are
   rejected before saving.
+- **A recurring event from a one-time calendar import keeps its time zone** (#2306). An imported
+  weekly appointment at 17:00 in Vienna moved to 16:00 after the clocks changed, and an occurrence
+  the file had cancelled after the change could show up again or take its neighbour with it. The
+  import now keeps the time zone of the series, as calendar subscriptions, CalDAV and iCloud do,
+  so the time stays put and the cancelled occurrence is gone on its own day. Events imported
+  before stay as they are.
+- **A shared reminder list connected through two CalDAV accounts shows each task and shopping
+  item once** (#1906). When two family members each connected their own account to the same
+  list, every task and item stood in Yuvomi twice. Now the account that brings an entry in first
+  owns it, and the other account neither adds, changes nor removes it, as for events since
+  #1879. Entries that are already double are merged on update (migration 268): the older one
+  stays and takes over the comments, documents and assignees of the other; the other's
+  completions are dropped, since they mirror the same tick. Deleting a CalDAV account now leaves
+  its tasks and shopping items synced without an account, and the next account that has them
+  takes them over instead of adding them again (#1885).
+- **A CalDAV or iCloud server that says "too many requests" or "unavailable" gets a rest for the
+  rest of the run** (#2135). Since #2133 a sync stopped sending deletions and changes to an
+  account after such an answer, but the same run still cleaned up leftovers of unconfirmed uploads
+  and uploaded new events, tasks and shopping items to it. Now nothing more goes to that account
+  until the next run, in the full sync and in the attempt right after an edit; a calendar or list
+  that is only read-only for you still holds up nothing else. A leftover past its one-day grace is
+  no longer given up on such an answer either, so it cannot come back as an entry.
+- **"List" in a shopping item's edit dialog no longer offers lists you cannot add to** (#2283).
+  A shopping list that mirrors a reminder list shared with you read-only is left out of the
+  choice, as calendars and reminder lists already are for events and tasks: an item moved there
+  would have stayed on Yuvomi only, because the server refuses it. An item already on such a list
+  keeps it. API clients see `accepts_new_items` on each list, and a move to a list without it is
+  refused with 400.
+- **A synced entry is removed only after a sync has seen it on the server** (#1839). Before
+  #1837 an upload the server refused still marked the entry as synced, and the next sync took the
+  missing object for "deleted elsewhere" and removed the entry here; a few such entries can still
+  be in a database. Now an event, task or shopping item counts as synced to CalDAV or iCloud only
+  once a sync has found it there. One that was created in Yuvomi and never found becomes local
+  again and is uploaded once more instead of being deleted; an entry a sync has seen and someone
+  then deleted elsewhere goes as before. Existing entries start as not seen, so the first sync
+  after the update deletes nothing it has not seen (migration 266).
+- **An occurrence cancelled in a subscribed or synced calendar stays cancelled after a clock
+  change** (#2000). For a series with its own time zone, an occurrence the provider cancelled or
+  moved could stay visible once its UTC day and its local day fell apart: a New York series at
+  19:30 kept showing a cancelled winter occurrence, a daily Berlin series at 01:30 hid the
+  occurrence before the cancelled one after the switch to summer time, and the countdown named a
+  different next occurrence than the calendar. ICS subscriptions, CalDAV and iCloud now match a
+  cancellation by the occurrence's original start, and the next CalDAV or iCloud sync corrects one
+  stored the old way. Google Calendar and cancellations a provider no longer sends follow
+  separately.
+- **"New - Task" on the Overview opens the new-task form again.** The "+ New" button on a computer
+  and the quick-action button on a phone switched to Tasks and stopped there, because they still
+  looked for the add button under the name it had before the add buttons were unified. Event, Note
+  and Shopping were not affected.
+- **Finishing, editing or deleting from a sheet over the Overview leaves the Overview where it
+  was.** Completing a task, changing or deleting an event, or starting or ending a fast in a sheet
+  opened from the Overview rebuilt the whole page: the loading placeholders flashed, the page shrank
+  to the height of the screen and a computer scrolled back to the top. The Overview now updates in
+  place - the row that goes away closes, the scroll position and the focus stay - and the
+  half-hourly weather update only redraws it when the forecast changed.
 - **A long reminder list name no longer squeezes the module picker in the sync settings** (#2284).
   The picker keeps the width of its value; next to a long name on a phone it moves below the name,
   and a long name wraps instead of running past the row.
