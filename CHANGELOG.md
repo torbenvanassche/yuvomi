@@ -338,6 +338,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   formats differ. Existing amounts use the household's number format when edited. Currency
   precision checks still apply; malformed amounts and ambiguous thousands grouping are
   rejected before saving.
+- **The dashboard and calendar are fast again with synced recurring events** (#2226). Since the
+  fix for occurrences on the clock change day (#2034), every occurrence of a repeating event is
+  placed in its time zone with several lookups, and each lookup set up a fresh date formatter - the
+  slow part. With a few synced calendars the dashboard took over a second and a half on a fast
+  computer and several seconds on a small server, and it held up every other request in the
+  meantime. Each time zone now keeps one formatter, which makes placing an occurrence about ten
+  times faster. The results are unchanged.
 - **A colour is picked where you tap it.** In every colour row (events, notes, categories, accounts,
   your own colour) the tap area of one colour reached into its neighbour's, so a tap just beside a
   colour could pick the next one. The tap areas now meet without overlapping, each as large as a
