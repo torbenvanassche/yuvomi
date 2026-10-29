@@ -72,7 +72,6 @@
         "errorRateLimited": "Hay demasiadas solicitudes en este momento. Espera un momento y vuelve a intentarlo.",
         "requiredFields": "Completa todos los campos obligatorios.",
         "invalidInput": "Entrada no válida.",
-        "togglePasswordVisibility": "Mostrar/ocultar contraseña",
         "errorOfflineMutation": "No se pueden hacer cambios sin conexión. Vuelve a conectarte.",
         "retry": "Reintentar",
         "loadErrorDescription": "Comprueba tu conexión e inténtalo de nuevo.",
@@ -110,7 +109,17 @@
         "errorNotOwner": "Lo creó otra persona: puedes verlo, pero no cambiarlo.",
         "foreignReadOnlyHint": "Creado por {{name}}: puedes verlo, pero no cambiarlo.",
         "deletedNamed": "«{{name}}» eliminado.",
-        "sortMode": "Cambiar orden"
+        "sortMode": "Cambiar orden",
+        "createdNamed": "«{{name}}» creado.",
+        "savedNamed": "«{{name}}» guardado.",
+        "everyNDays": "Cada {{count}} días",
+        "everyNDays_one": "Cada {{count}} día",
+        "everyNWeeks": "Cada {{count}} semanas",
+        "everyNWeeks_one": "Cada {{count}} semana",
+        "everyNMonths": "Cada {{count}} meses",
+        "everyNMonths_one": "Cada {{count}} mes",
+        "everyNYears": "Cada {{count}} años",
+        "everyNYears_one": "Cada {{count}} año"
     },
     "kitchen": {
         "noShoppingLists": "Todavía no hay lista de la compra.",
@@ -326,6 +335,8 @@
         "customizeSaved": "Se ha guardado tu inicio - los demás conservan el suyo.",
         "customizeMoveUp": "Subir",
         "customizeMoveDown": "Bajar",
+        "customizeMoveForward": "Hacia delante",
+        "customizeMoveBack": "Hacia atrás",
         "overdueTasksChip": "{{count}} tarea vencida",
         "overdueTasksChipPlural": "{{count}} tareas vencidas",
         "customizeManage": "Widgets",
@@ -403,6 +414,7 @@
         "todayUntil": "hasta las {{time}}",
         "todayMore": "+{{count}} más hoy",
         "todayLess": "Mostrar menos",
+        "todayShowDay": "Mostrar el día completo",
         "todayMore_one": "+{{count}} más hoy",
         "todayOverdueCount": "{{count}} vencidas",
         "todayOverdueCount_one": "{{count}} vencida",
@@ -426,7 +438,19 @@
         "nutritionEntries_one": "{{count}} registro hoy",
         "weatherUnavailable": "El tiempo no está disponible en este momento",
         "wallScreensaverNone": "Salvapantallas no disponible.",
-        "wallScreensaverStart": "Salvapantallas"
+        "wallScreensaverStart": "Salvapantallas",
+        "todaySummaryEventsAhead": "quedan {{count}} eventos",
+        "todaySummaryEventsAhead_one": "queda {{count}} evento",
+        "todaySummaryOverdue": "{{count}} tareas vencidas",
+        "todaySummaryOverdue_one": "{{count}} tarea vencida",
+        "todayTimelineLabel": "Cronología del día",
+        "todayTimelineEveryone": "Todos",
+        "todayTimelinePast": "terminado",
+        "todayTimelineRunning": "en curso",
+        "todayTimelineNext": "lo siguiente",
+        "todayAlsoTitle": "También hoy",
+        "todayNothingPlanned": "Nada planificado todavía",
+        "todayNothingPlannedSub": "Las citas, tareas y comidas de hoy aparecerán aquí."
     },
     "tasks": {
         "resetOrder": "Ordenar automáticamente",
@@ -483,7 +507,6 @@
         "swipeDone": "Completar",
         "subtaskAdd": "Añadir subtarea",
         "subtaskAddNamed": "Añadir subtarea a {{title}}",
-        "subtaskToggle": "Mostrar subtareas",
         "subtaskMarkDone": "Marcar {{title}} como completada",
         "subtaskRenamePrompt": "Subtarea",
         "subtaskDeleteConfirm": "¿Eliminar «{{title}}»?",
@@ -616,7 +639,7 @@
         "commentsLabel": "Comentarios",
         "commentsEmpty": "Todavía no hay comentarios.",
         "commentsLoadError": "No se pudieron cargar los comentarios.",
-        "commentPlaceholder": "Escribe un comentario, @ menciona a alguien",
+        "commentPlaceholder": "Comentario, @ para mencionar",
         "commentSubmit": "Comentar",
         "commentEdit": "Editar comentario",
         "commentDelete": "Eliminar comentario",
@@ -658,7 +681,9 @@
         "doneSubtasksOpen": "«{{title}}» hecho - quedan {{count}} subtareas abiertas.",
         "doneSubtasksOpen_one": "«{{title}}» hecho - queda una subtarea abierta.",
         "checkAllSubtasks": "Marcar todas",
-        "subtasksAllDone": "«{{title}}» y todas sus subtareas hechas."
+        "subtasksAllDone": "«{{title}}» y todas sus subtareas hechas.",
+        "seriesDoneNamed": "«{{title}}» hecho - próxima vez: {{date}}",
+        "kanbanRestore": "Restaurar"
     },
     "shopping": {
         "itemsRemovedToast_one": "{{count}} artículo eliminado.",
@@ -794,7 +819,9 @@
         "moveReturned": {
             "refused": "«{{item}}» ha vuelto a «{{back}}»: el servidor no lo aceptó en «{{target}}».",
             "waited": "«{{item}}» no se ha movido a «{{target}}»: la sincronización de «{{back}}» lleva más de una semana desactivada. El artículo volverá a aparecer en «{{back}}» en cuanto actives esa lista."
-        }
+        },
+        "moreDetailsHint": "Precio, tienda, enlace, nota",
+        "toPantryAllToPlaceholder": "Elige un lugar …"
     },
     "meals": {
         "ingredientCount_one": "{{count}} ingrediente",
@@ -866,7 +893,6 @@
         "savedRecipeLabel": "Receta guardada",
         "savedRecipePlaceholder": "Seleccionar receta",
         "saveAsRecipe": "Guardar como receta",
-        "recipeScaleLabel": "Escalar ingredientes",
         "deletedToast": "Comida eliminada.",
         "recurrenceLabel": "Repetir semanalmente",
         "recurrenceWeekly": "Semanal",
@@ -892,7 +918,8 @@
         "openRecipeNamed": "Abrir la receta de {{title}}",
         "viewRecipeNamed": "Ver la receta de {{title}}",
         "recipeIngredientsLabel": "Ingredientes de la receta",
-        "recipeIngredientsEdit": "Ajustar"
+        "recipeIngredientsEdit": "Ajustar",
+        "moreDetailsHint": "Receta, notas, enlace"
     },
     "calendar": {
         "searchOpen": "Buscar eventos",
@@ -1193,7 +1220,6 @@
         "localCalendarEventCount": "{{count}} eventos",
         "localCalendarEventCount_one": "{{count}} evento",
         "localCalendarEventCount_other": "{{count}} eventos",
-        "localCalendarCreate": "Crear calendario",
         "localCalendarEmpty": "Aún no hay calendarios.",
         "localCalendarCreated": "Calendario creado",
         "localCalendarSaved": "Calendario guardado",
@@ -1218,7 +1244,10 @@
         "errorSeriesNoOccurrence": "Con esta repetición no habría ningún evento a partir de la fecha de inicio.",
         "localCalendarUploadsHint": "Los eventos de este calendario se suben a iCloud a través de Apple Calendar.",
         "overlapOpenSchedule": "Abrir turnos",
-        "syncTargetNoCalendarForPeople": "Ningún calendario tiene exactamente a estas personas como asignación predeterminada, así que la asignación no elige ninguno. Se usa en su lugar: {{target}}."
+        "syncTargetNoCalendarForPeople": "Ningún calendario tiene exactamente a estas personas como asignación predeterminada, así que la asignación no elige ninguno. Se usa en su lugar: {{target}}.",
+        "localCalendarEdit": "Editar calendario",
+        "localCalendarNew": "Nuevo calendario",
+        "manageSubscriptionsLink": "Suscripciones y sincronización"
     },
     "noteCategories": {
         "categories": "Categorías",
@@ -1274,7 +1303,6 @@
         "colorOrange": "Naranja",
         "colorPurple": "Morado",
         "colorTeal": "Verde azulado",
-        "colorCurrent": "Color actual",
         "colorWhite": "Blanco",
         "colorYellow": "Amarillo",
         "searchClear": "Borrar búsqueda",
@@ -1446,7 +1474,6 @@
         "title": "Presupuesto",
         "newEntry": "Nueva entrada",
         "editEntry": "Editar entrada",
-        "addEntryLabel": "Añadir entrada",
         "newEntryFabLabel": "Nueva entrada",
         "currentMonth": "Este mes",
         "prevMonth": "Mes anterior",
@@ -1744,7 +1771,7 @@
         "loanProgressLabel": "Progreso de amortización",
         "planTab": "Plan",
         "planCategoryBudgets": "Presupuestos por categoría",
-        "planAddBudget": "Definir presupuesto",
+        "planAddBudget": "Definir presupuesto por categoría",
         "planSavingsSetTitle": "Define un objetivo de ahorro",
         "planSavingsSetDesc": "Establece un objetivo de ahorro mensual y sigue tu progreso",
         "planSetGoal": "Definir objetivo",
@@ -1891,7 +1918,11 @@
         "ledgerAccountsAll": "Todas las cuentas",
         "showAccountTransactions": "Ver movimientos",
         "summaryTransfersIn": "Entrantes",
-        "summaryTransfersOut": "Salientes"
+        "summaryTransfersOut": "Salientes",
+        "transferDefaultTitle": "Transferencia {{from}} → {{to}}",
+        "transferMoreDetailsHint": "Categoría y repetición",
+        "loanMoreDetailsHint": "Título, cuenta, moneda y notas",
+        "entryMoreDetailsHint": "Repetición, responsables y recibos"
     },
     "settings": {
         "healthCycleEnableLabel": "Ofrecer el ciclo en el hogar",
@@ -2160,12 +2191,12 @@
         "pwaInstallReady": "Yuvomi se puede instalar como app en este dispositivo.",
         "pwaInstallUnavailable": "Este navegador no ofrece la instalación aquí. En Chrome y Edge está en el menú del navegador; en Safari, en Compartir > Añadir al Dock o Añadir a pantalla de inicio. Sin una dirección HTTPS ningún navegador la ofrece.",
         "pwaInstallInstalled": "Yuvomi ya está instalado en este dispositivo.",
-        "pwaInstallIosHint": "En iPhone o iPad, usa el menú Compartir y elige Añadir a pantalla de inicio.",
+        "pwaInstallIosHint": "En iPhone o iPad: toca Compartir y elige «Añadir a pantalla de inicio».",
         "pwaInstallButton": "Instalar app",
         "pwaInstallInstructionsButton": "Mostrar instrucciones",
         "pwaInstallInstalledButton": "Instalada",
         "pwaInstallAcceptedToast": "Instalación iniciada.",
-        "pwaInstallIosToast": "Abre el menú Compartir y elige Añadir a pantalla de inicio.",
+        "pwaInstallIosToast": "Toca Compartir y elige «Añadir a pantalla de inicio».",
         "pwaInstallAlreadyInstalledToast": "Yuvomi ya está instalado.",
         "pwaInstallUnavailableToast": "La instalación no está disponible ahora mismo.",
         "apiTokensTitle": "Tokens de API",
@@ -2555,7 +2586,7 @@
         "lastSync": "Última sincronización",
         "modulesHint": "Los módulos desactivados desaparecen de la navegación. Los datos se conservan y vuelven a estar disponibles al reactivarlos.",
         "modulesSaved": "Visibilidad de módulos guardada.",
-        "modulesHideForMe": "Ocultar {{module}} para mí",
+        "modulesInMyNavigation": "{{module}} en mi navegación",
         "pageActiveModules": "Módulos activos",
         "pageActiveModulesDescription": "Define qué módulos usa el hogar.",
         "pageInstallModule": "Añadir módulo propio",
@@ -2655,11 +2686,10 @@
         "activeModulesTitle": "Los módulos del hogar",
         "activeModulesHint": "Lo que está apagado aquí no existe para nadie del hogar.",
         "modulesEnableForHousehold": "Activar {{module}} para el hogar",
-        "modulesHideKitchenForMe": "Ocultar todos los módulos de cocina para mí",
+        "modulesKitchenInMyNavigation": "Cocina en mi navegación",
         "modulesHiddenScopeHint": "Los módulos ocultos solo desaparecen de tu navegación. Los enlaces y la búsqueda siguen llegando a ellos.",
         "modulesOrderSaved": "Orden guardado.",
         "modulesHiddenSavedSlot": "Guardado. La posición {{position}} ahora muestra {{module}}.",
-        "modulesHiddenForMe": "Oculto para mí",
         "modulesTitle": "Módulos activos",
         "navigationLabel": "Navegación de ajustes",
         "searchLabel": "Buscar en los ajustes",
@@ -2829,7 +2859,7 @@
         "pageCalendarDefaults": "Valores de eventos",
         "pageCalendarDefaultsDescription": "Define recordatorios y asignación predeterminados para tus propios eventos nuevos.",
         "pageNavigation": "Navegación",
-        "pageNavigationDescription": "Mostrar u ocultar módulos, definir su orden y la navegación móvil.",
+        "pageNavigationDescription": "Orden y vista propia.",
         "pageFeeds": "Feed subscriptions",
         "pageFeedsDescription": "Suscríbete al calendario del hogar en tu propia app de calendario.",
         "pageCalendarSubscriptions": "Calendar subscriptions",
@@ -2871,7 +2901,6 @@
         "permInherit": "Heredar",
         "permInheritedHint": "Heredado: {{value}}",
         "permModuleLockedHint": "Módulo bloqueado",
-        "permSave": "Guardar",
         "permSaved": "Permisos de {{name}} guardados.",
         "permResetSubject": "Restablecer al valor predeterminado",
         "permResetConfirm": "¿Restablecer todos los permisos de {{name}} al valor predeterminado (acceso completo)?",
@@ -2885,9 +2914,6 @@
         "permLoadError": "No se pudieron cargar los permisos.",
         "permNoMembers": "Aún no hay miembros.",
         "permReadOnlyBanner": "Tienes acceso de solo lectura a este módulo: no se pueden hacer cambios.",
-        "permDiscardConfirm": "¿Descartar los cambios sin guardar?",
-        "permDiscard": "Descartar",
-        "permUnsaved": "Cambios sin guardar",
         "leaveDiscardDetail": "Los cambios que hiciste en esta página aún no se han guardado y se perderán si sales ahora.",
         "permSummaryFull": "Acceso completo a todos los módulos y widgets.",
         "permDeviationsLead": "Excepciones:",
@@ -3175,7 +3201,6 @@
             "revoke": "Revocar",
             "revokeConfirm": "¿Revocar esta invitación? El enlace dejará de funcionar.",
             "revoked": "La invitación se ha revocado.",
-            "created": "La invitación se ha creado.",
             "revokeConfirmDetail": "Un enlace que ya hayas enviado o copiado deja de funcionar de inmediato. La persona invitada ya no podrá crear una cuenta con él; tendrías que invitarla de nuevo.",
             "presetLabel": "Permisos iniciales",
             "presetRestricted": "Sin las áreas personales",
@@ -3185,7 +3210,9 @@
             "presetHintRoleLimited": "El rol {{role}} bloquea: {{modules}}.",
             "presetHintUnavailable": "Ahora mismo no se puede mostrar el efecto exacto. La plantilla se aplica igualmente.",
             "presetHintRoleChild": "El rol {{role}} no bloquea ningún módulo. Se suman los permisos iniciales para niños de arriba.",
-            "presetHintChildExtra": "Se suman los permisos iniciales para niños de arriba."
+            "presetHintChildExtra": "Se suman los permisos iniciales para niños de arriba.",
+            "done": "Hecho",
+            "untitled": "Invitación pendiente"
         },
         "healthCaregiversLabel": "Puede registrar datos de salud",
         "healthCaregiversHint": "Estas personas pueden registrar constantes, medicamentos, resultados de laboratorio y actividades para este miembro, y ver sus entradas privadas al hacerlo. El diario del ciclo queda excluido.",
@@ -3417,7 +3444,8 @@
         "reminderListReadOnlyWaiting": "Solo lectura: {{count}} entradas pendientes de subir aquí no llegarán",
         "reminderListAssigneesTasksOnly": "Las personas solo se pueden fijar para listas que van a Tareas.",
         "syncAssigneeNotMember": "Aquí solo se pueden elegir miembros del hogar.",
-        "syncAssigneeUnknown": "Esta persona ya no existe. Recarga la página."
+        "syncAssigneeUnknown": "Esta persona ya no existe. Recarga la página.",
+        "permDetails": "Widgets y más permisos"
     },
     "login": {
         "tagline": "Bienvenido de nuevo. Tu hogar en un solo lugar.",
@@ -3452,15 +3480,14 @@
         "twoFactorCancel": "Cancelar",
         "ssoOnlyHint": "El acceso a este hogar se realiza exclusivamente mediante SSO.",
         "guestPasswordLogin": "Acceso de invitado con contraseña",
-        "accountCannotSignIn": "Esta cuenta no puede iniciar sesión. Ponte en contacto con la administración de tu hogar."
+        "accountCannotSignIn": "Esta cuenta no puede iniciar sesión. Ponte en contacto con la administración de tu hogar.",
+        "invalidCredentialsAskAdmin": "Credenciales incorrectas. ¿Olvidaste la contraseña? La administración de tu hogar puede asignarte una nueva."
     },
     "setup": {
         "title": "Bienvenido a Yuvomi",
         "tagline": "Configura tu cuenta de administrador para empezar.",
         "usernameLabel": "Nombre de usuario",
-        "usernamePlaceholder": "usuario",
         "displayNameLabel": "Nombre visible",
-        "displayNamePlaceholder": "Juan Pérez",
         "passwordLabel": "Contraseña",
         "confirmPasswordLabel": "Confirmar contraseña",
         "submitButton": "Crear cuenta",
@@ -3478,7 +3505,7 @@
         "title": "Instalar Yuvomi",
         "subtitle": "Añadir a la pantalla de inicio",
         "iosTip1": "Toca ",
-        "iosTip2": " → «Añadir a pantalla de inicio»",
+        "iosTip2": " y elige «Añadir a pantalla de inicio».",
         "installButton": "Instalar",
         "dismissLabel": "Cerrar"
     },
@@ -3576,6 +3603,7 @@
         "errorMirrored": "Esta receta procede de un origen de recetas conectado y se modifica allí.",
         "errorRecipeGone": "Esta receta ya no existe.",
         "errorIngredientGone": "Este ingrediente ya no está en la receta.",
+        "errorIngredientsChanged": "La receta ha cambiado mientras tanto. Revisa los ingredientes y vuelve a añadirlos.",
         "errorSelectedPantryItemGone": "El artículo de la despensa elegido ya no existe.",
         "plannedThisWeek": "Planificado esta semana",
         "imageLabel": "Imagen",
@@ -3584,9 +3612,9 @@
         "imageHint": "Una imagen por receta. Aparece en el plan de comidas y en el mosaico de resumen.",
         "imageTooLarge": "La imagen sigue siendo demasiado grande tras reducirla.",
         "ingredientMatchNone": "Sin asignar",
-        "ingredientMatchOpen": "Asignar {{count}} ingredientes a la despensa",
-        "ingredientMatchOpen_one": "Asignar {{count}} ingrediente a la despensa",
-        "ingredientMatchBulkTitle": "Asignar ingredientes a la despensa",
+        "ingredientMatchOpen": "Vincular {{count}} ingredientes con la despensa",
+        "ingredientMatchOpen_one": "Vincular {{count}} ingrediente con la despensa",
+        "ingredientMatchBulkTitle": "Vincular ingredientes con la despensa",
         "ingredientMatchBulkHint": "Elige para cada ingrediente la línea de tu despensa a la que se refiere. Yuvomi no adivina nada - solo cuenta lo que confirmes aquí.",
         "ingredientMatchAction": "Asignar {{name}} a una línea de la despensa",
         "ingredientMatchTitle": "Asignar {{name}}",
@@ -3595,7 +3623,17 @@
         "ingredientMatchEmpty": "La despensa aún está vacía.",
         "ingredientMatchSaved": "Asignación guardada.",
         "ingredientMatchCleared": "Asignación eliminada.",
-        "ingredientMatchLoadError": "No se pudo cargar la despensa."
+        "ingredientMatchLoadError": "No se pudo cargar la despensa.",
+        "servingsLabel": "Raciones",
+        "servingsMultipleLabel": "Cantidad",
+        "servingsFewer": "Menos raciones",
+        "servingsMore": "Más raciones",
+        "servingsLess": "Reducir cantidad",
+        "servingsMoreMultiple": "Aumentar cantidad",
+        "servingsHint": "Para cuántas raciones son las cantidades. Déjalo vacío si no lo sabes.",
+        "servingsInvalid": "Un número entero del 1 al 99.",
+        "moreDetailsHint": "Notas, imagen, enlace",
+        "servingsTimes": "× {{value}}"
     },
     "search": {
         "emptyHint": "Escribe para ir a una sección o crear algo. Desde 2 caracteres también encuentras tus entradas, incluso por partes de palabras.",
@@ -3750,7 +3788,8 @@
         "banner": "Sin conexión - reconectando…",
         "staleData": "Sin conexión: datos del {{time}}",
         "pageTitle": "Estás sin conexión",
-        "pageDescription": "Esta página necesita conexión. En cuanto tu dispositivo vuelva a estar en línea, se cargará sola."
+        "pageDescription": "Esta página necesita conexión. En cuanto tu dispositivo vuelva a estar en línea, se cargará sola.",
+        "snapshot": "Sin conexión con el servidor - datos guardados, solo lectura"
     },
     "emptyHint": {
         "recipes": "Una receta pasa directamente al plan de comidas o a la lista de la compra.",
@@ -3941,7 +3980,6 @@
         "selectedFilesLabel": "{{count}} archivos seleccionados",
         "fileTooLargeNamed": "«{{name}}» es demasiado grande.",
         "uploadProgress": "Subiendo {{current}} de {{total}}…",
-        "storageSettingsLink": "Ajustes de almacenamiento",
         "dmsSearchLabel": "Término de búsqueda",
         "dmsSearching": "Buscando…",
         "dmsSearchError": "El DMS no está disponible en este momento.",
@@ -4025,7 +4063,9 @@
         "dropzoneTitleTouch": "Toca para elegir un archivo",
         "viewerPrevNamed": "Documento anterior: {{name}}",
         "viewerNextNamed": "Documento siguiente: {{name}}",
-        "emptyFolderTitle": "«{{name}}» está vacía"
+        "emptyFolderTitle": "«{{name}}» está vacía",
+        "viewerImageFallbackHint": "No se pudo mostrar esta imagen. Descárgala para abrirla.",
+        "moreDetailsHint": "Descripción y estado"
     },
     "shortcuts": {
         "goKitchen": "Cocina",
@@ -4050,7 +4090,6 @@
         "add": "Añadir acceso rápido",
         "addTitle": "Nuevo acceso rápido",
         "editTitle": "Editar acceso rápido",
-        "addFirst": "Crear el primer acceso rápido",
         "emptyTitle": "Aún no hay accesos rápidos",
         "emptyManage": "Aquí van los enlaces que quieres ver en el resumen.",
         "nameLabel": "Nombre",
@@ -4064,7 +4103,6 @@
         "urlInvalid": "Esta dirección no se puede leer.",
         "urlProtocol": "La dirección debe empezar por http:// o https://.",
         "colorLabel": "Color",
-        "colorOption": "Color {{color}}",
         "iconPick": "Elegir imagen",
         "iconClear": "Quitar imagen",
         "iconHint": "Elige un icono integrado o una imagen propia. Sin ninguno de los dos, la inicial aparece sobre el color elegido.",
@@ -4114,7 +4152,6 @@
         "noTasks": "No hay tareas de limpieza.",
         "everyDays": "Cada {{days}} días",
         "completeTask": "Completar {{name}}",
-        "taskDoneToast": "Tarea completada.",
         "editTask": "Editar tarea",
         "deleteTask": "Eliminar tarea",
         "undoTask": "Deshacer completado",
@@ -4133,11 +4170,10 @@
         "taskNamePlaceholder": "Ejemplo: limpiar baños",
         "taskArea": "Área",
         "taskAreaPlaceholder": "Ejemplo: baño",
-        "taskFrequency": "Frecuencia (días)",
+        "taskFrequency": "Frecuencia",
         "taskCreatedToast": "Tarea de limpieza creada.",
         "reports": "Informes",
         "visitsThisMonth": "Visitas del mes",
-        "lastVisit": "Última visita",
         "pendingChores": "Por hacer",
         "finishedChores": "Hechas este mes",
         "payments": "Pagos",
@@ -4196,9 +4232,6 @@
         "filterMonth": "Mes",
         "editVisit": "Editar servicio",
         "deleteVisit": "Eliminar servicio",
-        "deleteVisitConfirm": "¿Eliminar este servicio? También se quitarán el evento del calendario y la tarea de pago vinculados.",
-        "deleteVisitConfirmDetail": "El resumen mensual se calcula ya sin esta visita, y un justificante subido sigue en Documentos pero deja de estar asociado a esta visita. La cita también se borra en el servicio de calendario conectado, salvo que la sincronización allí esté en solo lectura.",
-        "visitDeletedToast": "Servicio eliminado.",
         "visitSavedToast": "Servicio actualizado.",
         "visitDate": "Fecha del servicio",
         "markPaid": "Marcar como pagado",
@@ -4208,8 +4241,6 @@
         "markUnpaid": "Deshacer pago",
         "markUnpaidConfirm": "¿Deshacer este pago?",
         "markUnpaidConfirmDetail": "El servicio vuelve a figurar como pendiente. La tarea de pago asociada se vuelve a abrir.",
-        "visitPaidToast": "Pago marcado como pagado.",
-        "visitUnpaidToast": "Pago deshecho.",
         "receiptUploadTitle": "Subir comprobante de pago",
         "receiptUploadHint": "Adjunta un comprobante de pago. Aparecerá después en Documentos.",
         "receiptLabel": "Comprobante de pago",
@@ -4278,7 +4309,17 @@
         "checkedOutNamed": "Salida de {{name}} registrada.",
         "visitToday": "Hoy aquí: {{from}} - {{to}}",
         "checkInAgain": "Registrar entrada de nuevo",
-        "checkedInNamed": "Entrada de {{name}} registrada."
+        "checkedInNamed": "Entrada de {{name}} registrada.",
+        "taskDoneNamed": "«{{name}}» hecho.",
+        "visitDeletedNamed": "Servicio del {{date}} eliminado.",
+        "visitPaidNamed": "Servicio del {{date}} pagado.",
+        "visitUnpaidNamed": "Pago del servicio del {{date}} deshecho.",
+        "workerMoreHint": "Contacto, cumpleaños, colores, notas",
+        "markPaidNamed": "Marcar la visita del {{date}} como pagada",
+        "paymentsMonthWithOpen": "{{month}}: {{total}}, de los cuales {{pending}} pendientes",
+        "paymentsMonthAllPaid": "{{month}}: {{total}}, todo pagado",
+        "taskTemplatesHint": "Toca una para añadirla.",
+        "markPaidShort": "Pagado"
     },
     "userMultiSelect": {
         "moreUsers": "más",
@@ -4345,20 +4386,6 @@
             "travel": "Viaje",
             "event": "Evento",
             "shopping": "Compras",
-            "general": "General"
-        },
-        "category": {
-            "groceries": "Supermercado",
-            "rent": "Alquiler",
-            "utilities": "Servicios",
-            "baby": "Bebé",
-            "pets": "Mascotas",
-            "school": "Escuela",
-            "travel": "Viaje",
-            "shopping": "Compras",
-            "subscriptions": "Suscripciones",
-            "health": "Salud",
-            "home": "Casa",
             "general": "General"
         },
         "recurring": {
@@ -4476,7 +4503,10 @@
         "paidLabel": "Pagado",
         "totalsByCategory": "Por categoría",
         "categoryFilter": "Filtrar gastos por categoría",
-        "noExpensesInCategory": "No hay gastos en esta categoría."
+        "noExpensesInCategory": "No hay gastos en esta categoría.",
+        "noCategory": "Sin categoría",
+        "participantsRequired": "Elige al menos una persona.",
+        "moreDetailsHint": "Notas y recibos"
     },
     "wmo": {
         "0": "Cielo despejado",
@@ -4650,13 +4680,6 @@
             "monthly": "Mensual",
             "yearly": "Anual"
         },
-        "cyclePlural": {
-            "daily": "días",
-            "weekly": "semanas",
-            "monthly": "meses",
-            "yearly": "años"
-        },
-        "everyCycle": "Cada {{count}} {{cycle}}",
         "overdueDays": "{{count}} días de retraso",
         "overdueDays_one": "{{count}} día de retraso",
         "dueToday": "Vence hoy",
@@ -4666,13 +4689,10 @@
         "ratesUnavailable": "Tipos de cambio no disponibles",
         "refreshRates": "Actualizar tipos",
         "monthlyCost": "Coste mensual",
-        "activeCount": "{{count}} activas",
-        "monthlyBudget": "Presupuesto mensual",
         "overBudget": "Por encima del presupuesto",
         "remainingBudget": "Presupuesto restante",
         "budgetUsed": "presupuesto usado",
         "yearlyProjection": "Proyección anual",
-        "yearlyProjectionNote": "12 × coste mensual",
         "byCategory": "Por categoría",
         "byPaymentMethod": "Por método de pago",
         "noAnalytics": "Aún no hay datos de gasto.",
@@ -4695,7 +4715,6 @@
         "amountLabel": "Importe",
         "currencyLabel": "Moneda",
         "billingCycleLabel": "Ciclo de facturación",
-        "intervalLabel": "Cada",
         "nextPaymentLabel": "Próximo pago",
         "nextPaymentCompletedHint": "Solo se aplica cuando vuelvas a incluir la suscripción en el presupuesto.",
         "reminderDaysLabel": "Días de recordatorio",
@@ -4761,9 +4780,6 @@
         "paymentMethodOther": "Otros",
         "enabledHint": "Las suscripciones activas se incluyen en los gastos del presupuesto.",
         "currencyRequired": "Selecciona una moneda.",
-        "noBudgetLimit": "Sin límite de presupuesto",
-        "unlimited": "Ilimitado",
-        "setBudgetHint": "Define un presupuesto mensual para controlar el límite.",
         "renewalForecast": "Previsión de renovaciones",
         "logoSearchTitle": "Elegir logotipo",
         "logoSearchLabel": "Sitio web o nombre del servicio",
@@ -4823,7 +4839,8 @@
         "accountArchivedMeta": "{{name}} archivada - se registra sin cuenta",
         "visibilityHint_private": "Solo tú ves esta suscripción y sus pagos.",
         "visibilityHint_shared": "Todo el hogar ve esta suscripción y sus pagos.",
-        "errorAccountGone": "La cuenta seleccionada ya no existe."
+        "errorAccountGone": "La cuenta seleccionada ya no existe.",
+        "moreDetailsHint": "Categoría, método de pago, color y notas"
     },
     "health": {
         "fasting": {
@@ -4954,12 +4971,11 @@
                 "notStarted": "Aún no hay registros"
             },
             "vitals": {
-                "title": "Últimas constantes"
+                "title": "Últimas constantes",
+                "recentTitle": "Última medición"
             },
             "quick": {
                 "title": "Registro rápido",
-                "vital": "Constante",
-                "activity": "Actividad",
                 "meds": "Toma"
             },
             "reminders": {
@@ -5072,7 +5088,6 @@
             "noMeds": "Aún no hay medicamentos.",
             "logTitle": "Registro de tomas",
             "personsLabel": "Persona",
-            "take": "Tomar",
             "skip": "Omitir",
             "takeNamed": "Tomar {{name}}",
             "skipNamed": "Omitir {{name}}",
@@ -5174,8 +5189,8 @@
             "title": "Prevención y vacunas",
             "emptyTitle": "Aún no hay registros de prevención",
             "emptyDesc": "Las vacunas y revisiones aparecerán aquí una vez registradas.",
-            "add": "Añadir registro",
-            "edit": "Editar registro",
+            "add": "Añadir prevención",
+            "edit": "Editar prevención",
             "saved": "Registro guardado.",
             "saveError": "No se pudo guardar el registro.",
             "deleted": "Registro eliminado.",
@@ -5248,9 +5263,9 @@
             },
             "trend": {
                 "title": "Evolución",
-                "analyte": "Parámetro",
                 "tooFew": "Se necesitan al menos dos informes para mostrar una evolución.",
-                "unit": "Unidad: {{unit}}"
+                "unit": "Unidad: {{unit}}",
+                "showFor": "Mostrar evolución de {{name}}"
             },
             "field": {
                 "reportDate": "Fecha del informe",
@@ -5286,7 +5301,7 @@
             "personsLabel": "Persona",
             "prevWeek": "Semana anterior",
             "nextWeek": "Semana siguiente",
-            "add": "Registrar sesión",
+            "add": "Registrar entrenamiento",
             "addShort": "Registrar",
             "edit": "Editar",
             "chartTitle": "Duración por día de la semana",
@@ -5814,17 +5829,6 @@
         "typeNameLabel": "Nombre",
         "typeIconLabel": "Icono",
         "typeColorLabel": "Color",
-        "colorGray": "Gris",
-        "colorBlue": "Azul",
-        "colorGreen": "Verde",
-        "colorOcher": "Ocre",
-        "colorEmerald": "Esmeralda",
-        "colorFuchsia": "Fucsia",
-        "colorRed": "Rojo",
-        "colorCyan": "Cian",
-        "colorOrange": "Naranja",
-        "colorPink": "Rosa",
-        "colorCurrent": "Color actual",
         "typePresetLabel": "Empezar con una plantilla",
         "presetNone": "Sin plantilla",
         "presetGeneral": "Resto",
@@ -5835,10 +5839,6 @@
         "presetBulky": "Voluminosos",
         "newType": "Nuevo tipo",
         "editType": "Editar tipo",
-        "typeSavedToast": "Tipo guardado",
-        "typeDeletedToast": "Tipo eliminado",
-        "typeArchivedToast": "Tipo archivado",
-        "typeRestoredToast": "Tipo restaurado",
         "typeDeleteConfirm": "¿Eliminar este tipo de residuo?",
         "typeDeleteConfirmDetail": "El nombre, el icono y el color de este tipo de residuo se perderán y no podrán recuperarse.",
         "typeDeleteRefused": "Este tipo todavía tiene horarios o recogidas. Archívalo en su lugar, o elimínalos primero.",
@@ -5848,7 +5848,6 @@
         "newSchedule": "Nuevo horario",
         "editSchedule": "Editar horario",
         "scheduleSavedToast": "Horario guardado",
-        "scheduleDeletedToast": "Horario eliminado",
         "scheduleDeleteConfirm": "¿Eliminar este horario?",
         "scheduleDeleteConfirmDetail": "También se eliminarán sus cambios o excepciones. Esto no se puede deshacer.",
         "recurrenceKindLabel": "Se repite",
@@ -5862,8 +5861,6 @@
         "weekdayFri": "vie",
         "weekdaySat": "sáb",
         "weekdaySun": "dom",
-        "intervalLabelWeekly": "Cada N semanas",
-        "intervalLabelMonthly": "Cada N meses",
         "anchorDateLabel": "Primera recogida",
         "monthDayLabel": "Día del mes",
         "monthDayLastDay": "Último día del mes",
@@ -5877,7 +5874,6 @@
         "pickupDateLabel": "Fecha",
         "pickupNoteLabel": "Nota",
         "pickupSavedToast": "Recogida guardada",
-        "pickupDeletedToast": "Recogida eliminada",
         "pickupDeleteConfirm": "¿Eliminar esta recogida puntual?",
         "pickupDeleteConfirmDetail": "La fecha y la nota de esta recogida puntual se perderán y no podrán recuperarse.",
         "pickupDuplicateError": "Ya existe una recogida para este tipo y fecha.",
@@ -6024,7 +6020,16 @@
         "icsCalendarName": "Recogida de residuos",
         "icsPickupSummary": "Recogida: {{name}}",
         "intervalDecrease": "Reducir intervalo",
-        "intervalIncrease": "Aumentar intervalo"
+        "intervalIncrease": "Aumentar intervalo",
+        "scheduleSavedNamed": "Horario de «{{name}}» guardado.",
+        "pickupSavedNamed": "Recogida de «{{name}}» guardada.",
+        "intervalLabel": "Intervalo",
+        "scheduleDeletedNamed": "Horario de «{{name}}» eliminado.",
+        "pickupDeletedNamed": "Recogida de «{{name}}» eliminada.",
+        "typeArchivedNamed": "«{{name}}» archivado.",
+        "typeRestoredNamed": "«{{name}}» restaurado.",
+        "typesWithoutSchedule": "Sin horario",
+        "putOutToday": "Sacar hoy"
     },
     "rewards": {
         "title": "Recompensas",
@@ -6082,8 +6087,6 @@
         "balance": "Saldo",
         "cost": "Coste",
         "remaining": "Restante",
-        "pointsSigned": "Puntos (+/−)",
-        "pointsSignedHint": "Un valor positivo suma, uno negativo resta.",
         "reasonOptional": "Motivo (opcional)",
         "reasonPlaceholder": "p. ej. ayudó mucho",
         "iconLabel": "Icono",
@@ -6176,7 +6179,15 @@
         "ownLedger": "Tus movimientos",
         "toastApprovedNamed": "«{{reward}}» aprobado para {{name}}.",
         "toastRejectedNamed": "«{{reward}}» rechazado para {{name}}.",
-        "toastCancelledNamed": "«{{reward}}» retirado."
+        "toastCancelledNamed": "«{{reward}}» retirado.",
+        "ledgerFilterLabel": "Filtrar por persona",
+        "bonusKindCredit": "Abono",
+        "bonusKindDebit": "Descuento",
+        "bonusKindLabel": "Abono o descuento",
+        "bonusCredit": "Abonar",
+        "bonusDebit": "Descontar",
+        "notEnoughPoints": "No hay puntos suficientes para este premio.",
+        "bonusPoints": "Puntos"
     },
     "datepicker": {
         "openCalendar": "Abrir calendario",
@@ -6222,8 +6233,6 @@
         "filterExpired": "Caducado",
         "filterSoon": "Caduca pronto",
         "filterLow": "Casi agotado",
-        "watchLabel": "Requiere atención",
-        "watchEmpty": "Nada caduca ni se está agotando.",
         "badgeExpiredYesterday": "Caducó ayer",
         "badgeExpiredDays": "Caducó hace {{count}} días",
         "badgeExpiresToday": "Caduca hoy",
@@ -6275,7 +6284,8 @@
             "bag": "bolsa",
             "bag_one": "bolsa",
             "bag_other": "bolsas"
-        }
+        },
+        "moreDetailsHint": "Existencias mínimas, notas"
     },
     "inventory": {
         "title": "Inventario",
@@ -6441,14 +6451,15 @@
         "openAction": "Abrir {{name}}",
         "limitReached": "Como máximo {{count}} documentos.",
         "limitReached_one": "Como máximo {{count}} documento.",
-        "lockedPrivate": "Adjunto presente (privado)"
+        "lockedPrivate": "Adjunto presente (privado)",
+        "pickNone": "Elige al menos un documento."
     },
     "join": {
         "title": "Configura tu cuenta",
         "intro": "Te han invitado a Yuvomi. Define aquí tus datos de acceso.",
         "usernameLabel": "Nombre de usuario",
         "fieldFixed": "Definido por la invitación.",
-        "displayNameLabel": "Nombre visible",
+        "displayNameLabel": "Nombre visible (opcional)",
         "passwordLabel": "Contraseña",
         "confirmLabel": "Confirmar contraseña",
         "submit": "Crear cuenta",
@@ -6463,7 +6474,8 @@
         "displayNameTooLong": "El nombre visible puede tener como máximo 128 caracteres.",
         "previewFailed": "No se ha podido comprobar la invitación en este momento. Vuelve a cargar la página en unos instantes.",
         "invalidTitle": "Invitación no válida",
-        "toLogin": "Ir al inicio de sesión"
+        "toLogin": "Ir al inicio de sesión",
+        "introNamed": "{{name}} te ha invitado a {{app}}. Define aquí tus datos de acceso."
     },
     "newLabel": {
         "tasks": "Tarea",
@@ -6471,7 +6483,7 @@
         "notes": "Nota",
         "birthdays": "Cumpleaños",
         "budget": "Entrada",
-        "budgetPlan": "Presupuesto",
+        "budgetPlan": "Presupuesto por categoría",
         "budgetAccount": "Cuenta",
         "budgetLoan": "Préstamo",
         "subscriptions": "Suscripción",
@@ -6488,9 +6500,10 @@
         "wasteSchedule": "Horario",
         "housekeepingWorker": "Persona de limpieza",
         "healthVitals": "Medición",
-        "healthCycle": "Periodo",
+        "healthOverview": "Registrar",
+        "healthCycle": "Día",
         "healthMeds": "Medicamento",
-        "healthPrevention": "Revisión",
+        "healthPrevention": "Prevención",
         "healthLabs": "Informe",
         "healthActivity": "Entrenamiento",
         "healthNutrition": "Comida",
@@ -6525,7 +6538,7 @@
         "planningNeedsTypesDescription": "Los horarios, las excepciones y los turnos extra se basan en tipos de turno, como turno de mañana, hora de clase o vacaciones. Añade uno primero.",
         "goToShiftTypes": "Ir a los tipos de turno",
         "shiftTypeRequiredError": "Elige un tipo de turno.",
-        "quickStartShiftTypes": "Inicio rápido",
+        "quickStartShiftTypes": "Añadir tipos de turno habituales:",
         "quickStartCreated": "Se crearon {{count}} tipos de turno.",
         "quickStartCreated_one": "Se creó un tipo de turno.",
         "quickStartNothingNew": "Ya está configurado: no hay nada nuevo que crear.",
@@ -6726,5 +6739,20 @@
         "install": "app, pantalla de inicio, Dock",
         "push": "avisos, notificaciones, recordatorios, campana",
         "wallMode": "quiosco, tableta, pantalla de pared, pantalla completa"
+    },
+    "colorPicker": {
+        "gray": "Gris",
+        "blue": "Azul",
+        "green": "Verde",
+        "ocher": "Ocre",
+        "emerald": "Esmeralda",
+        "fuchsia": "Fucsia",
+        "red": "Rojo",
+        "cyan": "Cian",
+        "orange": "Naranja",
+        "pink": "Rosa",
+        "custom": "Color personalizado",
+        "chooseCustom": "Elegir un color personalizado",
+        "standard": "Color predeterminado"
     }
 }
